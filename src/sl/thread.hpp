@@ -26,18 +26,14 @@
 
 #include <sl/config.hpp>
 #include <ostream>
+#include <memory>
+#include <thread>
 
 #if !SL_HAVE_THREADS
 # error "No thread support on this platform"
 #endif
 
 namespace sl {
-
-  namespace detail {
-    class mutex;
-    class wait_condition;
-    class thread;
-  }
 
   /**
    * Mutual exclusion objects for access to shared
@@ -50,8 +46,10 @@ namespace sl {
       Recursive, NonRecursive
     };
 
-  protected: 
-    detail::mutex* impl_;
+    struct Impl;
+
+  private: 
+    std::unique_ptr<Impl> impl_;
 
     friend class wait_condition;
   public:
@@ -62,22 +60,16 @@ namespace sl {
     ~mutex();
 
     /// Lock the mutex.
-    /// The method will block the calling thread until a lock on the mutex can
-    /// be obtained. The mutex remains locked until \c unlock() is called.
-    /// @see lock_guard
     void lock();
 
     /// Try to lock the mutex.
-    /// The method will try to lock the mutex. If it fails, the function will
-    /// return immediately (non-blocking).
-    /// @return \c true if the lock was acquired, or \c false if the lock could
-    /// not be acquired.
     bool try_lock();
 
     /// Unlock the mutex.
-    /// If any threads are waiting for the lock on this mutex, one of them will
-    /// be unblocked.
     void unlock();
+
+    /// Internal accessor for wait condition implementation
+    Impl* get_impl() const { return impl_.get(); }
   };
 
   /**
@@ -101,14 +93,12 @@ namespace sl {
 	lock_performed_ = false;
       }
     }
-
     inline void relock() {
       if (mutex_ && !lock_performed_) {
 	mutex_->lock();
 	lock_performed_ = true;
       }
     }
-
     inline mutex* the_mutex() const {
       return mutex_;
     }
@@ -120,16 +110,15 @@ namespace sl {
    */
   class wait_condition {
     SL_DISABLE_COPY(wait_condition);
-  protected:
-    detail::wait_condition* impl_;
+  private:
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
   public:
     wait_condition();
 
     ~wait_condition();
 
     /// Wait for the condition.
-    /// The function will block the calling thread until the condition variable
-    /// is woken by \c notify_one(), \c notify_all() or a spurious wake up.
     void wait(mutex &m);
 
     /// Notify one thread that is waiting for the condition.
@@ -155,7 +144,7 @@ namespace sl {
       TimeCriticalPriority=6,
       InheritPriority=7 };
   protected:
-    detail::thread* impl_;
+    std::unique_ptr<std::thread> thread_;
 
     std::size_t stack_size_;
     sl::thread::Priority priority_;
@@ -163,7 +152,6 @@ namespace sl {
     bool is_running_;           ///< True if this object is a thread of execution.
     bool is_finished_;           ///< True if this object is a thread of execution.
 
-    friend class detail::thread;
   public:
     thread();
     virtual ~thread();
@@ -186,7 +174,6 @@ namespace sl {
     static void yield_current_thread();
     
     /// Determine the number of threads which can possibly execute concurrently.
-    /// 0 if core count cannot be determined
     static std::size_t hardware_concurrency();
   };
 

@@ -24,7 +24,8 @@
 #define SL_SMART_POINTER_HPP
 
 #include <sl/utility.hpp>      // for generic superclass interface
-#include <sl/type_traits.hpp>  // for is_convertible
+#include <memory>              // for std::unique_ptr, std::shared_ptr
+#include <type_traits>         // for std::is_base_of, std::is_convertible, std::enable_if
 #include <algorithm>           // for std::swap
 #include <functional>          // for std::less
 
@@ -88,10 +89,9 @@ namespace sl {
    */
   template <class T>
   static inline sl::sized_raw_array_pointer<const T> to_constant_pointer(const sl::sized_raw_array_pointer<T>& ptr) {
-    return sl::sized_raw_array_pointer<const T>(ptr.raw_pointer(), ptr.size());
+    return sl::sized_raw_array_pointer<const T>(ptr.raw_pointer(), ptr.count());
   }
   
-    
 } // namespace sl
 
 namespace sl {
@@ -104,21 +104,30 @@ namespace sl {
   template <class T> 
   class scoped_pointer {
   private:
-    scoped_pointer(const scoped_pointer&); // non copyable
-  protected:
-    T* pointer_;
+    std::unique_ptr<T> pointer_;
   public:
     typedef T value_t;
 
     explicit inline scoped_pointer( T* p=0 ) : pointer_(p) {}  // never throws
-    inline ~scoped_pointer()                 { delete pointer_; }
+    inline ~scoped_pointer() = default;
 
-    inline void reset( T* p=0 )          { if ( pointer_ != p ) { delete pointer_; pointer_ = p; } }
+    // Non-copyable
+    scoped_pointer(const scoped_pointer&) = delete;
+    scoped_pointer& operator=(const scoped_pointer&) = delete;
+
+    // Move support
+    inline scoped_pointer(scoped_pointer&& other) noexcept : pointer_(std::move(other.pointer_)) {}
+    inline scoped_pointer& operator=(scoped_pointer&& other) noexcept {
+      pointer_ = std::move(other.pointer_);
+      return *this;
+    }
+
+    inline void reset( T* p=0 )          { pointer_.reset(p); }
     inline T& operator*() const          { return *pointer_; }  // never throws
-    inline T* operator->() const         { return pointer_; }   // never throws
-    inline T* raw_pointer() const        { return pointer_; }   // never throws
+    inline T* operator->() const         { return pointer_.get(); }   // never throws
+    inline T* raw_pointer() const        { return pointer_.get(); }   // never throws
 
-    inline operator bool() const { return pointer_; }
+    inline operator bool() const { return static_cast<bool>(pointer_); }
   };  // scoped_pointer
 
 } // namespace sl
@@ -133,22 +142,24 @@ namespace sl {
   template<class T> 
   class scoped_raw_array_pointer {
   private:
-    scoped_raw_array_pointer(const scoped_raw_array_pointer&); // non copyable
-  protected:
-    T* pointer_;
+    std::unique_ptr<T[]> pointer_;
 
   public:
     typedef T value_t;
     
     explicit scoped_raw_array_pointer( T* p=0 ) : pointer_(p) {}  // never throws
-    ~scoped_raw_array_pointer()                    { delete [] pointer_; }
+    ~scoped_raw_array_pointer() = default;
+
+    // Non-copyable
+    scoped_raw_array_pointer(const scoped_raw_array_pointer&) = delete;
+    scoped_raw_array_pointer& operator=(const scoped_raw_array_pointer&) = delete;
     
-    void reset( T* p=0 )               { if ( pointer_ != p ) {delete [] pointer_; pointer_=p;} }
+    inline void reset( T* p=0 )               { pointer_.reset(p); }
     
-    T* raw_pointer() const                     { return pointer_; }  // never throws
+    T* raw_pointer() const                     { return pointer_.get(); }  // never throws
     T& operator[](std::size_t i) const { return pointer_[i]; }  // never throws
 
-    inline operator bool() const { return pointer_; }
+    inline operator bool() const { return static_cast<bool>(pointer_); }
   };  // scoped_raw_array_pointer
 
 } // namespace sl
@@ -192,264 +203,133 @@ namespace sl {
 
   template <class T>
   struct is_reference_counted {
-    static const bool value = is_convertible<T*,reference_counted*>::value;
+    static const bool value = std::is_base_of<reference_counted, T>::value;
   };
 
 } // namespace sl
 
 namespace sl {
  
-  namespace detail {
+  template <class T, bool IsIntrusive>
+  class shared_pointer_impl;
 
-    /**
-     *  Base class for implementing pointers with reference counted copy
-     *  semantics. Specialized versions implement intrusive and non
-     *  intrusive reference counts
-     */
-    template<class I, class T, bool B_T_HAS_EMBEDDED_REFCOUNT> 
-    class shared_pointer_base {
-    public:
-      typedef I derived_t;
-      typedef T value_t;
-    };
+  // Non-intrusive version (std::shared_ptr under the hood)
+  template <class T>
+  class shared_pointer_impl<T, false> {
+  protected:
+    std::shared_ptr<T> impl_;
+  public:
+    typedef T value_t;
 
-    /**
-     *  Base class for implementing pointers with reference counted copy
-     *  semantics. Non-intrusive version, allocating a reference count
-     *  on the heap.
-     */
-    template<class I, class T> 
-    class shared_pointer_base<I,T,false> {
-    public:
-      static const bool is_intrusive = false;
+    inline shared_pointer_impl(T* p = 0) : impl_(p ? std::shared_ptr<T>(p) : std::shared_ptr<T>()) {}
+    inline ~shared_pointer_impl() = default;
 
-      typedef shared_pointer_base<I,T,false> this_t;
-      typedef I derived_t;
-      typedef T value_t;
-      
-      /// Features to access this as a derived_t pointer
-      SL_DECLARE_GENERIC_SUPERCLASS_FEATURES(derived_t);
+    inline shared_pointer_impl(const shared_pointer_impl& other) = default;
+    inline shared_pointer_impl& operator=(const shared_pointer_impl& other) = default;
 
-    protected:
+    template <class Y, typename std::enable_if<std::is_convertible<Y*, T*>::value, int>::type = 0>
+    inline shared_pointer_impl(const shared_pointer_impl<Y, false>& other) : impl_(other.get_shared_ptr()) {}
 
-      T*     pointer_;             // pointer to reference counted object
-      long*  refcountpointer_;     // pointer to reference counter
+    template <class Y, typename std::enable_if<std::is_convertible<Y*, T*>::value, int>::type = 0>
+    inline shared_pointer_impl& operator=(const shared_pointer_impl<Y, false>& other) {
+      impl_ = other.get_shared_ptr();
+      return *this;
+    }
 
-#if 0
-    protected:
-#else
-    public: // MIPSPro bug workaround
-#endif
-
-      inline void delete_pointer() {
-	derived_ref().delete_pointer();
+    inline void reset(T* p = 0) {
+      if (p == nullptr) {
+        impl_.reset();
+      } else {
+        impl_.reset(p);
       }
+    }
+    inline T* raw_pointer() const { return impl_.get(); }
+    inline long use_count() const { return impl_.use_count(); }
+    inline bool is_unique() const { return impl_.use_count() == 1; }
+    inline long* refcount_pointer() const { return nullptr; }
 
-      inline void deref() {
-	SL_REQUIRE("Not void", pointer_);
-	SL_CHECK("Pointer and refcount consistent", (!pointer_) == (!refcountpointer_));
-	--*refcountpointer_;
-	if (*refcountpointer_ == 0) { 
-	  delete_pointer(); pointer_ = NULL;
-	  delete refcountpointer_; refcountpointer_ = NULL;
-	}
-	SL_ENSURE("Pointer and refcount consistent", (!pointer_) == (!refcountpointer_));
+    inline void swap(shared_pointer_impl& other) noexcept { impl_.swap(other.impl_); }
+    inline const std::shared_ptr<T>& get_shared_ptr() const { return impl_; }
+    inline operator bool() const { return static_cast<bool>(impl_); }
+  };
+
+  // Intrusive version (manually managing references on reference_counted objects)
+  template <class T>
+  class shared_pointer_impl<T, true> {
+  protected:
+    T* pointer_;
+  public:
+    typedef T value_t;
+
+    inline shared_pointer_impl(T* p = 0) : pointer_(p) {
+      if (pointer_) pointer_->ref();
+    }
+    inline ~shared_pointer_impl() {
+      if (pointer_) {
+        pointer_->deref();
+        if (pointer_->use_count() == 0) {
+          delete pointer_;
+        }
       }
-      
-      inline void ref() {
-	SL_REQUIRE("Not void", pointer_);
-	SL_CHECK("Pointer and refcount consistent", (!pointer_) == (!refcountpointer_));
-	++*(refcountpointer_);
-	SL_ENSURE("Pointer and refcount consistent", (!pointer_) == (!refcountpointer_));
+    }
+    inline shared_pointer_impl(const shared_pointer_impl& other) : pointer_(other.pointer_) {
+      if (pointer_) pointer_->ref();
+    }
+    inline shared_pointer_impl& operator=(const shared_pointer_impl& other) {
+      if (pointer_ != other.pointer_) {
+        if (pointer_) {
+          pointer_->deref();
+          if (pointer_->use_count() == 0) {
+            delete pointer_;
+          }
+        }
+        pointer_ = other.pointer_;
+        if (pointer_) pointer_->ref();
       }
-      
-      inline void share(T* rpointer, long* rrefcountpointer) {
-	SL_CHECK("Pointer and refcount consistent", (!pointer_) == (!refcountpointer_));
-	if (refcountpointer_ != rrefcountpointer) {
-	  if (pointer_) deref();
-	  pointer_ = rpointer;
-	  refcountpointer_ = rrefcountpointer;
-	  if (pointer_) ref();
-	}
-	SL_ENSURE("Pointer and refcount consistent", (!pointer_) == (!refcountpointer_));
+      return *this;
+    }
+
+    template <class Y, typename std::enable_if<std::is_convertible<Y*, T*>::value, int>::type = 0>
+    inline shared_pointer_impl(const shared_pointer_impl<Y, true>& other) : pointer_(other.raw_pointer()) {
+      if (pointer_) pointer_->ref();
+    }
+
+    template <class Y, typename std::enable_if<std::is_convertible<Y*, T*>::value, int>::type = 0>
+    inline shared_pointer_impl& operator=(const shared_pointer_impl<Y, true>& other) {
+      if (pointer_ != other.raw_pointer()) {
+        if (pointer_) {
+          pointer_->deref();
+          if (pointer_->use_count() == 0) {
+            delete pointer_;
+          }
+        }
+        pointer_ = other.raw_pointer();
+        if (pointer_) pointer_->ref();
       }
-  
-    public:
-      
-      explicit inline shared_pointer_base(T* p, long* r) : 
-	pointer_(p), 
-	refcountpointer_(r ? r : (p ? new long(0) : NULL)) {
-	SL_ENSURE("Pointer and refcount consistent", (!pointer_) == (!refcountpointer_));
-	if (pointer_) ref();
+      return *this;
+    }
+
+    inline void reset(T* p = 0) {
+      if (pointer_ != p) {
+        if (pointer_) {
+          pointer_->deref();
+          if (pointer_->use_count() == 0) {
+            delete pointer_;
+          }
+        }
+        pointer_ = p;
+        if (pointer_) pointer_->ref();
       }
+    }
 
-      inline ~shared_pointer_base() {
-	SL_CHECK("Pointer and refcount consistent", (!pointer_) == (!refcountpointer_));
-	if (pointer_) deref();      
-	SL_ENSURE("Pointer and refcount consistent", (!pointer_) == (!refcountpointer_));
-      }
+    inline T* raw_pointer() const { return pointer_; }
+    inline long use_count() const { return pointer_ ? pointer_->use_count() : 0; }
+    inline bool is_unique() const { return use_count() == 1; }
+    inline long* refcount_pointer() const { return pointer_ ? pointer_->refcount_pointer() : nullptr; }
 
-      inline void reset(T* p=0) {
-	SL_CHECK("Pointer and refcount consistent", (!pointer_) == (!refcountpointer_));
-	if ( pointer_ != p) {
-	  if (pointer_) {
-	    SL_CHECK("Has pointer", pointer_);
-	    SL_CHECK("Has refcount", refcountpointer_);
-	    --*refcountpointer_;
-	    if (*refcountpointer_ == 0) {
-	      delete_pointer();
-	      if (p) {
-		*refcountpointer_ = 1;
-		pointer_ = p;
-	      } else {
-		delete refcountpointer_; refcountpointer_ = NULL;
-		pointer_ = NULL;
-	      }
-	    } else if (p) {
-	      refcountpointer_ = new long(1);
-	      pointer_ = p;
-	    } else {
-	      refcountpointer_ = NULL;
-	      pointer_ = NULL;
-	    }
-	  } else {
-	    SL_CHECK("Null pointer", !pointer_);
-	    SL_CHECK("No refcount", !refcountpointer_);
-	    pointer_ = p;
-	    if (pointer_) {
-	      refcountpointer_ = new long(1);
-	    }
-	  }
-	}
-	SL_ENSURE("Pointer and refcount consistent", (!pointer_) == (!refcountpointer_));
-      }
-
-      /// The embedded raw pointer
-      inline T* raw_pointer() const { return pointer_; }
-
-      /// Is the pointer non void?
-      inline operator bool() const { return pointer_; }
-
-      inline long* refcount_pointer() const { 
-	return refcountpointer_; 
-      }
-
-      /// The number of references to the pointed object
-      inline long use_count() const { 
-	return refcount_pointer() ? *refcount_pointer() : 0; 
-      }
-
-      /// Is the pointed object referenced only by one pointer()?
-      inline bool is_unique() const { return use_count() == 1; }
-
-      inline void swap(this_t& other) {  // never throws
-	SL_CHECK("Pointer and refcount consistent", (!pointer_) == (!refcountpointer_));
-	std::swap(pointer_,other.pointer_); 
-	std::swap(refcountpointer_,other.refcountpointer_); 
-	SL_ENSURE("Pointer and refcount consistent", (!pointer_) == (!refcountpointer_));
-      } 
-    };  // shared_pointer_base
-
-    /**
-     *  Base class for implementing pointers with reference counted copy
-     *  semantics. Intrusive version, specialized for reference_counted
-     *  objects with an embedded reference count.
-     */
-    template<class I, class T> 
-    class shared_pointer_base<I,T,true> {
-    public:
-      static const bool is_intrusive = true;
-
-      typedef shared_pointer_base<I,T,true> this_t;
-      typedef I derived_t;
-      typedef T value_t;
-      
-      /// Features to access this as a derived_t pointer
-      SL_DECLARE_GENERIC_SUPERCLASS_FEATURES(derived_t);
-
-    protected:
-
-      T*     pointer_;             // pointer to reference counted object
-
-#if 0
-    protected:
-#else
-    public: // MIPSPro bug workaround
-#endif
-
-      inline void delete_pointer() {
-	derived_ref().delete_pointer();
-      }
-
-
-      inline void deref() {
-	SL_REQUIRE("Not null", pointer_);
-	pointer_->deref();
-	if (use_count() == 0) {
-	  delete_pointer();
-	  pointer_ = NULL;
-	}
-      }
-      
-      inline void ref() {
-	SL_REQUIRE("Not null", pointer_);
-	pointer_->ref();
-      }
-      
-      inline void share(T* rpointer, long*) {
-	if (pointer_ != rpointer) {
-	  if (pointer_) deref();
-	  pointer_ = rpointer;
-	  if (pointer_) ref();
-	}
-      }
-  
-    public:
-      
-      explicit inline shared_pointer_base(T* p, long*): pointer_(p) {
-	if (pointer_) ref();
-      }
-
-      inline ~shared_pointer_base() {
-	if (pointer_) deref();      
-      }
-
-      inline void reset(T* p=0) {
-	if ( pointer_ != p ) {
-	  if (pointer_) deref();
-	  pointer_ = p;
-	  if (pointer_) ref();
-	}
-      }
-
-      /// The embedded raw pointer
-      inline T* raw_pointer() const { return pointer_; }
-
-      /// Is the pointer non void?
-      inline operator bool() const { return pointer_; }
-
-      /// The number of references to the pointed object
-      inline long use_count() const { 
-	return refcount_pointer() ? *refcount_pointer() : 0; 
-      }
-
-      /// Is the pointed object referenced only by one pointer()?
-      inline bool is_unique() const { return use_count() == 1; }
-
-      inline long* refcount_pointer() const { 
-	return pointer_ ? pointer_->refcount_pointer() : NULL;
-      }
-
-      inline void swap(this_t& other) {  // never throws
-	std::swap(pointer_,other.pointer_); 
-      } 
-    };  // shared_pointer_base
-
-  } // namespace detail
-
-} // namespace sl
-
-namespace sl {
+    inline void swap(shared_pointer_impl& other) noexcept { std::swap(pointer_, other.pointer_); }
+    inline operator bool() const { return pointer_ != nullptr; }
+  };
 
   /**
    * An enhanced relative of scoped_pointer with reference counted copy semantics.
@@ -457,44 +337,31 @@ namespace sl {
    * is destroyed or reset.
    */
   template<class T> 
-  class shared_pointer: public detail::shared_pointer_base<shared_pointer<T>, T, is_reference_counted<T>::value > {
+  class shared_pointer: public shared_pointer_impl<T, is_reference_counted<T>::value> {
   public:
-    typedef detail::shared_pointer_base<shared_pointer<T>, T, is_reference_counted<T>::value> super_t;
+    typedef shared_pointer_impl<T, is_reference_counted<T>::value> super_t;
     typedef T value_t;
-#if 0
-  protected:
-    friend class super_t;
-#else
-  public: // MIPSPro bug workaround
-#endif
 
-    inline void delete_pointer() {
-      delete this->pointer_;
-    }
-  public:
-    explicit inline shared_pointer(T* p =0) : super_t(p, NULL) {
-    }
+    explicit inline shared_pointer(T* p =0) : super_t(p) {}
     
-    inline shared_pointer(const shared_pointer& r): super_t(r.raw_pointer(), r.refcount_pointer()) { 
-    }  // never throws
+    inline shared_pointer(const shared_pointer& r): super_t(r) {}
   
     inline shared_pointer& operator=(const shared_pointer& r) {
-      share(r.raw_pointer(),r.refcount_pointer());
+      super_t::operator=(r);
       return *this;
     }
     
     template<class Y>
-    inline shared_pointer(const shared_pointer<Y>& r) : super_t(r.raw_pointer(),r.refcount_pointer()) {  // never throws 
-    }
+    inline shared_pointer(const shared_pointer<Y>& r) : super_t(r) {}
 
     template<class Y>
     inline shared_pointer& operator=(const shared_pointer<Y>& r) { 
-      share(r.raw_pointer(),r.refcount_pointer());
+      super_t::operator=(r);
       return *this;
     }
 
-    inline T& operator*() const          { return *(this->pointer_); }  // never throws
-    inline T* operator->() const         { return (this->pointer_); }  // never throws
+    inline T& operator*() const          { return *(this->raw_pointer()); }  // never throws
+    inline T* operator->() const         { return this->raw_pointer(); }  // never throws
   };  // shared_pointer
 
 
@@ -526,36 +393,36 @@ namespace sl {
    * is destroyed or reset.
    */
   template<class T> 
-  class shared_raw_array_pointer: public detail::shared_pointer_base<shared_pointer<T>, T, false> {
+  class shared_raw_array_pointer {
+  private:
+    std::shared_ptr<T> impl_;
   public:
-    typedef detail::shared_pointer_base<shared_pointer<T>, T, is_reference_counted<T>::value> super_t;
     typedef T value_t;
 
-#if 0
-  protected:
-    friend class super_t;
-#else
-  public: // MIPSPro bug workaround
-#endif
-
-    inline void delete_pointer() {
-      delete[] this->pointer_;
-    }
-
-  public:
-    explicit inline shared_raw_array_pointer(T* p =0) : super_t(p, NULL) {
-    }
+    explicit inline shared_raw_array_pointer(T* p =0) 
+      : impl_(p ? std::shared_ptr<T>(p, std::default_delete<T[]>()) : std::shared_ptr<T>()) {}
     
-    inline shared_raw_array_pointer(const shared_raw_array_pointer& r): super_t(r.raw_pointer(), r.refcount_pointer()) { 
-    }  // never throws
+    inline shared_raw_array_pointer(const shared_raw_array_pointer& r) : impl_(r.impl_) {}
   
     inline shared_raw_array_pointer& operator=(const shared_raw_array_pointer& r) {
-      share(r.raw_pointer(),r.refcount_pointer());
+      impl_ = r.impl_;
       return *this;
     }
 
-    inline T& operator[](std::size_t i) const { return (this->pointer_)[i]; }  // never throws
+    inline void reset(T* p = 0) {
+      if (p == nullptr) {
+        impl_.reset();
+      } else {
+        impl_.reset(p, std::default_delete<T[]>());
+      }
+    }
+    inline T* raw_pointer() const { return impl_.get(); }
+    inline long use_count() const { return impl_.use_count(); }
+    inline bool is_unique() const { return impl_.use_count() == 1; }
+    inline void swap(shared_raw_array_pointer& other) noexcept { impl_.swap(other.impl_); }
 
+    inline T& operator[](std::size_t i) const { return (impl_.get())[i]; }  // never throws
+    inline operator bool() const { return static_cast<bool>(impl_); }
   };  // shared_raw_array_pointer
 
   /**
@@ -582,10 +449,6 @@ inline bool operator!=(const sl::shared_raw_array_pointer<T>& a, const sl::share
 
 namespace std {
 
-  // Specialize std::swap to use the fast, non-throwing swap that's provided
-  // as a member function instead of using the default algorithm which creates
-  // a temporary and uses assignment.
-
   template<class T>
   inline void swap(sl::shared_pointer<T>& a, sl::shared_pointer<T>& b)
     { a.swap(b); }
@@ -594,12 +457,6 @@ namespace std {
   inline void swap(sl::shared_raw_array_pointer<T>& a, sl::shared_raw_array_pointer<T>& b)
     { a.swap(b); }
 
-  // Specialize std::less so we can use shared pointers and arrays as keys in
-  // associative collections.
-
-  // It's still a controversial question whether this is better than supplying
-  // a full range of comparison operators (<, >, <=, >=).
-  
   template<class T>
   struct less< sl::shared_pointer<T> >
     : binary_function<sl::shared_pointer<T>, sl::shared_pointer<T>, bool>
@@ -621,5 +478,3 @@ namespace std {
 } // namespace std
 
 #endif  // SL_SMART_POINTER_HPP
-
-
