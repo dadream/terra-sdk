@@ -137,6 +137,13 @@ namespace sl {
     }
   };
 
+  template <class T>
+  inline void swap(external_array1_item_ref<T> a, external_array1_item_ref<T> b) {
+    T temp = a.value();
+    a = b.value();
+    b = temp;
+  }
+
   // Iterator on external arrays
   template <class T, bool is_const, bool is_reverse>
   class external_array1_item_iterator {
