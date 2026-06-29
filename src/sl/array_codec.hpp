@@ -106,7 +106,6 @@ namespace sl {
     template <class INT_T>
     static void float_array_from_int_array_in(dense_array<float,2,void>& farray,
                                               const dense_array<INT_T,2,void>& iarray) {
-      typedef INT_T int_t;      
       std::size_t h = iarray.extent()[0];
       std::size_t w = iarray.extent()[1];
       farray.resize(subscript_t(h,w));
@@ -140,13 +139,10 @@ namespace sl {
                                             std::size_t buf_size,
                                             std::size_t* actual_size,
                                             double* actual_amax_error) {
-      typedef T value_t;
       typedef dense_array<T, 2, void> array2_t;
       array2_t array_prime;
 
       double tol_0          = 0.0f;
-      double rms_tol_0      = 0.0f;
-      std::size_t sz_tol_0 = 0;
       double err_tol_0     = 0;
       double tol_1          = *actual_amax_error;
       double rms_tol_1      = 0.0f;
@@ -157,7 +153,7 @@ namespace sl {
       std::size_t steps = 0;
       while (err_tol_1 < target_amax_error && steps < 6) { // FIXME
         ++steps;
-        tol_0 = tol_1; rms_tol_0 = rms_tol_1; err_tol_0 = err_tol_1; sz_tol_0 = sz_tol_1;
+        tol_0 = tol_1; err_tol_0 = err_tol_1;
         rms_tol_1 *= 2.0f;
         compress_to_target_rms_error(array,tol_1,buf,buf_size,&sz_tol_1,&rms_tol_1);
         decompress(array_prime, buf, buf_size);
@@ -181,7 +177,7 @@ namespace sl {
           decompress(array_prime, buf, buf_size);
           err_tol_mid = amax_diff(array,array_prime);
           if (err_tol_mid < target_amax_error) {
-            tol_0 = tol_mid; rms_tol_0 = rms_tol_mid; err_tol_0 = err_tol_mid; sz_tol_0 = sz_tol_mid;
+            tol_0 = tol_mid; err_tol_0 = err_tol_mid;
           } else {
 	    tol_1 = tol_mid; rms_tol_1 = rms_tol_mid; err_tol_1 = err_tol_mid; sz_tol_1 = sz_tol_mid;
           }

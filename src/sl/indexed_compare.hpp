@@ -41,8 +41,6 @@ int compare(const sl::indexed<G_numtype1, G_rank, G_derived1, G_userdefined1, G_
 	    const SL_PROMOTENAME(G_numtype1,G_numtype2)& eps) {
   SL_REQUIRE("Good size", arg1.extent() == arg2.extent());
 
-  typedef sl::indexed<G_numtype1, G_rank, G_derived1, G_userdefined1, G_discriminant> arg1_t;
-  typedef sl::indexed<G_numtype2, G_rank, G_derived2, G_userdefined2, G_discriminant> arg2_t;
   typedef SL_PROMOTENAME(G_numtype1,G_numtype2) value_t;
 
   typedef typename G_derived1::sparsity_t arg1_sparsity_t;

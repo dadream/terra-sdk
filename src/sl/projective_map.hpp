@@ -354,7 +354,6 @@ namespace sl {
     SL_REQUIRE("Is standard perspective", P.is_std_3d_perspective());
     
     typedef T value_t;
-    typedef projective_map<3,T> projective_map_t;
     typedef fixed_size_vector<column_orientation,4,T> hvector_t;
     
     const value_t fx = P(0,0);
