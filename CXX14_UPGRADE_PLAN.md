@@ -12,6 +12,7 @@
 - Done: `std::unary_function` / `std::binary_function` inheritance was removed without keeping legacy typedef aliases.
 - Done: `HAVE_NAMESPACE_STD` and `HAVE_ANSI_FOR_SCOPE` compatibility checks were removed because C++14 requires both behaviors.
 - Done: testsuite `std::random_shuffle` was replaced with fixed-seed `std::shuffle`.
+- Done: `bad_any_cast::what()` now uses `noexcept override` instead of `throw()`.
 - Baseline validation: Docker CMake build has no `warning:` lines, and CTest passes 25/25 tests.
 
 ## Findings
@@ -25,7 +26,7 @@
 ### Deprecated C++ Idioms
 
 - Done: `std::unary_function` / `std::binary_function` inheritance was removed from `fixed_size_matrix.hpp`, `hash.hpp`, `interpolation.hpp`, `convex_hull.hpp`, and `smart_pointer.hpp`.
-- Dynamic exception specifications `throw()` appear in `fsb_allocator.hpp`, `bounded_scalar.hpp`, `fixed_unit_real.hpp`, `interval.hpp`, and `any.hpp`.
+- Dynamic exception specifications `throw()` remain in `fsb_allocator.hpp`, `bounded_scalar.hpp`, `fixed_unit_real.hpp`, and `interval.hpp`.
 - Done: the testsuite uses fixed-seed `std::shuffle` instead of `std::random_shuffle`.
 
 ### Custom Standard Library Replacements

@@ -129,7 +129,7 @@ namespace sl {
 
   class bad_any_cast : public std::bad_cast {
   public:
-    virtual const char * what() const throw() {
+    const char * what() const noexcept override {
       return "sl::bad_any_cast: failed conversion";
     }
   };
