@@ -66,8 +66,7 @@ namespace sl {
 
   /// Function object interface to linear interpolation
   template <class T_CONTROL_POINT, class T_PARAMETER>
-  class lerp_op : 
-    public std::binary_function<T_CONTROL_POINT,T_CONTROL_POINT,T_CONTROL_POINT> {
+  class lerp_op {
   protected:
     const T_PARAMETER t;
   public:

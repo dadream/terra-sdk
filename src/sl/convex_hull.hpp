@@ -279,7 +279,7 @@ namespace sl {
     /**
      *  Ordering of points, first by x, then by y position
      */
-    class xy_ordering: public std::binary_function<size_t, size_t, bool> {
+    class xy_ordering {
     protected:
       const point_array_t& points_;
       const value_t eps_;
@@ -320,7 +320,7 @@ namespace sl {
     /**
      *  Epsilon-equality of points
      */
-    class xy_equal: public std::binary_function<size_t, size_t, bool> {
+    class xy_equal {
     protected:
       const point_array_t& points_;
       const value_t eps_;

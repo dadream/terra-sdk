@@ -88,7 +88,6 @@ namespace sl {
 
 #define SL_HASH_SPECIALIZE(type)			 \
     template <> struct hash<type>			 \
-      : public std::unary_function<type, std::size_t>	 \
     { \
       std::size_t operator()(type v) const	\
       {						\
@@ -98,7 +97,6 @@ namespace sl {
 
 #define SL_HASH_SPECIALIZE_REF(type)			 \
   template <> struct hash<type>				 \
-    : public std::unary_function<type, std::size_t>	 \
   {							 \
     std::size_t operator()(type const& v) const		 \
     {							 \
@@ -119,14 +117,14 @@ namespace sl {
   SL_HASH_SPECIALIZE(double)
 
   template <class T>
-  struct hash<T*>: public std::unary_function<T*, std::size_t> {
+  struct hash<T*> {
     std::size_t operator()(T* v) const {
       std::size_t x = static_cast<std::size_t>(reinterpret_cast<std::ptrdiff_t>(v));
       return x + (x >> 3);
     }
   };
 
-  template <class T> struct hash: std::unary_function<T, std::size_t> {
+  template <class T> struct hash {
     std::size_t operator()(T const& val) const {
       return hash_value(val);
     }

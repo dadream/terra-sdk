@@ -459,7 +459,6 @@ namespace std {
 
   template<class T>
   struct less< sl::shared_pointer<T> >
-    : binary_function<sl::shared_pointer<T>, sl::shared_pointer<T>, bool>
   {
     bool operator()(const sl::shared_pointer<T>& a,
         const sl::shared_pointer<T>& b) const
@@ -468,7 +467,6 @@ namespace std {
 
   template<class T>
   struct less< sl::shared_raw_array_pointer<T> >
-    : binary_function<sl::shared_raw_array_pointer<T>, sl::shared_raw_array_pointer<T>, bool>
   {
     bool operator()(const sl::shared_raw_array_pointer<T>& a,
         const sl::shared_raw_array_pointer<T>& b) const

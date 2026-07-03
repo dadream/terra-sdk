@@ -35,7 +35,7 @@ namespace sl {
 
   /// Function object, x+y
   template <class arg1_t, class arg2_t, class result_t>
-  class plus_op : public std::binary_function<arg1_t,arg2_t,result_t> {
+  class plus_op {
   public:
     inline result_t operator()(arg1_t x, arg2_t y) const { 
       typedef SL_PROMOTENAME(arg1_t,arg2_t) arg_t;
@@ -45,7 +45,7 @@ namespace sl {
 
   /// Function object, x-y
   template <class arg1_t, class arg2_t, class result_t>
-  class minus_op : public std::binary_function<arg1_t,arg2_t,result_t> {
+  class minus_op {
   public:
     inline result_t operator()(arg1_t x, arg2_t y) const { 
       typedef SL_PROMOTENAME(arg1_t,arg2_t) arg_t;
@@ -55,7 +55,7 @@ namespace sl {
 
   /// Function object, y-x
   template <class arg1_t, class arg2_t, class result_t>
-  class rev_minus_op : public std::binary_function<arg1_t,arg2_t,result_t> {
+  class rev_minus_op {
   public:
     inline result_t operator()(arg1_t x, arg2_t y) const { 
       typedef SL_PROMOTENAME(arg1_t,arg2_t) arg_t;
@@ -65,7 +65,7 @@ namespace sl {
 
   /// Function object, s*x
   template <class arg1_t, class arg2_t, class result_t>
-  class scale_op : public std::unary_function<arg1_t,result_t> {
+  class scale_op {
   public:
     typedef SL_PROMOTENAME(arg1_t,arg2_t) arg_t;
     const arg_t s;
@@ -77,7 +77,7 @@ namespace sl {
 
   /// Function object, -x
   template <class arg1_t, class result_t>
-  class negate_op : public std::unary_function<arg1_t,result_t> {
+  class negate_op {
   public:
     inline result_t operator()(arg1_t x) const { 
       return result_t(-x); 
@@ -86,7 +86,7 @@ namespace sl {
  
   /// Function object, x+y^2
   template <class arg1_t, class arg2_t, class result_t>
-  class add_sqr_op : public std::binary_function<arg1_t,arg2_t,result_t> {
+  class add_sqr_op {
   public:
     typedef SL_PROMOTENAME(arg1_t,arg2_t) arg_t;
     inline result_t operator()(arg1_t x, arg2_t y) const { 
