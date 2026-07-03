@@ -94,18 +94,9 @@
 
 // --- Containers
 
-# if HAVE_STL_UNORDERED_CONTAINERS || HAVE_STL_TR1_UNORDERED_CONTAINERS || HAVE_STL_TR1_UNORDERED_CONTAINERS_MSVC
-#    define HAVE_STLEXT_UNORDERED_CONTAINERS 1
-# else
-#    undef HAVE_STLEXT_UNORDERED_CONTAINERS
-# endif
-
-/// ============= FIXME FIXME FIXME
-#undef HAVE_STLEXT_UNORDERED_CONTAINERS
-// FIXME - current version of valgrind seems to hang within
-// gcc unordered container implementation. We remove it
-// for easing debugging
-
+// C++14 provides standard unordered containers. Keep the historical stlext
+// selector disabled by default to avoid changing container iteration behavior.
+# undef HAVE_STLEXT_UNORDERED_CONTAINERS
 /*
 **----------------------------------------------------------
 ** END C++ configuration

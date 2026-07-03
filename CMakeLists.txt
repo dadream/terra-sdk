@@ -130,34 +130,6 @@ check_restrict(restrict HAVE_RESTRICT)
 check_restrict(__restrict HAVE_PRIVATE_RESTRICT)
 check_restrict(__restrict__ HAVE_PRIVATE_SGI_RESTRICT)
 
-CHECK_CXX_SOURCE_COMPILES("#include <unordered_map>
-                           #include <unordered_set>
-			     int main(void)
-                             {
-                                std::unordered_set<int> my_set;
-                                std::unordered_map<int,int> my_map;
-				return 0;
-                             }
-                             " HAVE_STL_UNORDERED_CONTAINERS)
-CHECK_CXX_SOURCE_COMPILES("#include <tr1/unordered_map>
-                           #include <tr1/unordered_set>
-			     int main(void)
-                             {
-                                std::tr1::unordered_set<int> my_set;
-                                std::tr1::unordered_map<int,int> my_map;
-				return 0;
-                             }
-                             " HAVE_STL_TR1_UNORDERED_CONTAINERS)
-CHECK_CXX_SOURCE_COMPILES("#include <unordered_map>
-                           #include <unordered_set>
-                             int main(void)
-                             {
-                                std::tr1::unordered_set<int> my_set;
-                                std::tr1::unordered_map<int,int> my_map;
-				return 0;
-                             }
-                             " HAVE_STL_TR1_UNORDERED_CONTAINERS_MSVC)
-
 CHECK_LIBRARY_EXISTS(m random "" HAVE_LIBM) 
 
 # Threads

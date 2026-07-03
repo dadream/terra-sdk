@@ -22,56 +22,21 @@
 //---HDR---//
 
 /**
- * Definition of namespace stlext, and inclusion of unorderer set/map
- * STL extensions in a hopefully compiler-independent way.
+ * Definition of namespace stlext for standard unordered containers.
  */
 #ifndef STL_UNORDERED_CONTAINERS_HPP
 #define STL_UNORDERED_CONTAINERS_HPP
 
-#include <sl/config.hpp>
-#include <sl/hash.hpp>
-
-#if HAVE_STL_UNORDERED_CONTAINERS
 #include <unordered_set>
 #include <unordered_map>
-#define STLEXT std
-
-#elif HAVE_STL_TR1_UNORDERED_CONTAINERS
-#include <tr1/unordered_set>
-#include <tr1/unordered_map>
-
-#define STLEXT std::tr1
-
-#elif HAVE_STL_TR1_UNORDERED_CONTAINERS_MSVC
-#include <unordered_set>
-#include <unordered_map>
-
-#define STLEXT std::tr1
-
-#else
-
-#error "No unordered containers found!"
-
-#endif
 
 
 namespace stlext {
-  using STLEXT::unordered_map;
-  using STLEXT::unordered_set;
-  using STLEXT::unordered_multimap;
-  using STLEXT::unordered_multiset;
+  using std::unordered_map;
+  using std::unordered_set;
+  using std::unordered_multimap;
+  using std::unordered_multiset;
 }
 
-#if 0
-
-/// The following is really nice but can break some software...
-
-// Redirect to sl hasher...
-template <class T> inline std::size_t STLEXT::hash<T>::operator()(T v) const {
-  sl::hash<T> hasher;
-  return hasher(v);
-}
-
-#endif
 
 #endif

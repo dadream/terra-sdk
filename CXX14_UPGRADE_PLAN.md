@@ -9,19 +9,20 @@
 - Committed: `d34b583 build: require C++14 for spacelib`.
 - Done: `float_cast.hpp` uses `std::lrint` / `std::lrintf` and no longer depends on old ISO C feature macros.
 - Done: generated `src/sl/config/config.h` is no longer tracked and is ignored by `.gitignore`.
+- Done: `std::unary_function` / `std::binary_function` inheritance was removed without keeping legacy typedef aliases.
 - Baseline validation: Docker CMake build has no `warning:` lines, and CTest passes 25/25 tests.
 
 ## Findings
 
 ### Build And Configuration
 
-- `CMakeLists.txt` still has legacy global configuration checks such as `HAVE_NAMESPACE_STD`, `HAVE_ANSI_FOR_SCOPE`, and TR1 unordered container probing.
-- `src/sl/config.hpp` still carries compatibility for non-`std` namespaces, old for-scope behavior, restrict variants, and TR1 unordered containers.
-- `src/sl/stlext_unordered_containers.hpp` still has `std::tr1` branches. With C++14, this should collapse to `<unordered_map>` and `<unordered_set>`.
+- `CMakeLists.txt` still has legacy global configuration checks such as `HAVE_NAMESPACE_STD` and `HAVE_ANSI_FOR_SCOPE`.
+- `src/sl/config.hpp` still carries compatibility for non-`std` namespaces, old for-scope behavior, restrict variants, and thread feature gates.
+- Done: `src/sl/stlext_unordered_containers.hpp` now aliases C++14 standard unordered containers directly, and TR1 unordered probing was removed from CMake configuration.
 
 ### Deprecated C++ Idioms
 
-- `std::unary_function` / `std::binary_function` appear in `fixed_size_matrix.hpp`, `hash.hpp`, `interpolation.hpp`, `convex_hull.hpp`, and `smart_pointer.hpp`.
+- Done: `std::unary_function` / `std::binary_function` inheritance was removed from `fixed_size_matrix.hpp`, `hash.hpp`, `interpolation.hpp`, `convex_hull.hpp`, and `smart_pointer.hpp`.
 - Dynamic exception specifications `throw()` appear in `fsb_allocator.hpp`, `bounded_scalar.hpp`, `fixed_unit_real.hpp`, `interval.hpp`, and `any.hpp`.
 - The testsuite still uses `std::random_shuffle`; it is valid in C++14 but should become deterministic `std::shuffle` before any later C++17 move.
 
