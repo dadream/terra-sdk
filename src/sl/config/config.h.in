@@ -20,8 +20,6 @@
 #cmakedefine HAVE_LONG_DOUBLE @HAVE_LONG_DOUBLE@
 
 #cmakedefine HAVE_LIBM @HAVE_LIBM@
-#cmakedefine HAVE_LRINT @HAVE_LRINT@
-#cmakedefine HAVE_LRINTF @HAVE_LRINTF@
 
 #cmakedefine HAVE_FUNCTION @HAVE_FUNCTION@
 #cmakedefine HAVE_FUNC @HAVE_FUNC@
