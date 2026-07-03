@@ -15,6 +15,7 @@
 - Done: `bad_any_cast::what()` now uses `noexcept override` instead of `throw()`.
 - Done: `fsb_allocator` constructors and `max_size()` now use `noexcept` instead of `throw()`.
 - Done: `numeric_limits` specializations in `bounded_scalar.hpp`, `fixed_unit_real.hpp`, and `interval.hpp` use `noexcept` instead of `throw()`.
+- Done: added testsuite coverage for `sl` fixed-width integer aliases against C++14 `<cstdint>` expectations.
 - Baseline validation: Docker CMake build has no `warning:` lines, and CTest passes 25/25 tests.
 
 ## Findings
@@ -33,7 +34,7 @@
 
 ### Custom Standard Library Replacements
 
-- `src/sl/cstdint.hpp` and `src/sl/integer.hpp` implement custom fixed-width integer selection. Under C++14 this can likely become a thin alias layer over `<cstdint>`.
+- `src/sl/cstdint.hpp` and `src/sl/integer.hpp` still implement custom fixed-width integer selection. Test coverage now pins their C++14 `<cstdint>` compatibility before implementation replacement.
 - `src/sl/smart_pointer.hpp` implements custom shared pointer types. Treat these as public API until downstream usage is audited.
 - `src/sl/thread.hpp` / `src/sl/thread.cpp` already use `std::thread`, but are still gated by generated `SL_HAVE_THREADS` configuration.
 
@@ -69,7 +70,7 @@
 
 ### Phase 3: Standard Integer And Traits Layer
 
-- Add `static_assert` checks proving `sl::int8_t`, `sl::uint32_t`, and related aliases match `<cstdint>` expectations.
+- Done: added `static_assert` and runtime checks proving `sl::int8_t`, `sl::uint32_t`, and related aliases match `<cstdint>` expectations.
 - Replace implementation internals with `<cstdint>` aliases while keeping `sl::` names.
 - Keep serialization and compression formats unchanged.
 - Acceptance: serializer, compression, geometry, indexed, and downstream data-read smoke checks pass.

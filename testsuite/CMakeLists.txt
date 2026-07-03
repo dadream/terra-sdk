@@ -39,6 +39,11 @@ ADD_DEPENDENCIES(test_bounded_scalar sl)
 TARGET_LINK_LIBRARIES(test_bounded_scalar sl)
 ADD_TEST(test_bounded_scalar test_bounded_scalar)
 
+ADD_EXECUTABLE(test_cstdint test_cstdint.cpp)
+ADD_DEPENDENCIES(test_cstdint sl)
+TARGET_LINK_LIBRARIES(test_cstdint sl)
+ADD_TEST(test_cstdint test_cstdint)
+
 ADD_EXECUTABLE(test_color test_color.cpp)
 ADD_DEPENDENCIES(test_color sl)
 TARGET_LINK_LIBRARIES(test_color sl)
