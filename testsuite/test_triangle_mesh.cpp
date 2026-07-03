@@ -32,6 +32,7 @@
 #include <sl/clock.hpp>
 #include <algorithm>
 #include <cassert>
+#include <random>
 
 static std::size_t failed_test_count = 0;
 
@@ -95,7 +96,8 @@ tmesh_t* new_test_mesh(std::size_t tricount,
   }
 
   if (!regular) {
-    std::random_shuffle(edges.begin(),edges.end());
+    std::mt19937 shuffle_rng(0x5eed);
+    std::shuffle(edges.begin(), edges.end(), shuffle_rng);
     while ((result->triangle_count()>tricount) &&
            !edges.empty()) {
       // Randomly collapse edge

@@ -11,6 +11,7 @@
 - Done: generated `src/sl/config/config.h` is no longer tracked and is ignored by `.gitignore`.
 - Done: `std::unary_function` / `std::binary_function` inheritance was removed without keeping legacy typedef aliases.
 - Done: `HAVE_NAMESPACE_STD` and `HAVE_ANSI_FOR_SCOPE` compatibility checks were removed because C++14 requires both behaviors.
+- Done: testsuite `std::random_shuffle` was replaced with fixed-seed `std::shuffle`.
 - Baseline validation: Docker CMake build has no `warning:` lines, and CTest passes 25/25 tests.
 
 ## Findings
@@ -25,7 +26,7 @@
 
 - Done: `std::unary_function` / `std::binary_function` inheritance was removed from `fixed_size_matrix.hpp`, `hash.hpp`, `interpolation.hpp`, `convex_hull.hpp`, and `smart_pointer.hpp`.
 - Dynamic exception specifications `throw()` appear in `fsb_allocator.hpp`, `bounded_scalar.hpp`, `fixed_unit_real.hpp`, `interval.hpp`, and `any.hpp`.
-- The testsuite still uses `std::random_shuffle`; it is valid in C++14 but should become deterministic `std::shuffle` before any later C++17 move.
+- Done: the testsuite uses fixed-seed `std::shuffle` instead of `std::random_shuffle`.
 
 ### Custom Standard Library Replacements
 
@@ -60,7 +61,7 @@
 
 - Remove `std::unary_function` / `std::binary_function` inheritance. Add explicit `argument_type`, `first_argument_type`, `second_argument_type`, or `result_type` aliases only if callers require them.
 - Replace `throw()` with `noexcept` only where the function is confirmed not to throw.
-- Replace testsuite `std::random_shuffle` with fixed-seed `std::shuffle`.
+- Done: replaced testsuite `std::random_shuffle` with fixed-seed `std::shuffle`.
 - Acceptance: testsuite passes 25/25 and test behavior remains stable.
 
 ### Phase 3: Standard Integer And Traits Layer
