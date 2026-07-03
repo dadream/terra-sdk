@@ -42,14 +42,6 @@
 # endif
 # endif
 
-# if !HAVE_NAMESPACE_STD
-#   define std /* no std */
-# endif
-
-# if !HAVE_ANSI_FOR_SCOPE
-#   define for if(0);else for
-# endif
-
 # if HAVE_RESTRICT
 #   define HAVE_RESTRICT_ENABLED 1
 # elif HAVE_PRIVATE_RESTRICT

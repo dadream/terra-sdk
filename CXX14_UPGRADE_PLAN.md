@@ -10,14 +10,15 @@
 - Done: `float_cast.hpp` uses `std::lrint` / `std::lrintf` and no longer depends on old ISO C feature macros.
 - Done: generated `src/sl/config/config.h` is no longer tracked and is ignored by `.gitignore`.
 - Done: `std::unary_function` / `std::binary_function` inheritance was removed without keeping legacy typedef aliases.
+- Done: `HAVE_NAMESPACE_STD` and `HAVE_ANSI_FOR_SCOPE` compatibility checks were removed because C++14 requires both behaviors.
 - Baseline validation: Docker CMake build has no `warning:` lines, and CTest passes 25/25 tests.
 
 ## Findings
 
 ### Build And Configuration
 
-- `CMakeLists.txt` still has legacy global configuration checks such as `HAVE_NAMESPACE_STD` and `HAVE_ANSI_FOR_SCOPE`.
-- `src/sl/config.hpp` still carries compatibility for non-`std` namespaces, old for-scope behavior, restrict variants, and thread feature gates.
+- Done: `CMakeLists.txt` no longer probes for pre-standard namespace or for-scope behavior.
+- `src/sl/config.hpp` still carries compatibility for restrict variants and thread feature gates.
 - Done: `src/sl/stlext_unordered_containers.hpp` now aliases C++14 standard unordered containers directly, and TR1 unordered probing was removed from CMake configuration.
 
 ### Deprecated C++ Idioms
@@ -50,7 +51,7 @@
 
 ### Phase 1: Build And Config Cleanup
 
-- Remove `HAVE_NAMESPACE_STD`, `HAVE_ANSI_FOR_SCOPE`, and TR1 unordered container checks.
+- Done: removed `HAVE_NAMESPACE_STD`, `HAVE_ANSI_FOR_SCOPE`, and TR1 unordered container checks.
 - Fix the unordered container wrapper to the C++14 standard library.
 - Reduce `config.hpp` to the minimum platform/compiler compatibility still needed today.
 - Acceptance: `spacelib` build/test pass with no warnings; downstream CMake build passes.

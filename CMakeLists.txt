@@ -105,16 +105,6 @@ ENDMACRO (sizeof)
 #################################################
 # Configuration 
 
-INCLUDE(TestForSTDNamespace) 
-IF (NOT CMAKE_NO_STD_NAMESPACE)
-  SET(HAVE_NAMESPACE_STD 1)
-ENDIF (NOT CMAKE_NO_STD_NAMESPACE)
-
-INCLUDE(TestForANSIForScope) 
-IF (NOT CMAKE_NO_ANSI_FOR_SCOPE)
-  SET(HAVE_ANSI_FOR_SCOPE 1)
-ENDIF (NOT CMAKE_NO_ANSI_FOR_SCOPE)
-
 sizeof("short" HAVE_SHORT HAVE_SHORT_BITS)
 sizeof("int" HAVE_INT HAVE_INT_BITS)
 sizeof("long" HAVE_LONG HAVE_LONG_BITS)
