@@ -14,6 +14,7 @@
 - Done: testsuite `std::random_shuffle` was replaced with fixed-seed `std::shuffle`.
 - Done: `bad_any_cast::what()` now uses `noexcept override` instead of `throw()`.
 - Done: `fsb_allocator` constructors and `max_size()` now use `noexcept` instead of `throw()`.
+- Done: `numeric_limits` specializations in `bounded_scalar.hpp`, `fixed_unit_real.hpp`, and `interval.hpp` use `noexcept` instead of `throw()`.
 - Baseline validation: Docker CMake build has no `warning:` lines, and CTest passes 25/25 tests.
 
 ## Findings
@@ -27,7 +28,7 @@
 ### Deprecated C++ Idioms
 
 - Done: `std::unary_function` / `std::binary_function` inheritance was removed from `fixed_size_matrix.hpp`, `hash.hpp`, `interpolation.hpp`, `convex_hull.hpp`, and `smart_pointer.hpp`.
-- Dynamic exception specifications `throw()` remain in `bounded_scalar.hpp`, `fixed_unit_real.hpp`, and `interval.hpp`.
+- Done: dynamic exception specifications have been removed from the tracked `spacelib` headers.
 - Done: the testsuite uses fixed-seed `std::shuffle` instead of `std::random_shuffle`.
 
 ### Custom Standard Library Replacements
@@ -62,7 +63,7 @@
 ### Phase 2: Deprecated STL Idioms
 
 - Remove `std::unary_function` / `std::binary_function` inheritance. Add explicit `argument_type`, `first_argument_type`, `second_argument_type`, or `result_type` aliases only if callers require them.
-- Replace `throw()` with `noexcept` only where the function is confirmed not to throw.
+- Done: replaced confirmed non-throwing `throw()` specifications with `noexcept`.
 - Done: replaced testsuite `std::random_shuffle` with fixed-seed `std::shuffle`.
 - Acceptance: testsuite passes 25/25 and test behavior remains stable.
 

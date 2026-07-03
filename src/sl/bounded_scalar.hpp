@@ -291,8 +291,8 @@ namespace std {
   public:
     static const bool is_specialized = true;
 
-    static sl::bounded_scalar<T> min() throw() { return sl::bounded_scalar<T>(numeric_limits<T>::min()); }
-    static sl::bounded_scalar<T> max() throw() { return sl::bounded_scalar<T>(numeric_limits<T>::max()); }
+    static sl::bounded_scalar<T> min() noexcept { return sl::bounded_scalar<T>(numeric_limits<T>::min()); }
+    static sl::bounded_scalar<T> max() noexcept { return sl::bounded_scalar<T>(numeric_limits<T>::max()); }
 
     static const int digits = numeric_limits<T>::digits;
     static const int digits10 = numeric_limits<T>::digits10;
@@ -300,8 +300,8 @@ namespace std {
     static const bool is_integer = numeric_limits<T>::is_integer;
     static const bool is_exact = numeric_limits<T>::is_exact;
     static const int radix =  numeric_limits<T>::radix;
-    static sl::bounded_scalar<T> epsilon() throw() { return sl::bounded_scalar<T>(numeric_limits<T>::epsilon()); }
-    static sl::bounded_scalar<T> round_error() throw() { return sl::bounded_scalar<T>(numeric_limits<T>::round_error()); }
+    static sl::bounded_scalar<T> epsilon() noexcept { return sl::bounded_scalar<T>(numeric_limits<T>::epsilon()); }
+    static sl::bounded_scalar<T> round_error() noexcept { return sl::bounded_scalar<T>(numeric_limits<T>::round_error()); }
 
     static const int min_exponent = numeric_limits<T>::min_exponent;
     static const int min_exponent10 = numeric_limits<T>::min_exponent10;
@@ -314,10 +314,10 @@ namespace std {
     static const float_denorm_style has_denorm = /*(float_denorm_style)*/numeric_limits<T>::has_denorm;
     static const bool has_denorm_loss = numeric_limits<T>::has_denorm_loss;
 
-    static sl::bounded_scalar<T> infinity() throw() { return sl::bounded_scalar<T>(numeric_limits<T>::infinity()); }
-    static sl::bounded_scalar<T> quiet_NaN() throw() { return sl::bounded_scalar<T>(numeric_limits<T>::quiet_NaN()); }
-    static sl::bounded_scalar<T> signaling_NaN() throw() { return sl::bounded_scalar<T>(numeric_limits<T>::signaling_NaN()); }
-    static sl::bounded_scalar<T> denorm_min() throw() { return sl::bounded_scalar<T>(numeric_limits<T>::denorm_min()); }
+    static sl::bounded_scalar<T> infinity() noexcept { return sl::bounded_scalar<T>(numeric_limits<T>::infinity()); }
+    static sl::bounded_scalar<T> quiet_NaN() noexcept { return sl::bounded_scalar<T>(numeric_limits<T>::quiet_NaN()); }
+    static sl::bounded_scalar<T> signaling_NaN() noexcept { return sl::bounded_scalar<T>(numeric_limits<T>::signaling_NaN()); }
+    static sl::bounded_scalar<T> denorm_min() noexcept { return sl::bounded_scalar<T>(numeric_limits<T>::denorm_min()); }
  
     static const bool is_iec559 = numeric_limits<T>::is_iec559;
     static const bool is_bounded = numeric_limits<T>::is_bounded;

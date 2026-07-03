@@ -310,8 +310,8 @@ namespace std {
   public:
     static const bool is_specialized = true;
 
-    static fixreal_t min() throw() { return fixreal_t(mantissa_t(1)); }
-    static fixreal_t max() throw() { return fixreal_t(numeric_limits<mantissa_t>::max()); }
+    static fixreal_t min() noexcept { return fixreal_t(mantissa_t(1)); }
+    static fixreal_t max() noexcept { return fixreal_t(numeric_limits<mantissa_t>::max()); }
 
     static const int digits = numeric_limits<mantissa_t>::digits;
     static const int digits10 = numeric_limits<mantissa_t>::digits10;
@@ -319,8 +319,8 @@ namespace std {
     static const bool is_integer = false;
     static const bool is_exact = true;
     static const int radix =  2;
-    static fixreal_t epsilon() throw() { return min(); }
-    static fixreal_t round_error() throw() { return min(); }
+    static fixreal_t epsilon() noexcept { return min(); }
+    static fixreal_t round_error() noexcept { return min(); }
 
     static const int min_exponent = 0; // ERROR
     static const int min_exponent10 = 0; // ERROR 
@@ -333,10 +333,10 @@ namespace std {
     static const float_denorm_style has_denorm = (float_denorm_style)numeric_limits<mantissa_t>::has_denorm;
     static const bool has_denorm_loss = false;
 
-    static fixreal_t infinity() throw() { return fixreal_t(numeric_limits<mantissa_t>::infinity()); }
-    static fixreal_t quiet_NaN() throw() { return fixreal_t(numeric_limits<mantissa_t>::quiet_NaN()); }
-    static fixreal_t signaling_NaN() throw() { return fixreal_t(numeric_limits<mantissa_t>::signaling_NaN()); }
-    static fixreal_t denorm_min() throw() { return fixreal_t(numeric_limits<mantissa_t>::denorm_min()); }
+    static fixreal_t infinity() noexcept { return fixreal_t(numeric_limits<mantissa_t>::infinity()); }
+    static fixreal_t quiet_NaN() noexcept { return fixreal_t(numeric_limits<mantissa_t>::quiet_NaN()); }
+    static fixreal_t signaling_NaN() noexcept { return fixreal_t(numeric_limits<mantissa_t>::signaling_NaN()); }
+    static fixreal_t denorm_min() noexcept { return fixreal_t(numeric_limits<mantissa_t>::denorm_min()); }
  
     static const bool is_iec559 = false;
     static const bool is_bounded = true;
