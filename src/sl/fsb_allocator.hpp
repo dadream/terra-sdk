@@ -383,10 +383,10 @@ namespace sl {
       typedef fsb_allocator<Other> other;
     };
 
-    fsb_allocator() throw() {}
+    fsb_allocator() noexcept {}
 
     template<class Other>
-    fsb_allocator(const fsb_allocator<Other>&) throw() {}
+    fsb_allocator(const fsb_allocator<Other>&) noexcept {}
 
     template<class Other>
     fsb_allocator& operator=(const fsb_allocator<Other>&) { return *this; }
@@ -414,7 +414,7 @@ namespace sl {
       ptr->Ty::~Ty();
     }
 
-    size_type max_size() const throw() { return 1; }
+    size_type max_size() const noexcept { return 1; }
   };
 
 
@@ -439,10 +439,10 @@ namespace sl {
       typedef fsb_allocator2<Other> other;
     };
 
-    fsb_allocator2() throw() {}
+    fsb_allocator2() noexcept {}
 
     template<class Other>
-    fsb_allocator2(const fsb_allocator2<Other>&) throw() {}
+    fsb_allocator2(const fsb_allocator2<Other>&) noexcept {}
 
     template<class Other>
     fsb_allocator2& operator=(const fsb_allocator2<Other>&) { return *this; }
@@ -469,7 +469,7 @@ namespace sl {
       ptr->Ty::~Ty();
     }
 
-    size_type max_size() const throw() { return 1; }
+    size_type max_size() const noexcept { return 1; }
 
     void cleanSweep(size_t unusedValue = size_t(-1))
     {
