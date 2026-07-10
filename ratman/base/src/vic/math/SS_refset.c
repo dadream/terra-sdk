@@ -366,7 +366,7 @@ double SSGenerate_value(SS *prob,int a)
 void SSimprove_solution(SS *prob, double *sol,double *value)
 {
   double **p,*y,range,perturb;
-  int i,j,a,nfunk,best_sol;
+  int i,j,nfunk,best_sol;
 
   p = SSallocate_double_matrix(prob->n_var+1,prob->n_var);
   y = SSallocate_double_array(prob->n_var+1);
@@ -394,7 +394,7 @@ void SSimprove_solution(SS *prob, double *sol,double *value)
     }
 
   /* Call Nelder and Mead's Simplex method */
-  a=SSamoeba(p, y, prob->n_var, 0.1, prob->evaluate, &nfunk, prob->userdata);
+  SSamoeba(p, y, prob->n_var, 0.1, prob->evaluate, &nfunk, prob->userdata);
 
   best_sol=0;
   for(i=1;i<=prob->n_var+1;i++)

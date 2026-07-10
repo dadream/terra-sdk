@@ -117,6 +117,9 @@ namespace sl {
     }
 
     /// Set this to other
+    /// Assign from another fixed-size array
+    fixed_size_array& operator=(const fixed_size_array&) = default;
+
     inline fixed_size_array(const self_t& other) {
       fastest::copy<dimension>::apply(other.begin(), restrict_begin());
     }

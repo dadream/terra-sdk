@@ -155,3 +155,6 @@ INSTALLS+= install_pri install_inc target
 include (../../../ratman_post.pri)
 #--------------------------------------------------------------------
 
+# Atmosphere state recovery requires finite-value checks even in release builds.
+unix:QMAKE_CXXFLAGS_RELEASE += -fno-finite-math-only
+

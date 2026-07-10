@@ -90,7 +90,7 @@ namespace cbdam {
   }
 
   template<class T>
-  inline void null_compressor<T>::decompress_to(array2_t& p, const uint8_t* compressed, uint32_t compressed_size) {
+  inline void null_compressor<T>::decompress_to(array2_t& p, const uint8_t* compressed, uint32_t /*compressed_size*/) {
     const uint8_t* cursor = compressed;
     uint32_t h, w;
     std::memcpy(&h, cursor, sizeof(uint32_t));

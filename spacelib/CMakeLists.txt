@@ -22,6 +22,7 @@
 #---HDR---#
 CMAKE_MINIMUM_REQUIRED(VERSION 3.1)
 PROJECT(sl)
+INCLUDE(GNUInstallDirs)
 
 #################################################
 # The version number
@@ -136,23 +137,16 @@ ELSE(CMAKE_USE_WIN32_THREADS_INIT)
   ENDIF(CMAKE_USE_PTHREADS_INIT)
 ENDIF(CMAKE_USE_WIN32_THREADS_INIT)
 
-SET(conf_dir ${CMAKE_CURRENT_SOURCE_DIR}/src/sl/config)
-SET(conf_file_in ${conf_dir}/config.h.in)
+SET(SL_GENERATED_INCLUDE_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
+SET(conf_dir "${SL_GENERATED_INCLUDE_DIR}/sl/config")
+SET(conf_file_in "${CMAKE_CURRENT_SOURCE_DIR}/src/sl/config/config.h.in")
 SET(conf_file ${conf_dir}/config.h)
 
+FILE(MAKE_DIRECTORY "${conf_dir}")
 MESSAGE("-- Generating Config file: ${conf_file}")
 CONFIGURE_FILE(${conf_file_in}
                ${conf_file})
 
-# Adding a dummy target is to allow ADDITIONAL_MAKE_CLEAN_FILES
-ADD_CUSTOM_TARGET(
- config
- COMMAND ${CMAKE_COMMAND} -E echo "Generating Config file..."
- WORKING ${conf_dir}
-)
-SET_DIRECTORY_PROPERTIES(PROPERTIES
-                         ADDITIONAL_MAKE_CLEAN_FILES
-                         "${conf_file};")
 CONFIGURE_FILE(
   "${CMAKE_CURRENT_SOURCE_DIR}/cmake_uninstall-cmake.in"
   "${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake"

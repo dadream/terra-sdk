@@ -181,7 +181,7 @@ namespace mod_victms {
   }
 
   static int root_resource(request_rec* r,
-			   const std::string& pathbase) {
+			   const std::string& /*pathbase*/) {
     r->content_type = "text/xml";
     ap_rprintf(r,
 	       "<?xml version=\"1.0\" encoding=\"UTF-8\" ?>\n"
@@ -194,7 +194,7 @@ namespace mod_victms {
   }
 
   static int service_resource(request_rec* r,
-			      const std::string& pathbase,
+			      const std::string& /*pathbase*/,
 			      const std::string& version) {
 				     
     r->content_type = "text/xml";
@@ -222,7 +222,7 @@ namespace mod_victms {
   }
 
   static int tilemap_resource(request_rec* r,
-			      const std::string& pathbase,
+			      const std::string& /*pathbase*/,
 			      const std::string& version,
 			      const std::string& tilemap) {
     vic::geo::base::tilemap_config* tc=config_find(tilemap);
@@ -346,14 +346,14 @@ namespace mod_victms {
 // Entry points
 // ===============================================================
 
-static apr_status_t victms_cleanup(void *cfgdata) {
+static apr_status_t victms_cleanup(void* /*cfgdata*/) {
   // cleanup code here, if needed
   if (mod_victms::tilemaps) delete mod_victms::tilemaps;
   mod_victms::tilemaps=0;
   return APR_SUCCESS;
 }
 
-static void victms_child_init(apr_pool_t *p, server_rec *s) {
+static void victms_child_init(apr_pool_t *p, server_rec* /*s*/) {
   // Register cleanup function
   apr_pool_cleanup_register(p, NULL, victms_cleanup, victms_cleanup);
 }
@@ -421,7 +421,7 @@ static int victms_handler(request_rec *r) {
 // Hook registration
 // ===============================================================
 
-static void victms_register_hooks(apr_pool_t *p) {
+static void victms_register_hooks(apr_pool_t* /*p*/) {
   ap_hook_handler(victms_handler, NULL, NULL, APR_HOOK_MIDDLE);
   ap_hook_child_init(victms_child_init, NULL, NULL, APR_HOOK_MIDDLE);
 }
@@ -441,6 +441,7 @@ extern "C" {
     NULL,                  /* create per-server config structures */
     NULL,                  /* merge  per-server config structures */
     NULL,                  /* table of config file commands       */
-    victms_register_hooks   /* register hooks                      */
+    victms_register_hooks,  /* register hooks                      */
+    AP_MODULE_FLAG_NONE     /* module flags                        */
   };
 };

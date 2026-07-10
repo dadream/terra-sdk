@@ -1,0 +1,10 @@
+/build/
+/out/
+/.cache/
+/CMakeUserPresets.json
+/compile_commands.json
+/.clangd/
+*.swp
+*.user
+*.orig
+*~

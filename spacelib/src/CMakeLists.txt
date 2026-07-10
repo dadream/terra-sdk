@@ -20,5 +20,5 @@
 #
 #======================================================================
 #---HDR---#
-INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR})
+INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR} "${SL_GENERATED_INCLUDE_DIR}")
 ADD_SUBDIRECTORY(sl)

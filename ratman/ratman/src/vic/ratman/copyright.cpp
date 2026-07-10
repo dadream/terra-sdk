@@ -36,10 +36,10 @@ namespace ratman {
   }
     
   /// Handle picking and return true if handled
-  bool  copyright::on_event_self(qgl_scene_view& qgl,
-				 QEvent* e,
-				 const projective_map3d_t& P,
-				 const rigid_body_map3d_t& V) {
+  bool  copyright::on_event_self(qgl_scene_view& /*qgl*/,
+				 QEvent* /*e*/,
+				 const projective_map3d_t& /*P*/,
+				 const rigid_body_map3d_t& /*V*/) {
     return false;
   }
 

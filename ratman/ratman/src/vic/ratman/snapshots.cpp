@@ -123,7 +123,7 @@ namespace ratman {
   void snapshots::render_self(qgl_scene_view& qgl,
 			      occupancy_map_t& /*occupancy_map*/,
 			      const projective_map3d_t& /*P*/,
-			      const rigid_body_map3d_t& V,
+			      const rigid_body_map3d_t& /*V*/,
 			      const point3d_t& /*C*/) {
 
     if (qgl.camera_controller().get_oriented_position() == last_oriented_position_) {

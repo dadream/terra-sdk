@@ -278,6 +278,13 @@ namespace vic {
 	    *r4 = (std::size_t)random_uniform(0.0,(double)population_count_);
 	  } while ((*r4 == candidate) || (*r4 == *r3) || (*r4 == *r2) || (*r4 == *r1));
 	}
+
+	if (r5) {
+	  do {
+	    *r5 = (std::size_t)random_uniform(0.0,(double)population_count_);
+	  } while ((*r5 == candidate) || (*r5 == *r4) || (*r5 == *r3) ||
+		   (*r5 == *r2) || (*r5 == *r1));
+	}
       }
 
       inline void handle_bounds(std::vector<arg_value_t>& trial_solution, 

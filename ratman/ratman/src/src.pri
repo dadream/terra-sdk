@@ -22,7 +22,7 @@
 # Include file, defining configurations for all ratman libs
 ##########################################################
 
-INCLUDEPATH += ./ $$RATMAN_DIR/src/
+INCLUDEPATH = ./ $$RATMAN_DIR/src/ $$INCLUDEPATH
 
 include ($$RATMAN_DIR/src/vic/src.pri)
 

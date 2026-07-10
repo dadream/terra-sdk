@@ -79,7 +79,7 @@ namespace vic {
       curl_share_cleanup(curl_shared_data_);
     }
 
-    FILE* virtual_file_system_network::open(const std::string& url, const char* mode) {
+    FILE* virtual_file_system_network::open(const std::string& url, const char* /*mode*/) {
       // Quick and dirty
       // FIXME Remove and replace with curlstream!
       FILE* result = fopen(url.c_str(), "rb");

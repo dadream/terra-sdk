@@ -107,7 +107,7 @@ namespace cbdam {
   }
 
   template<class OPERATOR_T, class DIAMOND_DATA_T>
-  inline void delta_codec<OPERATOR_T, DIAMOND_DATA_T>::distribute_data_to_root(const array2_t& offset,  const grid_diamond_t& r,
+  inline void delta_codec<OPERATOR_T, DIAMOND_DATA_T>::distribute_data_to_root(const array2_t& offset,  const grid_diamond_t& /*r*/,
                                                                                diamond_data_t* root0, diamond_data_t* root1) {
     int32_t count = 0;
     // get a reference to the root array of points and modify it

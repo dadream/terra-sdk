@@ -22,6 +22,6 @@
 # Include file, defining configurations for all base libs
 ##########################################################
 
-INCLUDEPATH += ./ $$BASE_DIR/src/
+INCLUDEPATH = ./ $$BASE_DIR/src/ $$INCLUDEPATH
 
 include ($$BASE_DIR/src/vic/src.pri)

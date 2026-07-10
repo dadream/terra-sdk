@@ -22,6 +22,10 @@
 #define VIC_MPI_HPP
 
 #include <sl/buffer_serializer.hpp>
+#ifndef OMPI_SKIP_MPICXX
+#define OMPI_SKIP_MPICXX 1
+#endif
+
 #include <mpi.h>
 
 namespace vic {

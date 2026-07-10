@@ -8,6 +8,3 @@
 /Makefile
 /cmake_install.cmake
 /install_manifest.txt
-
-# Generated configuration header
-/src/sl/config/config.h

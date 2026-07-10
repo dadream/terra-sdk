@@ -1,0 +1,12 @@
+Terra SDK combines existing software components without changing their
+original license terms or copyright notices.
+
+The SL software library under spacelib/ is distributed under the terms in:
+
+    spacelib/COPYING
+
+The RATMAN software framework under ratman/ is distributed under the terms in:
+
+    ratman/LICENSE
+
+Review both files before redistributing the combined work.

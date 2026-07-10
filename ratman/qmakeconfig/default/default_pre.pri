@@ -21,7 +21,7 @@
 #############################
 ## Default config
 
-CONFIG += staticlib warn_on sse sl thread 
+CONFIG += c++14 staticlib warn_on sse sl thread
 CONFIG -= debug release
 
 unix:CONFIG += system-png system-zlib

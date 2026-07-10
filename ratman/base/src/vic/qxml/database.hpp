@@ -50,7 +50,7 @@ namespace vic {
       }
       virtual  void   execute(const database *db) { (*function_)(receiver_, db); }
       const void*     receiver() const { return receiver_; }
-      const functor_t function() const { return function_; }
+      functor_t function() const { return function_; }
 
     protected:
       void* receiver_;

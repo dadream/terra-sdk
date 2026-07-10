@@ -416,7 +416,7 @@ namespace vic {
 	  }
 	  ptr_end+=2;
 	  switch (ptr_end-ptr) {
-	  case 2: *(--ptr_end)=c1;
+	  case 2: *(--ptr_end)=c1; // fall through
 	  case 1: *(--ptr_end)=c0;
 	  }
 	}
@@ -438,8 +438,8 @@ namespace vic {
 	  }
 	  ptr_end+=3;
 	  switch (ptr_end-ptr) {
-	  case 3: *(--ptr_end)=c2;
-	  case 2: *(--ptr_end)=c1;
+	  case 3: *(--ptr_end)=c2; // fall through
+	  case 2: *(--ptr_end)=c1; // fall through
 	  case 1: *(--ptr_end)=c0;
 	  }
 	}

@@ -107,6 +107,11 @@ namespace ratman {
 
     sun_azimuth_ = 90.0;
     sun_theta_ = 5.0;
+    turbidity_ = 2.0;
+
+    daytime_ = 12.0;
+    minutes_ = 0.5;
+    j_date_ = 1;
 
     fov_y_ = 30.0;
 
@@ -124,6 +129,7 @@ namespace ratman {
   
     PF_sun_.clear();
     PF_sun_.resize(MAX_THETA_STEPS);
+    set_turbidity(static_cast<int>(turbidity_));
 
     gl_texid_[0] = 0;
     gl_texid_[1] = 0;
@@ -446,9 +452,33 @@ namespace ratman {
   }
 
   void atmosphere::compute_sky(){
+    bool restored_state = false;
+    if (!std::isfinite(sun_theta_)) {
+      sun_theta_ = 0.0f;
+      restored_state = true;
+    }
+    if (!std::isfinite(sun_azimuth_)) {
+      sun_azimuth_ = 0.0f;
+      restored_state = true;
+    }
+    if (!std::isfinite(turbidity_)) {
+      set_turbidity(2);
+      restored_state = true;
+    }
+    if (restored_state) {
+      SL_TRACE_OUT(-1) << "Restored invalid atmosphere state" << std::endl;
+    }
+
     //GEO PARAM inizialize sun and atmospheric parameters
     zenit_values_ = Yxy_zenit();
-    sl::vector3f PF_sun = PF_sun_[sl::min(int(sun_theta_), MAX_THETA_STEPS-1)];
+    float indexed_sun_theta = sun_theta_;
+    if (indexed_sun_theta < 0.0f) {
+      indexed_sun_theta = 0.0f;
+    } else if (indexed_sun_theta > float(MAX_THETA_STEPS-1)) {
+      indexed_sun_theta = float(MAX_THETA_STEPS-1);
+    }
+    const int sun_theta_index = static_cast<int>(indexed_sun_theta);
+    sl::vector3f PF_sun = PF_sun_[sun_theta_index];
     //std::cerr << "zenit_values_  "<<zenit_values_<< std::endl;
     float Y_max = -1.0e6;
     
@@ -658,26 +688,38 @@ namespace ratman {
     daytime_ = float(a);
     //HACK time tuning
     //if (daytime_ != 0 && daytime_ != 24) daytime_ -= 2;
-    set_real_sun(current_longitude_, current_latitude_);
+    if (real_time_mode_) {
+      set_real_sun(current_longitude_, current_latitude_);
+    }
   }
 
   void atmosphere::set_minutes(int a){
     minutes_ = float(a)/60.0;
-    set_real_sun(current_longitude_, current_latitude_);
+    if (real_time_mode_) {
+      set_real_sun(current_longitude_, current_latitude_);
+    }
   }
   
   void atmosphere::set_date(int a)
   {
     j_date_ = a;
-    set_real_sun(current_longitude_, current_latitude_);
+    if (real_time_mode_) {
+      set_real_sun(current_longitude_, current_latitude_);
+    }
   }
 
   void atmosphere::set_real_sun(const float& current_lon, const float& current_lat){
-    sl::vector2f sun_tp = sun_position( solar_time( daytime_, minutes_, j_date_, current_lon*DTOR ), solar_declination(j_date_), current_lat*DTOR );
-    sun_theta_ = sun_tp[0]/DTOR;
-    //convert to NE coordinates
-    sun_azimuth_ = 270.0-sun_tp[1]/DTOR;
-    //std::cerr << "*****sun position     "<<sun_theta_<<" "<<sun_azimuth_<< std::endl;
+    const float current_solar_time = solar_time(daytime_, minutes_, j_date_, current_lon*DTOR);
+    const float current_declination = solar_declination(j_date_);
+    const sl::vector2f sun_tp = sun_position(current_solar_time, current_declination, current_lat*DTOR);
+
+    if (std::isfinite(sun_tp[0]) && std::isfinite(sun_tp[1])) {
+      sun_theta_ = sun_tp[0]/DTOR;
+      //convert to NE coordinates
+      sun_azimuth_ = 270.0-sun_tp[1]/DTOR;
+    } else {
+      SL_TRACE_OUT(-1) << "Ignoring invalid solar position" << std::endl;
+    }
     compute_sky();
   }
   
