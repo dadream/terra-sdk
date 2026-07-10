@@ -1,0 +1,13 @@
+# CMake generated files
+/build/
+/Testing/
+/CMakeCache.txt
+/CMakeFiles/
+/CTestTestfile.cmake
+/DartConfiguration.tcl
+/Makefile
+/cmake_install.cmake
+/install_manifest.txt
+
+# Generated configuration header
+/src/sl/config/config.h
