@@ -34,12 +34,27 @@ Still required before M1 can be marked complete:
 - configured request-domain ArrayBuffer result;
 - reviewed reference-device frame and memory thresholds.
 
+## M2: In Progress
+
+The first native characterization slice is implemented:
+
+- checked-in globe metadata matching the desktop cylindrical dataset;
+- a 157-line golden report for metadata, coordinate transforms, all canonical
+  cylindrical grid points, eight root diamonds, and first child patch IDs;
+- a dedicated CTest and focused Docker verification script;
+- default integration into the complete baseline gate.
+
+A dedicated planar metadata fixture, camera matrices, frustum results, deeper
+LOD cuts, patch payload decode, and native-versus-Wasm parity remain for
+subsequent M2/M3 slices.
+
 ## Verification Evidence
 
 The implementation worktree passed:
 
 ```bash
 bash scripts/verify_miniprogram_foundation.sh
+bash scripts/verify_miniprogram_native_golden.sh
 bash scripts/verify_baseline.sh
 bash scripts/verify_globe.sh
 ```
