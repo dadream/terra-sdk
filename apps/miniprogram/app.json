@@ -1,0 +1,12 @@
+{
+  "pages": [
+    "pages/probe/index"
+  ],
+  "window": {
+    "navigationStyle": "custom",
+    "backgroundColor": "#0b0d10",
+    "backgroundTextStyle": "light"
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json"
+}

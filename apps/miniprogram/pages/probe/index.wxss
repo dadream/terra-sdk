@@ -1,0 +1,68 @@
+.probe {
+  height: 100vh;
+  overflow: hidden;
+  position: relative;
+  width: 100vw;
+}
+
+.probe__canvas {
+  height: 100%;
+  width: 100%;
+}
+
+.probe__hud {
+  background: rgba(11, 13, 16, 0.9);
+  border: 1px solid rgba(244, 247, 248, 0.18);
+  border-radius: 6px;
+  bottom: 24px;
+  box-sizing: border-box;
+  left: 16px;
+  padding: 14px;
+  position: absolute;
+  right: 16px;
+}
+
+.probe__title {
+  color: #f4f7f8;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 24px;
+}
+
+.probe__status {
+  color: #9aa4ac;
+  font-size: 14px;
+  line-height: 22px;
+}
+
+.probe__status--passed {
+  color: #58d68d;
+}
+
+.probe__status--failed {
+  color: #ff7675;
+}
+
+.probe__metrics {
+  color: #c7d0d6;
+  font-family: monospace;
+  font-size: 12px;
+  line-height: 18px;
+  margin-top: 6px;
+  overflow-wrap: anywhere;
+}
+
+.probe__copy {
+  background: #f4f7f8;
+  border-radius: 4px;
+  color: #11171b;
+  font-size: 14px;
+  line-height: 36px;
+  margin: 10px 0 0;
+  min-height: 36px;
+}
+
+.probe__copy[disabled] {
+  background: #4a5258;
+  color: #aab2b8;
+}

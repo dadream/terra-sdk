@@ -1,0 +1,15 @@
+{
+  "description": "Terra SDK Mini Program capability probe",
+  "miniprogramRoot": "./",
+  "compileType": "miniprogram",
+  "appid": "touristappid",
+  "projectname": "terra-sdk-miniprogram",
+  "setting": {
+    "urlCheck": true,
+    "es6": true,
+    "postcss": true,
+    "minified": false,
+    "enhance": true,
+    "compileHotReLoad": true
+  }
+}

@@ -1,0 +1,13 @@
+# Terra desktop oracle manifest v1
+# kind object path
+baseline e361b81adce320dca361618bf415a794e14ec34d .
+# vic_app_cbdam_viewer direct dependencies:
+# vic_core_cbdam_base vic_base_img terra_sdk_qt_widgets
+# terra_sdk_qt_opengl terra_sdk_glu
+tree c91bd97a0c08771632650e83a40684294e473860 ratman/ratman/apps/cbdam/viewer
+# vic_app_ratman_nav3d direct dependencies:
+# vic_core_ratman vic_core_cbdam_base vic_base_curlstream terra_sdk_qt_network
+# terra_sdk_qt_xml terra_sdk_qt_widgets terra_sdk_qt_opengl
+# terra_sdk_qt_printsupport terra_sdk_glu
+tree fb20f211475d70596827a1f5268c7ceb2f887792 ratman/ratman/apps/nav3d
+blob 6a2b6e671575df61d4f7157ac9c85b5109214039 cmake/RatmanAppTargets.cmake

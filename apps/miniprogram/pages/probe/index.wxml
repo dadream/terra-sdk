@@ -1,0 +1,13 @@
+<view class="probe">
+  <canvas class="probe__canvas" type="webgl" id="webgl"></canvas>
+  <view class="probe__hud">
+    <view class="probe__title">Terra SDK</view>
+    <view class="probe__status probe__status--{{statusKind}}">{{status}}</view>
+    <view class="probe__metrics">
+      <text>{{summary}}</text>
+    </view>
+    <button class="probe__copy" bindtap="copyReport" disabled="{{!reportText}}">
+      Copy report
+    </button>
+  </view>
+</view>
