@@ -1,4 +1,6 @@
+#include <vic/cbdam/base/camera_controller_vtrackball.hpp>
 #include <vic/cbdam/base/coordinate_transform.hpp>
+#include <vic/cbdam/base/grid_diamond_graph_incore.hpp>
 #include <vic/cbdam/base/grid_diamond.hpp>
 #include <vic/cbdam/base/repository_parameters.hpp>
 
@@ -60,6 +62,172 @@ bool read_file(const std::string& path, std::string& content) {
 void append_grid_point(std::ostringstream& output, const std::string& key,
                        const cbdam::grid_point_t& point) {
   output << key << "=" << format_grid_point(point) << "\n";
+}
+
+template <class Map>
+void append_matrix(std::ostringstream& output, const std::string& prefix,
+                   const Map& map) {
+  const typename Map::matrix_t& matrix = map.as_matrix();
+  for (std::size_t row = 0; row < 4; ++row) {
+    output << prefix << ".row." << row << "=";
+    for (std::size_t column = 0; column < 4; ++column) {
+      if (column != 0) {
+        output << ",";
+      }
+      output << format_double(matrix(row, column));
+    }
+    output << "\n";
+  }
+}
+
+template <class Plane>
+std::string format_plane(const Plane& plane) {
+  return format_double(plane[0]) + "," + format_double(plane[1]) + "," +
+         format_double(plane[2]) + "," + format_double(plane[3]);
+}
+
+struct camera_fixture {
+  explicit camera_fixture(double globe_radius)
+      : radius(static_cast<float>(globe_radius)),
+        aspect_ratio(1280.0f / 720.0f),
+        y_fov(static_cast<float>(30.0 * (3.14 / 180.0))),
+        controller(&camera),
+        visibility() {
+    controller.set_window_size(1280, 720);
+    controller.set_radius(radius);
+    initial_distance = compute_initial_distance();
+    controller.reset_rotation();
+    controller.set_distance(initial_distance);
+    update_projection();
+  }
+
+  double compute_initial_distance() const {
+    const double vertical_half_fov = 0.5 * y_fov;
+    const double fit_aspect = aspect_ratio < 1.0f ? aspect_ratio : 1.0f;
+    const double half_fov =
+        std::atan(std::tan(vertical_half_fov) * fit_aspect);
+    return 1.05 * radius / std::sin(half_fov);
+  }
+
+  void update_projection() {
+    const float distance_two = static_cast<float>(
+        as_vector(camera.position()).two_norm_squared());
+    const float radius_two = radius * radius;
+    p_far = std::sqrt(distance_two - radius_two) * 1.1f;
+    p_near = p_far / 10000.0f;
+    camera.set_projection(y_fov, aspect_ratio, p_near, p_far);
+  }
+
+  float radius;
+  float aspect_ratio;
+  float y_fov;
+  float p_near;
+  float p_far;
+  double initial_distance;
+  cbdam::camera camera;
+  cbdam::camera_controller_vtrackball controller;
+  cbdam::grid_diamond_graph_incore visibility;
+};
+
+cbdam::grid_diamond_graph_incore::bounding_volume_t make_box(
+    double x, double y, double z, double half_extent) {
+  const sl::point3d pmin(x - half_extent, y - half_extent, z - half_extent);
+  const sl::point3d pmax(x + half_extent, y + half_extent, z + half_extent);
+  return cbdam::grid_diamond_graph_incore::bounding_volume_t(
+      sl::aabox3d(pmin, pmax));
+}
+
+void append_camera_state(std::ostringstream& output,
+                         const std::string& state_name,
+                         camera_fixture& fixture) {
+  fixture.update_projection();
+  const cbdam::camera::projective_map_t camera_pv(
+      fixture.camera.projection() * fixture.camera.view());
+  const cbdam::camera::point3_t camera_position = fixture.camera.position();
+  const cbdam::camera::point3_t controller_position =
+      fixture.controller.camera_position();
+  const std::string prefix = "camera.state." + state_name;
+
+  output << prefix << ".distance="
+         << format_double(fixture.controller.distance()) << "\n";
+  output << prefix << ".near=" << format_double(fixture.p_near) << "\n";
+  output << prefix << ".far=" << format_double(fixture.p_far) << "\n";
+  output << prefix << ".position=" << format_point3(camera_position) << "\n";
+  output << prefix << ".controller_position="
+         << format_point3(controller_position) << "\n";
+  output << prefix << ".tilt="
+         << format_double(fixture.controller.tilt_angle()) << "\n";
+  append_matrix(output, prefix + ".projection", fixture.camera.projection());
+  append_matrix(output, prefix + ".view", fixture.camera.view());
+  append_matrix(output, prefix + ".pv", camera_pv);
+  for (std::size_t i = 0; i < 6; ++i) {
+    output << prefix << ".clip_plane." << i << "="
+           << format_plane(camera_pv.clip_plane(i)) << "\n";
+  }
+
+  const double r = fixture.radius;
+  const double h = r * 0.005;
+  const cbdam::camera::point3_t behind_camera = inverse_transformation(
+      fixture.camera.view(), cbdam::camera::point3_t(0.0, 0.0, 0.1 * r));
+  const struct {
+    const char* name;
+    double x;
+    double y;
+    double z;
+  } boxes[] = {
+      {"center", 0.0, 0.0, 0.0},
+      {"near_surface", 0.0, 0.0, r},
+      {"far_surface", 0.0, 0.0, -r},
+      {"east_limb", r, 0.0, 0.0},
+      {"west_limb", -r, 0.0, 0.0},
+      {"north_limb", 0.0, r, 0.0},
+      {"behind_eye", behind_camera[0], behind_camera[1], behind_camera[2]},
+      {"beyond_far", 0.0, 0.0, -2.0 * r}};
+  const std::size_t box_count = sizeof(boxes) / sizeof(boxes[0]);
+  output << prefix << ".frustum_box_count=" << box_count << "\n";
+  for (std::size_t i = 0; i < box_count; ++i) {
+    const cbdam::grid_diamond_graph_incore::bounding_volume_t box =
+        make_box(boxes[i].x, boxes[i].y, boxes[i].z, h);
+    output << prefix << ".frustum." << boxes[i].name << "="
+           << (fixture.visibility.is_visible(box, camera_pv) ? "visible"
+                                                             : "culled")
+           << "\n";
+  }
+}
+
+void append_camera_behavior(std::ostringstream& output, double radius) {
+  const double pi = 3.14159265358979323846;
+  camera_fixture fixture(radius);
+
+  output << "camera.viewport=1280x720\n";
+  output << "camera.aspect_ratio=" << format_double(fixture.aspect_ratio)
+         << "\n";
+  output << "camera.y_fov=" << format_double(fixture.y_fov) << "\n";
+  output << "camera.radius=" << format_double(fixture.radius) << "\n";
+  output << "camera.initial_distance="
+         << format_double(fixture.initial_distance) << "\n";
+  append_camera_state(output, "initial", fixture);
+
+  double zoomed_distance = fixture.controller.distance();
+  for (int i = 0; i < 8; ++i) {
+    zoomed_distance *= 0.85;
+  }
+  const double minimum_distance = 1.001 * fixture.radius;
+  if (zoomed_distance < minimum_distance) {
+    zoomed_distance = minimum_distance;
+  }
+  fixture.controller.set_distance(zoomed_distance);
+  append_camera_state(output, "zoom_in_8", fixture);
+
+  fixture.controller.set_tilt_angle(-45.0 * pi / 180.0);
+  append_camera_state(output, "tilt_45", fixture);
+
+  fixture.controller.rotate_yaw(30.0 * pi / 180.0);
+  append_camera_state(output, "rotate_30", fixture);
+
+  fixture.controller.reset_rotation();
+  fixture.controller.set_distance(fixture.initial_distance);
+  append_camera_state(output, "reset", fixture);
 }
 
 bool build_report(const std::string& metadata_path, std::string& report,
@@ -156,6 +324,8 @@ bool build_report(const std::string& metadata_path, std::string& report,
     }
   }
 
+  append_camera_behavior(output, transform->radius());
+
   report = output.str();
   return true;
 }
@@ -222,8 +392,9 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  std::cout << "SDK golden passed: cylindrical metadata, coordinates, and "
-               "root patch topology"
-            << std::endl;
+  std::cout
+      << "SDK golden passed: cylindrical metadata, coordinates, topology, "
+         "camera, and frustum behavior"
+      << std::endl;
   return 0;
 }

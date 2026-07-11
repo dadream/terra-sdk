@@ -36,17 +36,21 @@ Still required before M1 can be marked complete:
 
 ## M2: In Progress
 
-The first native characterization slice is implemented:
+Native characterization coverage now includes:
 
 - checked-in globe metadata matching the desktop cylindrical dataset;
-- a 157-line golden report for metadata, coordinate transforms, all canonical
-  cylindrical grid points, eight root diamonds, and first child patch IDs;
+- a 327-line golden report for metadata, coordinate transforms, all canonical
+  cylindrical grid points, eight root diamonds, first child patch IDs, and the
+  viewer-equivalent globe camera action sequence;
+- exact camera projection/view/PV matrices, clip planes, camera positions, and
+  fixed bounding-volume visibility results for initial, zoom, 45-degree tilt,
+  30-degree yaw, and reset states;
 - a dedicated CTest and focused Docker verification script;
 - default integration into the complete baseline gate.
 
-A dedicated planar metadata fixture, camera matrices, frustum results, deeper
-LOD cuts, patch payload decode, and native-versus-Wasm parity remain for
-subsequent M2/M3 slices.
+A dedicated planar metadata fixture, deeper LOD cuts, patch payload decode,
+WMTS tile keys, and native-versus-Wasm parity remain for subsequent M2/M3
+slices.
 
 ## Verification Evidence
 

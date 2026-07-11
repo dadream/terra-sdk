@@ -7,7 +7,10 @@ extraction. They are characterization evidence, not a new public data format.
   oracle commit `e361b81`.
 - `native_behavior_v1.txt` records parsed metadata, cylindrical world
   transforms, all canonical cylindrical grid points, root diamond IDs, parent
-  IDs, corners, and first child patch IDs.
+  IDs, corners, first child patch IDs, and the viewer-equivalent globe camera
+  sequence. Camera records include projection/view/PV matrices, clip planes,
+  and fixed bounding-volume visibility results for initial, zoom, tilt, yaw,
+  and reset states.
 - Floating values use classic locale, fixed six-decimal formatting, and
   near-zero normalization so the fixture is stable across supported native
   toolchains.
