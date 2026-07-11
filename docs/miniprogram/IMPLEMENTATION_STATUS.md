@@ -38,19 +38,23 @@ Still required before M1 can be marked complete:
 
 Native characterization coverage now includes:
 
-- checked-in globe metadata matching the desktop cylindrical dataset;
-- a 327-line golden report for metadata, coordinate transforms, all canonical
-  cylindrical grid points, eight root diamonds, first child patch IDs, and the
-  viewer-equivalent globe camera action sequence;
+- checked-in globe and planar metadata matching the desktop cylindrical and
+  1k reference datasets;
+- a 379-line golden report for planar/cylindrical metadata, coordinate
+  transforms, canonical grid points, root topology, first child patch IDs, and
+  the viewer-equivalent globe camera action sequence;
 - exact camera projection/view/PV matrices, clip planes, camera positions, and
   fixed bounding-volume visibility results for initial, zoom, 45-degree tilt,
   30-degree yaw, and reset states;
-- a dedicated CTest and focused Docker verification script;
+- a checked-in real globe detail record plus golden framing, `64x64` residual
+  decode statistics, sample values, and raw/decoded hashes;
+- global-geodetic WMTS level, row, column, matrix-offset, and URL mapping
+  contracts covered by `terra_sdk_geo_tilemap_smoke`;
+- dedicated CTests and focused Docker verification script;
 - default integration into the complete baseline gate.
 
-A dedicated planar metadata fixture, deeper LOD cuts, patch payload decode,
-WMTS tile keys, and native-versus-Wasm parity remain for subsequent M2/M3
-slices.
+Deterministic deeper LOD cuts and native-versus-Wasm parity remain for
+subsequent M2/M3 slices.
 
 ## Verification Evidence
 
@@ -64,6 +68,6 @@ bash scripts/verify_globe.sh
 ```
 
 The complete CMake build contained no `warning:` matches. The 1k baseline,
-viewer globe fixed views, and nav3d globe capture passed. Globe viewer baseline
-differences were 0.0 for fixed action captures except reset at approximately
-1.188 with a maximum of 2.0; nav3d globe difference was 0.0.
+viewer globe fixed views, and nav3d globe capture passed. In the latest globe
+run, viewer capture mean differences ranged from 0.0 to approximately 0.7261
+within the 2.0 limit; the nav3d globe difference was 0.0.

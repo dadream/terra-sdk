@@ -24,6 +24,16 @@ std::string format_double(double value) {
   return output.str();
 }
 
+std::string format_precise_double(double value) {
+  if (std::fabs(value) < 0.00000000005) {
+    value = 0.0;
+  }
+  std::ostringstream output;
+  output.imbue(std::locale::classic());
+  output << std::fixed << std::setprecision(10) << value;
+  return output.str();
+}
+
 std::string format_grid_point(const cbdam::grid_point_t& point) {
   std::ostringstream output;
   output.imbue(std::locale::classic());
@@ -230,10 +240,103 @@ void append_camera_behavior(std::ostringstream& output, double radius) {
   append_camera_state(output, "reset", fixture);
 }
 
-bool build_report(const std::string& metadata_path, std::string& report,
-                  std::string& error) {
+bool append_planar_behavior(const std::string& metadata_path,
+                            std::ostringstream& output,
+                            std::string& error) {
   cbdam::repository_parameters parameters;
   parameters.read_from_file(metadata_path.c_str());
+  if (!parameters.last_operation_success() ||
+      !parameters.get_coordinate_transform()) {
+    error = "unable to read planar terrain metadata";
+    return false;
+  }
+
+  const cbdam::planar_coordinate_transform* transform =
+      dynamic_cast<const cbdam::planar_coordinate_transform*>(
+          parameters.get_coordinate_transform());
+  if (!transform) {
+    error = "planar terrain metadata is not planar";
+    return false;
+  }
+
+  output << "planar.metadata.patch_dim=" << parameters.patch_dim() << "\n";
+  output << "planar.metadata.height_scale_factor="
+         << format_precise_double(parameters.height_scale_factor()) << "\n";
+  output << "planar.metadata.srs=" << parameters.srs() << "\n";
+  output << "planar.metadata.about=" << parameters.about() << "\n";
+  output << "planar.metadata.transform=planar\n";
+  output << "planar.metadata.is_planar="
+         << (parameters.is_planar() ? "true" : "false") << "\n";
+  output << "planar.metadata.root_count=" << transform->root_count() << "\n";
+  output << "planar.metadata.bounds="
+         << format_point2(transform->bounding_rectangle()[0]) << "|"
+         << format_point2(transform->bounding_rectangle()[1]) << "\n";
+
+  const cbdam::coordinate_transform::point3d_t samples[] = {
+      cbdam::coordinate_transform::point3d_t(0.0, 0.0, 0.0),
+      cbdam::coordinate_transform::point3d_t(512.5, 512.5, 100.0),
+      cbdam::coordinate_transform::point3d_t(1025.0, 1025.0, -25.0)};
+  const std::size_t sample_count = sizeof(samples) / sizeof(samples[0]);
+  output << "planar.transform.sample_count=" << sample_count << "\n";
+  for (std::size_t i = 0; i < sample_count; ++i) {
+    const std::string prefix =
+        "planar.transform.sample." + std::to_string(i);
+    const cbdam::coordinate_transform::point3d_t xyz =
+        transform->xyz_from_uvh(samples[i]);
+    output << prefix << ".uvh=" << format_point3(samples[i]) << "\n";
+    output << prefix << ".xyz=" << format_point3(xyz) << "\n";
+    output << prefix << ".roundtrip="
+           << format_point3(transform->uvh_from_xyz(xyz)) << "\n";
+    output << prefix << ".up="
+           << format_vector3(transform->up_from_uvh(samples[i])) << "\n";
+    output << prefix << ".north="
+           << format_vector3(transform->north_from_uvh(samples[i])) << "\n";
+    output << prefix << ".east="
+           << format_vector3(transform->east_from_uvh(samples[i])) << "\n";
+  }
+
+  output << "planar.grid.canonical_point_count=4\n";
+  for (std::size_t i = 0; i < 4; ++i) {
+    const cbdam::grid_point_t point = cbdam::grid_canonical_point(i);
+    const std::string prefix =
+        "planar.grid.canonical_point." + std::to_string(i);
+    append_grid_point(output, prefix + ".grid", point);
+    output << prefix << ".uv=" << format_point2(transform->uv_from_grid(point))
+           << "\n";
+    output << prefix << ".xyz="
+           << format_point3(transform->xyz_from_grid(point)) << "\n";
+  }
+
+  const cbdam::grid_diamond root = cbdam::grid_diamond::canonical_root(0);
+  output << "planar.topology.root.valid="
+         << (root.is_valid() ? "true" : "false") << "\n";
+  append_grid_point(output, "planar.topology.root.id", root.id());
+  append_grid_point(output, "planar.topology.root.parent.0",
+                    root.parent_id(0));
+  append_grid_point(output, "planar.topology.root.parent.1",
+                    root.parent_id(1));
+  for (int corner = 0; corner < 4; ++corner) {
+    append_grid_point(
+        output, "planar.topology.root.corner." + std::to_string(corner),
+        root.corner(corner));
+  }
+  for (int fragment = 0; fragment < 2; ++fragment) {
+    for (int child = 0; child < 2; ++child) {
+      append_grid_point(
+          output,
+          "planar.topology.root.child." + std::to_string(fragment) + "." +
+              std::to_string(child),
+          root.child_id(fragment, child));
+    }
+  }
+  return true;
+}
+
+bool build_report(const std::string& globe_metadata_path,
+                  const std::string& planar_metadata_path,
+                  std::string& report, std::string& error) {
+  cbdam::repository_parameters parameters;
+  parameters.read_from_file(globe_metadata_path.c_str());
   if (!parameters.last_operation_success() ||
       !parameters.get_coordinate_transform()) {
     error = "unable to read globe terrain metadata";
@@ -253,7 +356,7 @@ bool build_report(const std::string& metadata_path, std::string& report,
   output << "schema=terra.native_behavior.v1\n";
   output << "metadata.patch_dim=" << parameters.patch_dim() << "\n";
   output << "metadata.height_scale_factor="
-         << format_double(parameters.height_scale_factor()) << "\n";
+         << format_precise_double(parameters.height_scale_factor()) << "\n";
   output << "metadata.srs=" << parameters.srs() << "\n";
   output << "metadata.about=" << parameters.about() << "\n";
   output << "metadata.transform=cylindrical\n";
@@ -325,6 +428,9 @@ bool build_report(const std::string& metadata_path, std::string& report,
   }
 
   append_camera_behavior(output, transform->radius());
+  if (!append_planar_behavior(planar_metadata_path, output, error)) {
+    return false;
+  }
 
   report = output.str();
   return true;
@@ -355,19 +461,21 @@ std::size_t first_mismatch_line(const std::string& expected,
 }  // namespace
 
 int main(int argc, char** argv) {
-  if (argc != 3) {
+  if (argc != 4) {
     std::cerr << "Usage: " << argv[0]
-              << " <globe_terrain.xml> <golden.txt>\n"
-              << "       " << argv[0] << " --dump <globe_terrain.xml>"
+              << " <globe_terrain.xml> <planar_terrain.xml> <golden.txt>\n"
+              << "       " << argv[0]
+              << " --dump <globe_terrain.xml> <planar_terrain.xml>"
               << std::endl;
     return 2;
   }
 
   const bool dump = std::string(argv[1]) == "--dump";
-  const std::string metadata_path = dump ? argv[2] : argv[1];
+  const std::string globe_metadata_path = dump ? argv[2] : argv[1];
+  const std::string planar_metadata_path = dump ? argv[3] : argv[2];
   std::string actual;
   std::string error;
-  if (!build_report(metadata_path, actual, error)) {
+  if (!build_report(globe_metadata_path, planar_metadata_path, actual, error)) {
     std::cerr << "CBDAM native behavior golden failed: " << error << std::endl;
     return 1;
   }
@@ -378,9 +486,9 @@ int main(int argc, char** argv) {
   }
 
   std::string expected;
-  if (!read_file(argv[2], expected)) {
+  if (!read_file(argv[3], expected)) {
     std::cerr << "CBDAM native behavior golden failed: unable to read "
-              << argv[2] << std::endl;
+              << argv[3] << std::endl;
     return 1;
   }
   if (expected != actual) {
@@ -393,8 +501,8 @@ int main(int argc, char** argv) {
   }
 
   std::cout
-      << "SDK golden passed: cylindrical metadata, coordinates, topology, "
-         "camera, and frustum behavior"
+      << "SDK golden passed: planar/cylindrical metadata, coordinates, "
+         "topology, camera, and frustum behavior"
       << std::endl;
   return 0;
 }

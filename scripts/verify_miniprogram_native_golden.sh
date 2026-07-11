@@ -20,6 +20,7 @@ docker run --rm \
   "${DOCKER_IMAGE}" \
   cmake --build /wksp/build/cmake \
   --target terra_sdk_cbdam_native_behavior_golden \
+  terra_sdk_cbdam_patch_decode_golden \
   --parallel "${BUILD_JOBS}"
 
 docker run --rm \
@@ -28,6 +29,6 @@ docker run --rm \
   -w /wksp/build/cmake \
   "${DOCKER_IMAGE}" \
   ctest --output-on-failure \
-  -R '^terra_sdk_cbdam_native_behavior_golden$'
+  -R '^terra_sdk_cbdam_.*_golden$'
 
-echo "Mini Program native behavior golden verification passed."
+echo "Mini Program native golden verification passed."

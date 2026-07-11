@@ -355,15 +355,35 @@ if(TERRA_SDK_ENABLE_SDK_SMOKE_TESTS)
             add_test(NAME terra_sdk_cbdam_native_behavior_golden
                 COMMAND "$<TARGET_FILE:terra_sdk_cbdam_native_behavior_golden>"
                     "${_terra_sdk_miniprogram_golden_dir}/globe_terrain.xml"
+                    "${_terra_sdk_miniprogram_golden_dir}/planar_terrain.xml"
                     "${_terra_sdk_miniprogram_golden_dir}/native_behavior_v1.txt"
+                WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
+        endif()
+
+        add_executable(terra_sdk_cbdam_patch_decode_golden
+            "${_terra_sdk_core_smoke_dir}/sdk_cbdam_patch_decode_golden.cpp")
+        target_link_libraries(terra_sdk_cbdam_patch_decode_golden
+            PRIVATE vic_core_cbdam_base vic_core_vfs terra_sdk_project_options)
+        target_include_directories(terra_sdk_cbdam_patch_decode_golden
+            PRIVATE
+                "${TERRA_SDK_RATMAN_SOURCE_DIR}/ratman/src"
+                "${TERRA_SDK_RATMAN_SOURCE_DIR}/base/src")
+
+        if(BUILD_TESTING)
+            add_test(NAME terra_sdk_cbdam_patch_decode_golden
+                COMMAND "$<TARGET_FILE:terra_sdk_cbdam_patch_decode_golden>"
+                    "${_terra_sdk_miniprogram_golden_dir}/globe_patch_record.bin"
+                    "${_terra_sdk_miniprogram_golden_dir}/patch_decode_v1.txt"
                 WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
         endif()
 
         list(APPEND _terra_sdk_sdk_smoke_targets
             terra_sdk_cbdam_repository_smoke
-            terra_sdk_cbdam_native_behavior_golden)
+            terra_sdk_cbdam_native_behavior_golden
+            terra_sdk_cbdam_patch_decode_golden)
         message(STATUS "Configured SDK smoke test terra_sdk_cbdam_repository_smoke")
         message(STATUS "Configured SDK golden test terra_sdk_cbdam_native_behavior_golden")
+        message(STATUS "Configured SDK golden test terra_sdk_cbdam_patch_decode_golden")
     endif()
 
     if(NOT TARGET vic_core_ratman)
