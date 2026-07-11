@@ -1,0 +1,44 @@
+{
+  "required_events": [
+    "process_started",
+    "terrain_connected",
+    "terrain_mode_detected",
+    "update_thread_started",
+    "texture_layer_connected",
+    "opengl_initialized",
+    "initial_camera_set",
+    "verify_action_started",
+    "verify_action_finished",
+    "capture_written",
+    "process_exited"
+  ],
+  "forbidden_patterns": [
+    "^\\[(viewer|terrain)\\]\\[(error|warning)\\]",
+    "connected=false",
+    "OpenGL.*(failed|unsupported)",
+    "Segmentation fault",
+    "Aborted",
+    "unknown verify action",
+    "VERIFY_ERROR",
+    "TRACE\\(-1\\): URL:",
+    "^\\[DEBUG\\]",
+    "HTTP error: curlcode=",
+    "^mouse:",
+    "^keyboard:"
+  ],
+  "ignored_patterns": [
+    "^\\[terrain\\] repository_opened",
+    "^\\[terrain\\] geometry_root_ready",
+    "^\\[terrain\\] texture_source_connected",
+    "^\\[terrain\\] texture_root_ready",
+    "^VERIFY_STATE ",
+    "^VERIFY_SCRIPT_LOADED",
+    "^VERIFY_PROCESS_START",
+    "^VERIFY_PROCESS_DONE",
+    "^libGL error:",
+    "^MESA-LOADER:",
+    "^wsl:"
+  ],
+  "allowed_unknown_lines": 20,
+  "max_lines": 200
+}

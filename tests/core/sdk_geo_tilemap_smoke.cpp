@@ -1,7 +1,9 @@
 #include <vic/geo/base/tilemap_config.hpp>
+#include <vic/geo/base/wmts_global_geodetic_source.hpp>
 #include <vic/xml/document.hpp>
 
 #include <cmath>
+#include <limits>
 #include <iostream>
 #include <sstream>
 #include <string>
@@ -212,6 +214,95 @@ int check_required_attribute_validation() {
   return 0;
 }
 
+int check_global_geodetic_wmts_mapping() {
+  typedef vic::geo::base::wmts_global_geodetic_source source_t;
+  typedef vic::geo::base::wmts_tile_coordinate tile_t;
+
+  const source_t source(
+      "https://t{s}.tianditu.gov.cn/img_c/wmts",
+      "img", "default", "tiles", "c", 1, 17, 8, "tk", "test-token");
+  if (!source.is_valid()) {
+    return fail("valid global-geodetic WMTS source was rejected");
+  }
+
+  const tile_t west =
+      source.tile_for_bbox(-180.0, -90.0, 0.0, 90.0, 256);
+  if (!west.is_valid() || west.level != 0 || west.matrix != 1 ||
+      west.row != 0 || west.column != 0) {
+    return fail("WMTS level-zero west tile mapping changed");
+  }
+  const std::string west_url = source.tile_url(west);
+  if (west_url !=
+      "https://t0.tianditu.gov.cn/img_c/wmts?"
+      "SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=img&STYLE=default&"
+      "TILEMATRIXSET=c&FORMAT=tiles&TILEMATRIX=1&TILEROW=0&TILECOL=0&"
+      "tk=test-token") {
+    return fail("WMTS level-zero URL contract changed");
+  }
+
+  const tile_t east =
+      source.tile_for_bbox(0.0, -90.0, 180.0, 90.0, 256);
+  if (!east.is_valid() || east.level != 0 || east.matrix != 1 ||
+      east.row != 0 || east.column != 1 ||
+      source.tile_url(east).find("https://t1.") != 0) {
+    return fail("WMTS level-zero east tile mapping changed");
+  }
+
+  const tile_t north_east =
+      source.tile_for_bbox(90.0, 0.0, 180.0, 90.0, 256);
+  if (!north_east.is_valid() || north_east.level != 1 ||
+      north_east.matrix != 2 || north_east.row != 0 ||
+      north_east.column != 3) {
+    return fail("WMTS north-east tile row conversion changed");
+  }
+
+  const tile_t south_east =
+      source.tile_for_bbox(90.0, -90.0, 180.0, 0.0, 256);
+  if (!south_east.is_valid() || south_east.level != 1 ||
+      south_east.matrix != 2 || south_east.row != 1 ||
+      south_east.column != 3) {
+    return fail("WMTS south-east tile row conversion changed");
+  }
+
+  if (source.tile_url(tile_t(17, 18, 0, 0)).find("TILEMATRIX=18") ==
+      std::string::npos) {
+    return fail("WMTS advertised maximum matrix mapping changed");
+  }
+
+  if (source.tile_for_bbox(-181.0, -90.0, 0.0, 90.0, 256).is_valid() ||
+      source.tile_for_bbox(-180.0, -90.0, 0.0, 90.0, 0).is_valid()) {
+    return fail("WMTS invalid bbox/tile width was accepted");
+  }
+
+  if (!source.tile_url(tile_t(18, 19, 0, 0)).empty() ||
+      !source.tile_url(tile_t(1, 2, 2, 0)).empty()) {
+    return fail("WMTS invalid tile coordinate was accepted");
+  }
+
+  const double nan = std::numeric_limits<double>::quiet_NaN();
+  if (source.tile_for_bbox(nan, -90.0, 0.0, 90.0, 256).is_valid()) {
+    return fail("WMTS non-finite bbox was accepted");
+  }
+  const source_t overflowing_offset(
+      "https://tiles.example.test/wmts", "imagery", "default", "tiles",
+      "global", std::numeric_limits<int>::max(), 1, 1);
+  if (overflowing_offset.is_valid()) {
+    return fail("WMTS overflowing matrix offset was accepted");
+  }
+
+  const source_t no_token(
+      "https://tiles.example.test/wmts", "imagery",
+      "default", "image/jpeg", "global", 0, 4, 1, "key", "");
+  const std::string no_token_url = no_token.tile_url_for_bbox(
+      -180.0, -90.0, 0.0, 90.0, 256);
+  if (no_token_url.find("TILEMATRIX=0") == std::string::npos ||
+      no_token_url.find("&key=") != std::string::npos) {
+    return fail("WMTS optional token/level offset contract changed");
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -228,6 +319,9 @@ int main() {
     return status;
   }
   if (int status = check_required_attribute_validation()) {
+    return status;
+  }
+  if (int status = check_global_geodetic_wmts_mapping()) {
     return status;
   }
   std::cout << "SDK smoke passed: vic_core_geo_base tilemap_config"

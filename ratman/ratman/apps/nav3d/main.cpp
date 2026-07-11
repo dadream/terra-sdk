@@ -28,6 +28,7 @@
 #include <QTranslator>
 #include <QLocale>
 #include <QProgressDialog>
+#include <QTimer>
 
 #ifdef _WIN32
 #undef min
@@ -67,6 +68,10 @@ int main(int argc, char *argv[]) {
   std::string s3d_url;
   double lon=-1000.0;
   double lat=-1000.0;
+  std::string verify_output;
+  int verify_delay_ms = 10000;
+  int verify_window_width = 1280;
+  int verify_window_height = 720;
   for (int i=1; i<argc; ++i) {
     std::string arg = std::string(argv[i]);
     if (arg == "--help") {
@@ -75,6 +80,9 @@ int main(int argc, char *argv[]) {
       std::cout << "Options: " << std::endl;
       std::cout << "  --home_url <url>      configuration file's url" << std::endl;
       std::cout << "  --lonlat <lon> <lat>  goto lon,lat" << std::endl;
+      std::cout << "  --verify-output <png> save the OpenGL viewport and exit" << std::endl;
+      std::cout << "  --verify-delay-ms <n> wait before verification capture" << std::endl;
+      std::cout << "  --verify-window-size <width>x<height>" << std::endl;
       std::cout << "  --help                usage help" << std::endl;
       std::cout << "  --version             print version" << std::endl;
       std::cout << "<s3d_file>              optional s3d file" << std::endl;
@@ -87,6 +95,29 @@ int main(int argc, char *argv[]) {
 	qFatal("%s", qPrintable(msg));
       }
       filename = std::string(argv[i]);
+    } else if (arg == "--verify-output") {
+      ++i;
+      if (i == argc) {
+	std::cerr << "[nav3d][error] verify_output_missing" << std::endl;
+	return 2;
+      }
+      verify_output = std::string(argv[i]);
+    } else if (arg == "--verify-delay-ms") {
+      ++i;
+      if (i == argc || sscanf(argv[i], "%d", &verify_delay_ms) != 1 ||
+	  verify_delay_ms < 0) {
+	std::cerr << "[nav3d][error] verify_delay_invalid" << std::endl;
+	return 2;
+      }
+    } else if (arg == "--verify-window-size") {
+      ++i;
+      if (i == argc ||
+	  sscanf(argv[i], "%dx%d", &verify_window_width,
+		 &verify_window_height) != 2 ||
+	  verify_window_width <= 0 || verify_window_height <= 0) {
+	std::cerr << "[nav3d][error] verify_window_size_invalid" << std::endl;
+	return 2;
+      }
     } else if (arg == "--lonlat") {
       ++i; if (i==argc) {
 	QString msg = QApplication::tr("Missing command line parameter '--lonlat'");
@@ -254,6 +285,21 @@ int main(int argc, char *argv[]) {
     }
 
     gui->show();
+    if (!verify_output.empty()) {
+      gui->resize(verify_window_width, verify_window_height);
+      const QString capture_path = QString::fromStdString(verify_output);
+      QTimer::singleShot(verify_delay_ms, [gui, capture_path, &app]() {
+	if (gui->save_verification_capture(capture_path)) {
+	  std::cerr << "[nav3d] verification_capture_written path="
+		    << capture_path.toStdString() << std::endl;
+	  app.exit(0);
+	} else {
+	  std::cerr << "[nav3d][error] verification_capture_failed path="
+		    << capture_path.toStdString() << std::endl;
+	  app.exit(4);
+	}
+      });
+    }
     std::cerr << "[nav3d] ui_ready" << std::endl;
 
 #ifdef QTSINGLEAPPLICATION

@@ -41,6 +41,7 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
+#include <cmath>
 #include <cassert>
 #include <cstdlib>
 #include "qgl_window_cbdam.hpp"
@@ -978,7 +979,12 @@ void qgl_window_cbdam::verify_zoom(int steps, bool zoom_in) {
     flight->set_position(pos);
     set_verify_flight_view(pos);
   } else if (m_camera_controller != 0) {
-    m_camera_controller->set_distance(m_camera_controller->distance() * scale);
+    double distance = m_camera_controller->distance() * scale;
+    const double minimum_distance = 1.001 * m_planet_radius;
+    if (distance < minimum_distance) {
+      distance = minimum_distance;
+    }
+    m_camera_controller->set_distance(distance);
   }
 }
 
@@ -993,7 +999,7 @@ void qgl_window_cbdam::verify_tilt(double degrees) {
   }
   cbdam::camera_controller_vtrackball* trackball = dynamic_cast<cbdam::camera_controller_vtrackball*>(m_camera_controller);
   if (trackball != 0) {
-    trackball->set_tilt_angle(m_verify_pitch);
+    trackball->set_tilt_angle(-std::fabs(m_verify_pitch));
   }
 }
 
@@ -1004,6 +1010,11 @@ void qgl_window_cbdam::verify_rotate(double degrees) {
     cbdam::point3d_t p = m_camera.position();
     cbdam::camera::vector3_t pos(p[0], p[1], p[2]);
     set_verify_flight_view(pos);
+  }
+  cbdam::camera_controller_vtrackball* trackball =
+    dynamic_cast<cbdam::camera_controller_vtrackball*>(m_camera_controller);
+  if (trackball != 0) {
+    trackball->rotate_yaw(degrees_to_radians(degrees));
   }
 }
 
@@ -1018,11 +1029,11 @@ void qgl_window_cbdam::set_initial_position() {
   // set offset value used to compute proper far projection plane
   float aspect_ratio = ( height()==0 ) ? 1.0 :  (float)width() / (float)height();
   m_camera_controller->set_radius(m_planet_radius);
-  m_camera_controller->set_distance(m_planet_radius/(2.0f*tan(m_y_fov/2.0)*aspect_ratio));
-  m_camera_controller->reset_rotation();
   const cbdam::planar_coordinate_transform* geo_xform = 
     dynamic_cast<const cbdam::planar_coordinate_transform*>(m_terrain_model->uvh_xyz_transform());
   if (geo_xform != 0) {
+    m_camera_controller->set_distance(m_planet_radius/(2.0f*tan(m_y_fov/2.0)*aspect_ratio));
+    m_camera_controller->reset_rotation();
     // planar
     cbdam::camera_controller_flight* cc = dynamic_cast<cbdam::camera_controller_flight*>(m_camera_controller);
     if (cc != 0) {
@@ -1035,6 +1046,17 @@ void qgl_window_cbdam::set_initial_position() {
       std::cerr << "[viewer] initial_camera_set position="
 		<< pos[0] << "," << pos[1] << "," << pos[2] << std::endl;
     }
+  } else {
+    const double vertical_half_fov = 0.5 * m_y_fov;
+    const double fit_aspect = aspect_ratio < 1.0f ? aspect_ratio : 1.0f;
+    const double half_fov = std::atan(std::tan(vertical_half_fov) * fit_aspect);
+    const double distance = 1.05 * m_planet_radius / std::sin(half_fov);
+    m_camera_controller->reset_rotation();
+    m_camera_controller->set_distance(distance);
+    m_verify_pitch = 0.0;
+    m_verify_yaw = 0.0;
+    std::cerr << "[viewer] initial_camera_set distance=" << distance
+	      << " radius=" << m_planet_radius << std::endl;
   }
 }
 

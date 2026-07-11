@@ -10,6 +10,7 @@
 - `REPOSITORY_SCOPE.md`: repository ownership and generated path contract.
 - `RATMAN_BASE_SDK_READINESS.md`: base-module dependency audit.
 - `SDK_MINIPROGRAM_ROADMAP.md`: staged SDK and mini-program delivery plan.
+- `GLOBE_VERIFICATION.md`: spherical terrain and Tianditu WMTS verification.
 
 ## Viewer Baseline
 

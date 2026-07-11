@@ -22,7 +22,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     proj-bin libproj-dev \
     shapelib libshp-dev \
     libgle3-dev glew-utils libglew-dev \
-    curl libcurl4-openssl-dev \
+    ca-certificates curl libcurl4-openssl-dev \
     apache2 apache2-dev \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*

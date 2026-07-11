@@ -17,6 +17,7 @@ Use the repository-owned environment:
 bash scripts/build_docker_image.sh
 bash scripts/build_cmake.sh
 bash scripts/verify_baseline.sh
+bash scripts/verify_globe.sh
 ```
 
 The build must have zero compiler warnings. The full gate also checks CMake
@@ -44,6 +45,10 @@ failures must be summarized or rate-limited.
 replace reference outputs or viewer screenshots without reviewing
 `viewer_verify_output/1k/report.html` and documenting the intended change.
 Do not add large datasets or deployment payloads without a concrete test need.
+
+Globe integration reads external data from `GLOBE_DATA_DIR` and keeps only
+reviewed captures under `testdata/viewer_baseline/globe/`. Follow
+`docs/GLOBE_VERIFICATION.md`; never commit a Tianditu token.
 
 ## Commits
 

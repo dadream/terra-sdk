@@ -1,0 +1,10 @@
+<ratman version="2.0">
+  <init>
+    <home u="105" v="35" h="3000000"/>
+    <camera_bounds u_min="-180" v_min="-90" u_max="180" v_max="90" h_min="10" h_max="30000000"/>
+  </init>
+  <elevation url="/globe/terrain" id="Global Elevation" about="Local global SRTM terrain"/>
+  <base_layers>
+    <wmts id="Tianditu Satellite" url="https://t{s}.tianditu.gov.cn/img_c/wmts" layer="img" style="default" format="tiles" matrix_set="c" matrix_level_offset="1" max_level="17" subdomains="8" token_parameter="tk" token_env="TIANDITU_TOKEN" first_level="0" last_level="17" active="1" about="Tianditu satellite imagery"/>
+  </base_layers>
+</ratman>

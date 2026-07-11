@@ -123,6 +123,7 @@ function(terra_sdk_configure_vic_core_cbdam_base)
             "${_vic_cbdam_base_dir}/texture_refiner.cpp"
             "${_vic_cbdam_base_dir}/geometry_layer.cpp"
             "${_vic_cbdam_base_dir}/victms_geoimage_quad_fetcher.cpp"
+            "${_vic_cbdam_base_dir}/wmts_geoimage_quad_fetcher.cpp"
             "${_vic_cbdam_base_dir}/wms_geoimage_quad_fetcher.cpp"
             "${_vic_cbdam_base_dir}/loaded_geoimage_quad_fetcher.cpp"
             "${_vic_cbdam_base_dir}/background_thread_unix.cpp")
@@ -180,6 +181,7 @@ function(terra_sdk_configure_vic_core_cbdam_base)
             "${_vic_cbdam_base_dir}/triangulate.hpp"
             "${_vic_cbdam_base_dir}/geoimage_quad_fetcher.hpp"
             "${_vic_cbdam_base_dir}/victms_geoimage_quad_fetcher.hpp"
+            "${_vic_cbdam_base_dir}/wmts_geoimage_quad_fetcher.hpp"
             "${_vic_cbdam_base_dir}/wms_geoimage_quad_fetcher.hpp"
             "${_vic_cbdam_base_dir}/loaded_geoimage_quad_fetcher.hpp")
         set(_vic_cbdam_base_public_deps
@@ -307,14 +309,16 @@ if(TERRA_SDK_ENABLE_RATMAN_CORE_GEO_BASE)
             "${_vic_geo_base_dir}/tms_root_resource.cpp"
             "${_vic_geo_base_dir}/tms_service_resource.cpp"
             "${_vic_geo_base_dir}/tms_tilemap_resource.cpp"
-            "${_vic_geo_base_dir}/tilemap_config.cpp")
+            "${_vic_geo_base_dir}/tilemap_config.cpp"
+            "${_vic_geo_base_dir}/wmts_global_geodetic_source.cpp")
         set(_vic_geo_base_headers
             "${_vic_geo_base_dir}/victms_conventions.hpp"
             "${_vic_geo_base_dir}/tms_resource.hpp"
             "${_vic_geo_base_dir}/tms_root_resource.hpp"
             "${_vic_geo_base_dir}/tms_service_resource.hpp"
             "${_vic_geo_base_dir}/tms_tilemap_resource.hpp"
-            "${_vic_geo_base_dir}/tilemap_config.hpp")
+            "${_vic_geo_base_dir}/tilemap_config.hpp"
+            "${_vic_geo_base_dir}/wmts_global_geodetic_source.hpp")
 
         terra_sdk_add_static_library(vic_core_geo_base
             OUTPUT_NAME vic_geo_base

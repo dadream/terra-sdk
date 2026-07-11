@@ -46,6 +46,9 @@ def normalize_log(log_path):
         ("terrain_mode_detected", re.compile(r"^\[viewer\] terrain_connected projection=")),
         ("update_thread_started", re.compile(r"^\[viewer\] update_thread_started$")),
         ("texture_layer_connected", re.compile(r"^\[viewer\] texture_layer_connected\b")),
+        ("wmts_source_connected", re.compile(r"^\[terrain\] wmts_source_connected\b")),
+        ("wmts_layer_connected", re.compile(r"^\[viewer\] wmts_layer_connected\b")),
+        ("wmts_tile_decoded", re.compile(r"^\[terrain\] wmts_tile_decoded\b")),
         ("opengl_initialized", re.compile(r"^\[viewer\] opengl_initialized$")),
         ("initial_camera_set", re.compile(r"^\[viewer\] initial_camera_set\b")),
         ("verify_action_started", re.compile(r"VERIFY_ACTION_START")),
@@ -214,6 +217,9 @@ def main():
     parser.add_argument("--contract", default=None)
     parser.add_argument("--width", type=int, default=1280)
     parser.add_argument("--height", type=int, default=720)
+    parser.add_argument("--expected-planar", choices=("true", "false"))
+    parser.add_argument("--min-rendered-triangles", type=int, default=0)
+    parser.add_argument("--max-baseline-diff", type=float)
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
@@ -275,12 +281,81 @@ def main():
                 summary["captures"][capture] = {k: v for k, v in stats.items() if k != "sample"}
                 check(f"{capture}_dimensions", stats["width"] == args.width and stats["height"] == args.height, summary["captures"][capture])
                 check(f"{capture}_non_blank", stats["unique"] >= 32, summary["captures"][capture])
-                write_diff_png(baseline_dir / f"{capture}.png", png_path, output_dir / f"diff_{capture}.png")
             except Exception as exc:
                 check(f"{capture}_png_readable", False, str(exc))
+            else:
+                baseline_path = baseline_dir / f"{capture}.png"
+                check(
+                    f"{capture}_baseline_exists",
+                    baseline_path.exists(),
+                    str(baseline_path),
+                )
+                if baseline_path.exists():
+                    try:
+                        baseline_stats = image_stats(baseline_path)
+                    except Exception as exc:
+                        check(f"{capture}_baseline_readable", False, str(exc))
+                    else:
+                        dimensions_match = (
+                            stats["width"] == baseline_stats["width"]
+                            and stats["height"] == baseline_stats["height"]
+                        )
+                        check(
+                            f"{capture}_baseline_dimensions",
+                            dimensions_match,
+                            {
+                                "current": [stats["width"], stats["height"]],
+                                "baseline": [
+                                    baseline_stats["width"],
+                                    baseline_stats["height"],
+                                ],
+                            },
+                        )
+                        if dimensions_match:
+                            diff_written = write_diff_png(
+                                baseline_path,
+                                png_path,
+                                output_dir / f"diff_{capture}.png",
+                            )
+                            check(
+                                f"{capture}_diff_written",
+                                diff_written,
+                                str(output_dir / f"diff_{capture}.png"),
+                            )
+                            if (
+                                diff_written
+                                and args.max_baseline_diff is not None
+                            ):
+                                difference = mean_abs_diff(stats, baseline_stats)
+                                check(
+                                    f"{capture}_matches_baseline",
+                                    difference <= args.max_baseline_diff,
+                                    {
+                                        "mean_abs_diff": difference,
+                                        "maximum": args.max_baseline_diff,
+                                    },
+                                )
         if state_path.exists():
             try:
-                state_cache[capture] = load_json(state_path)
+                state = load_json(state_path)
+                state_cache[capture] = state
+                if args.expected_planar is not None:
+                    expected_planar = args.expected_planar == "true"
+                    check(
+                        f"{capture}_projection",
+                        state.get("planar") is expected_planar,
+                        {
+                            "expected_planar": expected_planar,
+                            "actual_planar": state.get("planar"),
+                        },
+                    )
+                if args.min_rendered_triangles > 0:
+                    rendered_triangles = int(state.get("rendered_triangles", 0))
+                    check(
+                        f"{capture}_rendered_triangles",
+                        rendered_triangles >= args.min_rendered_triangles,
+                        rendered_triangles,
+                    )
             except Exception as exc:
                 check(f"{capture}_state_readable", False, str(exc))
 

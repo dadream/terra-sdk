@@ -15,6 +15,13 @@ nav3d remain desktop regression clients, not SDK dependencies.
 - Do not combine algorithm extraction with bulk source moves or format changes.
 - Every phase must pass `scripts/verify_baseline.sh` with zero warnings.
 
+## Globe Prerequisite
+
+Use `scripts/verify_globe.sh` before changing spherical coordinate transforms,
+global-geodetic texture selection, or camera behavior. The offline globe
+baseline is deterministic; Tianditu remains a separately enabled online check.
+See `GLOBE_VERIFICATION.md`.
+
 ## Phase 1: Characterize The Core
 
 Create headless golden tests for metadata parsing, coordinate transforms,

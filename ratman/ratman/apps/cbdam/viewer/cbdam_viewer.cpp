@@ -21,10 +21,13 @@
 #include <vic/cbdam/base/geoimage_quad_fetcher.hpp>
 #include <vic/cbdam/base/dummy_geoimage_quad_fetcher.hpp>
 #include <vic/cbdam/base/victms_geoimage_quad_fetcher.hpp>
+#include <vic/cbdam/base/wmts_geoimage_quad_fetcher.hpp>
 #include <vic/cbdam/base/wms_geoimage_quad_fetcher.hpp>
 #include <vic/cbdam/base/loaded_geoimage_quad_fetcher.hpp>
+#include <vic/geo/base/wmts_global_geodetic_source.hpp>
 #include <sl/argument_parser.hpp>
 #include <qapplication.h>
+#include <cstdlib>
 
 #include "cbdam_window.hpp"
 
@@ -48,6 +51,16 @@ static sl::any arg_verify_output_dir(std::string(""));
 static sl::any arg_verify_exit(false);
 static sl::any arg_verify_window_size(std::string(""));
 static sl::any arg_verify_log_state(false);
+static sl::any arg_wmts_url(std::string(""));
+static sl::any arg_wmts_layer(std::string(""));
+static sl::any arg_wmts_style(std::string("default"));
+static sl::any arg_wmts_format(std::string("tiles"));
+static sl::any arg_wmts_matrix_set(std::string("c"));
+static sl::any arg_wmts_level_offset(int(1));
+static sl::any arg_wmts_max_level(int(18));
+static sl::any arg_wmts_subdomains(int(1));
+static sl::any arg_wmts_token_parameter(std::string("tk"));
+static sl::any arg_wmts_token_env(std::string(""));
 
 static sl::argument_record arg_table [] = {
   sl::argument_record("--help",    
@@ -70,6 +83,56 @@ static sl::argument_record arg_table [] = {
                       new sl::generic_extractor<void>,
                       &arg_procedural_texture,
                       "add procedural texture layer"),
+  sl::argument_record("--wmts-url",
+                      "url",
+                      new sl::generic_extractor<std::string>,
+                      &arg_wmts_url,
+                      "global-geodetic WMTS endpoint"),
+  sl::argument_record("--wmts-layer",
+                      "name",
+                      new sl::generic_extractor<std::string>,
+                      &arg_wmts_layer,
+                      "WMTS layer identifier"),
+  sl::argument_record("--wmts-style",
+                      "name",
+                      new sl::generic_extractor<std::string>,
+                      &arg_wmts_style,
+                      "WMTS style identifier"),
+  sl::argument_record("--wmts-format",
+                      "format",
+                      new sl::generic_extractor<std::string>,
+                      &arg_wmts_format,
+                      "WMTS format value"),
+  sl::argument_record("--wmts-matrix-set",
+                      "name",
+                      new sl::generic_extractor<std::string>,
+                      &arg_wmts_matrix_set,
+                      "WMTS matrix set identifier"),
+  sl::argument_record("--wmts-level-offset",
+                      "count",
+                      new sl::generic_extractor<int>,
+                      &arg_wmts_level_offset,
+                      "WMTS matrix level offset"),
+  sl::argument_record("--wmts-max-level",
+                      "level",
+                      new sl::generic_extractor<int>,
+                      &arg_wmts_max_level,
+                      "maximum internal WMTS level"),
+  sl::argument_record("--wmts-subdomains",
+                      "count",
+                      new sl::generic_extractor<int>,
+                      &arg_wmts_subdomains,
+                      "number of {s} endpoint subdomains"),
+  sl::argument_record("--wmts-token-parameter",
+                      "name",
+                      new sl::generic_extractor<std::string>,
+                      &arg_wmts_token_parameter,
+                      "WMTS token query parameter"),
+  sl::argument_record("--wmts-token-env",
+                      "name",
+                      new sl::generic_extractor<std::string>,
+                      &arg_wmts_token_env,
+                      "environment variable containing the WMTS token"),
   sl::argument_record("--verify-script",
                       "file",
                       new sl::generic_extractor<std::string>,
@@ -169,6 +232,7 @@ int main( int argc, char **argv ) {
   std::string srs = cbdam_w->elevation_fetcher()->srs();
   cbdam::aabox2d_t uv_box = cbdam_w->elevation_fetcher()->uv_box();
   std::size_t quad_width = 256;
+  std::size_t connected_texture_layers = 0;
   for(std::size_t i = 0; i < color_file_names.size(); ++i) {
     cbdam::geoimage_quad_fetcher* fetcher = new cbdam::victms_geoimage_quad_fetcher(color_file_names[i], srs, uv_box, quad_width);
     fetcher->connect();
@@ -179,16 +243,72 @@ int main( int argc, char **argv ) {
       std::size_t last_level = 64;
       // SOME HACKS FOR SELCTION OF base vs overlay and heights. if 4rd layer is clouds it will be active up to 3000km.
       bool is_active = true; //i == 0;
-      bool is_base_layer = i == 0;
+      bool is_base_layer = connected_texture_layers == 0;
       double min_altitude = (i != 3 ? -10e30 : 4000000.0);
       double max_altitude = 10e30;
       cbdam_w->insert_color_layer(color_file_names[i], fetcher, first_level, last_level, min_altitude, max_altitude, is_base_layer, is_active);
+      ++connected_texture_layers;
     } else {
       std::cerr << "[viewer][error] texture_layer_connect_failed url="
 		<< color_file_names[i] << std::endl;
     }
   }
-  
+
+  const std::string wmts_url = arg_wmts_url.to_string();
+  if (!wmts_url.empty()) {
+    const std::string wmts_layer = arg_wmts_layer.to_string();
+    if (wmts_layer.empty()) {
+      std::cerr << "[viewer][error] wmts_layer_missing" << std::endl;
+      delete cbdam_w;
+      return 4;
+    }
+
+    const std::string token_env = arg_wmts_token_env.to_string();
+    std::string token;
+    if (!token_env.empty()) {
+      const char* token_value = std::getenv(token_env.c_str());
+      if (token_value == 0 || token_value[0] == '\0') {
+        std::cerr << "[viewer][error] wmts_token_missing env="
+                  << token_env << std::endl;
+        delete cbdam_w;
+        return 4;
+      }
+      token = token_value;
+    }
+
+    const int level_offset = sl::any_cast<int>(arg_wmts_level_offset);
+    const int max_level = sl::any_cast<int>(arg_wmts_max_level);
+    const int subdomains = sl::any_cast<int>(arg_wmts_subdomains);
+    vic::geo::base::wmts_global_geodetic_source source(
+        wmts_url,
+        wmts_layer,
+        arg_wmts_style.to_string(),
+        arg_wmts_format.to_string(),
+        arg_wmts_matrix_set.to_string(),
+        level_offset,
+        max_level,
+        subdomains,
+        arg_wmts_token_parameter.to_string(),
+        token);
+    cbdam::geoimage_quad_fetcher* fetcher =
+        new cbdam::wmts_geoimage_quad_fetcher(
+            source, srs, uv_box, quad_width, wmts_layer);
+    fetcher->connect();
+    if (!fetcher->is_connected()) {
+      std::cerr << "[viewer][error] wmts_layer_connect_failed endpoint="
+                << wmts_url << std::endl;
+      delete fetcher;
+      delete cbdam_w;
+      return 4;
+    }
+    cbdam_w->insert_color_layer(
+        wmts_layer, fetcher, 0, static_cast<std::size_t>(max_level),
+        -10e30, 10e30, connected_texture_layers == 0, true);
+    ++connected_texture_layers;
+    std::cerr << "[viewer] wmts_layer_connected endpoint="
+              << wmts_url << " layer=" << wmts_layer << std::endl;
+  }
+
 #if 0
   // ========== FIXME WMS TEST
   {

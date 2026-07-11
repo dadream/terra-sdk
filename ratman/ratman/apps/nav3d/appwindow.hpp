@@ -63,6 +63,8 @@ public:
   AppWindow(ratman::xml_config_parser& parser, QWidget *parent = 0);
   ~AppWindow();
 
+  bool save_verification_capture(const QString& file_name);
+
 
 public slots:
 

@@ -1,0 +1,158 @@
+{
+  "checks": [
+    {
+      "detail": "viewer_verify_output/globe/nav3d_blue-marble/nav3d_globe.png",
+      "name": "capture_exists",
+      "passed": true
+    },
+    {
+      "detail": {
+        "height": 654,
+        "mean": 59.71543059626135,
+        "unique": 10205,
+        "width": 1262
+      },
+      "name": "capture_dimensions",
+      "passed": true
+    },
+    {
+      "detail": {
+        "height": 654,
+        "mean": 59.71543059626135,
+        "unique": 10205,
+        "width": 1262
+      },
+      "name": "capture_non_blank",
+      "passed": true
+    },
+    {
+      "detail": [
+        {
+          "mean": 78.2542552486913,
+          "region": "top",
+          "unique": 6501
+        },
+        {
+          "mean": 41.09037022319399,
+          "region": "bottom",
+          "unique": 5158
+        }
+      ],
+      "name": "capture_vertical_coverage",
+      "passed": true
+    },
+    {
+      "detail": "testdata/viewer_baseline/globe/nav3d_blue_marble.png",
+      "name": "baseline_exists",
+      "passed": true
+    },
+    {
+      "detail": {
+        "baseline": [
+          1262,
+          654
+        ],
+        "capture": [
+          1262,
+          654
+        ]
+      },
+      "name": "baseline_dimensions",
+      "passed": true
+    },
+    {
+      "detail": {
+        "maximum": 2.0,
+        "mean_abs_diff": 0.0
+      },
+      "name": "capture_matches_baseline",
+      "passed": true
+    },
+    {
+      "detail": "viewer_verify_output/globe/nav3d_blue-marble/nav3d.log",
+      "name": "log_exists",
+      "passed": true
+    },
+    {
+      "detail": "[nav3d] process_started",
+      "name": "log_marker:[nav3d] process_started",
+      "passed": true
+    },
+    {
+      "detail": "[nav3d] terrain_projection_ready projection=spherical",
+      "name": "log_marker:[nav3d] terrain_projection_ready projection=spherical",
+      "passed": true
+    },
+    {
+      "detail": "[terrain] geometry_root_ready connected=true",
+      "name": "log_marker:[terrain] geometry_root_ready connected=true",
+      "passed": true
+    },
+    {
+      "detail": "[nav3d] config_loaded",
+      "name": "log_marker:[nav3d] config_loaded",
+      "passed": true
+    },
+    {
+      "detail": "[nav3d] terrain_ready",
+      "name": "log_marker:[nav3d] terrain_ready",
+      "passed": true
+    },
+    {
+      "detail": "[nav3d] texture_layers_ready base_count=1",
+      "name": "log_marker:[nav3d] texture_layers_ready base_count=1",
+      "passed": true
+    },
+    {
+      "detail": "[nav3d] update_thread_started",
+      "name": "log_marker:[nav3d] update_thread_started",
+      "passed": true
+    },
+    {
+      "detail": "[nav3d] renderer_initialized",
+      "name": "log_marker:[nav3d] renderer_initialized",
+      "passed": true
+    },
+    {
+      "detail": "[nav3d] ui_ready",
+      "name": "log_marker:[nav3d] ui_ready",
+      "passed": true
+    },
+    {
+      "detail": "[nav3d] verification_capture_written",
+      "name": "log_marker:[nav3d] verification_capture_written",
+      "passed": true
+    },
+    {
+      "detail": "[terrain] texture_root_ready count=",
+      "name": "log_marker:[terrain] texture_root_ready count=",
+      "passed": true
+    },
+    {
+      "detail": "^\\[(nav3d|terrain)\\]\\[(error|warning)\\]",
+      "name": "log_forbidden:^\\[(nav3d|terrain)\\]\\[(error|warning)\\]",
+      "passed": true
+    },
+    {
+      "detail": "connected=false",
+      "name": "log_forbidden:connected=false",
+      "passed": true
+    },
+    {
+      "detail": "OpenGL.*(failed|unsupported)",
+      "name": "log_forbidden:OpenGL.*(failed|unsupported)",
+      "passed": true
+    },
+    {
+      "detail": "Segmentation fault|Aborted|qFatal",
+      "name": "log_forbidden:Segmentation fault|Aborted|qFatal",
+      "passed": true
+    },
+    {
+      "detail": "HTTP error: curlcode=",
+      "name": "log_forbidden:HTTP error: curlcode=",
+      "passed": true
+    }
+  ],
+  "passed": true
+}

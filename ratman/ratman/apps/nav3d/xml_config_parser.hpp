@@ -112,6 +112,10 @@ namespace ratman {
       const QString & localName,
       const QString &qName,
       const QXmlAttributes &attributes);
+    bool startElementWmts(const QString & namespaceURI,
+      const QString & localName,
+      const QString &qName,
+      const QXmlAttributes &attributes);
     bool startElementLoadedImage(const QString & namespaceURI,
       const QString & localName,
       const QString &qName,

@@ -67,6 +67,11 @@ namespace cbdam {
     void set_tilt_angle(camera::value_t tilt_angle);
 
     /**
+     * Apply a deterministic yaw rotation around the globe axis.
+     */
+    void rotate_yaw(camera::value_t yaw_angle);
+
+    /**
      * reset rotation to identity
      */
     virtual void reset_rotation();
@@ -138,6 +143,11 @@ namespace cbdam {
 
   inline void camera_controller_vtrackball::set_tilt_angle(camera::value_t tilt_angle) {
     m_tilt_angle = tilt_angle;
+    update_camera_view();
+  }
+
+  inline void camera_controller_vtrackball::rotate_yaw(camera::value_t yaw_angle) {
+    m_rotation_matrix = camera::linear_map_factory_t::rotation(2, yaw_angle) * m_rotation_matrix;
     update_camera_view();
   }
 

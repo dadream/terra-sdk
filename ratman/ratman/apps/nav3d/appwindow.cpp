@@ -444,6 +444,14 @@ void AppWindow::handling_history_prev(){
   qgl_widget_->camera_controller().set_oriented_position(snapshots_->go_prev_slot()->oriented_pos());
 }
 
+bool AppWindow::save_verification_capture(const QString& file_name) {
+  QImage frame = qgl_widget_->grabFrameBuffer(false);
+  if (frame.isNull()) {
+    return false;
+  }
+  return frame.save(file_name, "PNG");
+}
+
 void AppWindow::handling_screenshot(){
   QImage snap_shot_full = qgl_widget_->grabFrameBuffer(false);
 

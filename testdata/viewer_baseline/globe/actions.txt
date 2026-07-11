@@ -1,0 +1,29 @@
+# Deterministic globe verification sequence.
+wait_frames 600
+capture initial_birdview
+
+zoom_in 3
+wait_frames 120
+capture birdview_zoom_in
+
+tilt 45
+wait_frames 120
+capture tilted_45
+
+zoom_out 2
+wait_frames 120
+capture tilted_zoom_out
+
+rotate 30
+wait_frames 120
+capture tilted_rotate
+
+key f
+wait_frames 30
+capture statistics
+
+reset
+wait_frames 120
+capture reset
+
+exit

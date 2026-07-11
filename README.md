@@ -47,6 +47,13 @@ viewer smoke and interaction captures, and nav3d terrain/texture rendering.
 Generated build state lives under `workspace_old/`; logs and reports live
 under `viewer_verify_output/`. Both are ignored.
 
+Run the spherical terrain gate when changing coordinate transforms, camera
+control, or global imagery:
+
+```bash
+bash scripts/verify_globe.sh
+```
+
 A host build is also supported when dependencies are installed:
 
 ```bash
@@ -59,9 +66,9 @@ ctest --test-dir build --output-on-failure
 
 The current baseline preserves behavior; it does not yet provide a
 platform-neutral SDK. See `docs/ARCHITECTURE.md`,
-`docs/BASELINE_STATUS.md`, and `docs/SDK_MINIPROGRAM_ROADMAP.md` for the
-dependency boundaries and staged path toward a WebAssembly/mini-program 3D
-terrain SDK.
+`docs/BASELINE_STATUS.md`, `docs/GLOBE_VERIFICATION.md`, and
+`docs/SDK_MINIPROGRAM_ROADMAP.md` for the dependency boundaries and staged
+path toward a WebAssembly/mini-program 3D terrain SDK.
 
 ## Licensing
 

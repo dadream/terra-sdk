@@ -1,0 +1,20 @@
+{
+  "capture": "statistics",
+  "frame": 1111,
+  "width": 1280,
+  "height": 720,
+  "camera_position": [-5.52481e+06, -9.56924e+06, 1.74276e+07],
+  "camera_distance": 2.20045e+07,
+  "pixel_tolerance": 2,
+  "statistics_mode": 1,
+  "wireframe_enabled": false,
+  "color_enabled": true,
+  "patch_color_enabled": false,
+  "draw_bounding_volumes_enabled": false,
+  "shading_enabled": true,
+  "adaptive_tolerance_enabled": true,
+  "terrain_connected": true,
+  "planar": false,
+  "rendered_triangles": 155648,
+  "mean_fps": 38.9335
+}

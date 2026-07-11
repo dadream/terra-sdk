@@ -43,10 +43,14 @@
 #include <vic/cbdam/base/cbdam_diamond_fetcher.hpp>
 #include <vic/cbdam/base/terrain_model.hpp>
 #include <vic/cbdam/base/victms_geoimage_quad_fetcher.hpp>
+#include <vic/cbdam/base/wmts_geoimage_quad_fetcher.hpp>
 #include <vic/cbdam/base/wms_geoimage_quad_fetcher.hpp>
 #include <vic/cbdam/base/loaded_geoimage_quad_fetcher.hpp>
+#include <vic/geo/base/wmts_global_geodetic_source.hpp>
 #include <QString>
 #include <QDebug>
+#include <cstdlib>
+#include <iostream>
 #include "config.hpp"
 
 namespace ratman {
@@ -215,6 +219,13 @@ namespace ratman {
       error_str_ = QObject::tr("terrain model not connected");
       return false;
     }   
+    const bool is_planar =
+      dynamic_cast<const cbdam::planar_coordinate_transform*>(
+        terrain_model->uvh_xyz_transform()) != 0;
+    std::cerr << "[nav3d] terrain_projection_ready projection="
+              << (is_planar ? "planar" : "spherical")
+              << " srs=" << terrain_model->srs() << std::endl;
+
     ratman::terrain_renderable* tr = new ratman::terrain_renderable(terrain_view_, terrain_model);
     tr->set_active(true);
     terrain_view_->set_terrain_layer(tr);
@@ -400,6 +411,178 @@ namespace ratman {
       terrain_view_->terrain_layer()->model()->insert_base_color_layer(id.toStdString(),fetcher,first_level, last_level, h_min, h_max, active);
     } else if (state_==STATE_OVERLAY_LAYERS) {
       terrain_view_->terrain_layer()->model()->insert_overlay_color_layer(id.toStdString(),fetcher,first_level, last_level, h_min, h_max, active);      
+    }
+    return true;
+  }
+
+  bool xml_config_parser::startElementWmts(
+      const QString & /*namespaceURI*/,
+      const QString & /*localName*/,
+      const QString & /*qName*/,
+      const QXmlAttributes &attributes) {
+    const std::string srs = terrain_view_->terrain_layer()->model()->srs();
+    if (srs != "EPSG:4326") {
+      error_str_ = QObject::tr("WMTS global-geodetic requires EPSG:4326");
+      return false;
+    }
+    const aabox2d_t uv_box =
+        terrain_view_->terrain_layer()->model()->uv_box();
+    const std::size_t quad_width = 256;
+
+    const QString id = attributes.value("id");
+    QString endpoint = attributes.value("url");
+    if (endpoint.isEmpty()) {
+      error_str_ = QObject::tr("attribute=\"url\" missing.");
+      return false;
+    }
+    if (!endpoint.startsWith("http://", Qt::CaseInsensitive) &&
+        !endpoint.startsWith("https://", Qt::CaseInsensitive)) {
+      endpoint = add_url(endpoint);
+    }
+
+    const QString layer = attributes.value("layer");
+    if (layer.isEmpty()) {
+      error_str_ = QObject::tr("attribute=\"layer\" missing.");
+      return false;
+    }
+
+    QString style = attributes.value("style");
+    if (style.isEmpty()) {
+      style = "default";
+    }
+    QString format = attributes.value("format");
+    if (format.isEmpty()) {
+      format = "tiles";
+    }
+    QString matrix_set = attributes.value("matrix_set");
+    if (matrix_set.isEmpty()) {
+      matrix_set = "c";
+    }
+    QString token_parameter = attributes.value("token_parameter");
+    if (token_parameter.isEmpty()) {
+      token_parameter = "tk";
+    }
+
+    bool ok = false;
+    int matrix_level_offset = 1;
+    const QString offset_str = attributes.value("matrix_level_offset");
+    if (!offset_str.isEmpty()) {
+      matrix_level_offset = offset_str.toInt(&ok);
+      if (!ok) {
+        error_str_ = QObject::tr(
+            "attribute=\"matrix_level_offset\" not an int.");
+        return false;
+      }
+    }
+
+    int max_level = 18;
+    const QString max_level_str = attributes.value("max_level");
+    if (!max_level_str.isEmpty()) {
+      max_level = max_level_str.toInt(&ok);
+      if (!ok) {
+        error_str_ = QObject::tr("attribute=\"max_level\" not an int.");
+        return false;
+      }
+    }
+
+    int subdomains = 1;
+    const QString subdomains_str = attributes.value("subdomains");
+    if (!subdomains_str.isEmpty()) {
+      subdomains = subdomains_str.toInt(&ok);
+      if (!ok) {
+        error_str_ = QObject::tr("attribute=\"subdomains\" not an int.");
+        return false;
+      }
+    }
+
+    std::size_t first_level = 0;
+    const QString first_level_str = attributes.value("first_level");
+    if (!first_level_str.isEmpty()) {
+      first_level = first_level_str.toULong(&ok);
+      if (!ok) {
+        error_str_ = QObject::tr("attribute=\"first_level\" not a long int.");
+        return false;
+      }
+    }
+    std::size_t last_level =
+        max_level >= 0 ? static_cast<std::size_t>(max_level) : 0;
+    const QString last_level_str = attributes.value("last_level");
+    if (!last_level_str.isEmpty()) {
+      last_level = last_level_str.toULong(&ok);
+      if (!ok) {
+        error_str_ = QObject::tr("attribute=\"last_level\" not a long int.");
+        return false;
+      }
+    }
+
+    double h_min = -1e30;
+    const QString h_min_str = attributes.value("h_min");
+    if (!h_min_str.isEmpty()) {
+      h_min = h_min_str.toDouble(&ok);
+      if (!ok) {
+        error_str_ = QObject::tr("attribute=\"h_min\" not a double.");
+        return false;
+      }
+    }
+    double h_max = 1e30;
+    const QString h_max_str = attributes.value("h_max");
+    if (!h_max_str.isEmpty()) {
+      h_max = h_max_str.toDouble(&ok);
+      if (!ok) {
+        error_str_ = QObject::tr("attribute=\"h_max\" not a double.");
+        return false;
+      }
+    }
+
+    bool active = false;
+    const QString active_str = attributes.value("active");
+    if (!active_str.isEmpty()) {
+      active = active_str.toInt(&ok) == 1;
+      if (!ok) {
+        error_str_ = QObject::tr("attribute=\"active\" not an int.");
+        return false;
+      }
+    }
+
+    const QString token_env = attributes.value("token_env");
+    std::string token;
+    if (!token_env.isEmpty()) {
+      const std::string env_name = token_env.toStdString();
+      const char* token_value = std::getenv(env_name.c_str());
+      if (token_value == 0 || token_value[0] == '\0') {
+        error_str_ = QObject::tr("WMTS token environment variable missing");
+        std::cerr << "[nav3d][error] wmts_token_missing env="
+                  << env_name << std::endl;
+        return false;
+      }
+      token = token_value;
+    }
+
+    vic::geo::base::wmts_global_geodetic_source source(
+        endpoint.toStdString(), layer.toStdString(),
+        style.toStdString(), format.toStdString(),
+        matrix_set.toStdString(), matrix_level_offset,
+        max_level, subdomains, token_parameter.toStdString(), token);
+    if (!source.is_valid() || first_level > last_level ||
+        last_level > static_cast<std::size_t>(source.max_level())) {
+      error_str_ = QObject::tr("invalid global-geodetic WMTS configuration");
+      return false;
+    }
+
+    const QString about = attributes.value("about");
+    cbdam::geoimage_quad_fetcher* fetcher =
+        new cbdam::wmts_geoimage_quad_fetcher(
+            source, srs, uv_box, quad_width, about.toStdString());
+    fetcher->set_genalpha_behavior(compressed_image_t::ALPHA_FROM_SRC);
+
+    if (state_ == STATE_BASE_LAYERS) {
+      terrain_view_->terrain_layer()->model()->insert_base_color_layer(
+          id.toStdString(), fetcher, first_level, last_level,
+          h_min, h_max, active);
+    } else {
+      terrain_view_->terrain_layer()->model()->insert_overlay_color_layer(
+          id.toStdString(), fetcher, first_level, last_level,
+          h_min, h_max, active);
     }
     return true;
   }
@@ -1210,6 +1393,10 @@ namespace ratman {
       return  startElementTms(namespaceURI, localName, qName, attributes);
     } else if (qName == "tms" && state_==STATE_OVERLAY_LAYERS) {
       return  startElementTms(namespaceURI, localName, qName, attributes);
+    } else if (qName == "wmts" && state_==STATE_BASE_LAYERS) {
+      return  startElementWmts(namespaceURI, localName, qName, attributes);
+    } else if (qName == "wmts" && state_==STATE_OVERLAY_LAYERS) {
+      return  startElementWmts(namespaceURI, localName, qName, attributes);
     } else if (qName == "loaded_image" && state_==STATE_BASE_LAYERS) {
       return  startElementLoadedImage(namespaceURI, localName, qName, attributes);
     } else if (qName == "loaded_image" && state_==STATE_OVERLAY_LAYERS) {
