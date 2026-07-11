@@ -264,7 +264,6 @@ namespace ratman {
 					  const QString & /*qName*/,
 					  const QXmlAttributes &attributes) {
 
-    std::cerr << "##################### TMS" << std::endl;
 
     std::string srs = terrain_view_->terrain_layer()->model()->srs();
     aabox2d_t uv_box = terrain_view_->terrain_layer()->model()->uv_box();
@@ -383,7 +382,6 @@ namespace ratman {
     bool active = false; 
     QString active_str = attributes.value("active");
     if (!active_str.isEmpty()) {
-      std::cerr << "Group Active found" << std::endl; 
       active = (active_str.toInt(&ok)==1);
       if (!ok) {
 	      error_str_ = QObject::tr("attribute=\"active\" not an int.");
@@ -400,10 +398,8 @@ namespace ratman {
 
     if (state_==STATE_BASE_LAYERS) {
       terrain_view_->terrain_layer()->model()->insert_base_color_layer(id.toStdString(),fetcher,first_level, last_level, h_min, h_max, active);
-      std::cerr << "##################### TMS BASE" << std::endl;
     } else if (state_==STATE_OVERLAY_LAYERS) {
       terrain_view_->terrain_layer()->model()->insert_overlay_color_layer(id.toStdString(),fetcher,first_level, last_level, h_min, h_max, active);      
-      std::cerr << "##################### TMS OVERLAY" << std::endl;
     }
     return true;
   }
@@ -413,7 +409,6 @@ namespace ratman {
 						  const QString & /*qName*/,
 						  const QXmlAttributes &attributes) {
 
-    std::cerr << "##################### Loaded Image" << std::endl;
 
     std::string srs = terrain_view_->terrain_layer()->model()->srs();
     aabox2d_t uv_box = terrain_view_->terrain_layer()->model()->uv_box();
@@ -512,7 +507,6 @@ namespace ratman {
     bool active = false; 
     QString active_str = attributes.value("active");
     if (!active_str.isEmpty()) {
-      std::cerr << "Group Active found" << std::endl; 
       active = (active_str.toInt(&ok)==1);
       if (!ok) {
         error_str_ = QObject::tr("attribute=\"active\" not an int.");
@@ -527,10 +521,8 @@ namespace ratman {
 
     if (state_==STATE_BASE_LAYERS) {
       terrain_view_->terrain_layer()->model()->insert_base_color_layer(id.toStdString(),fetcher,first_level, last_level, h_min, h_max, active);
-      std::cerr << "##################### Loaded Image BASE" << std::endl;
     } else if (state_==STATE_OVERLAY_LAYERS) {
       terrain_view_->terrain_layer()->model()->insert_overlay_color_layer(id.toStdString(),fetcher,first_level, last_level, h_min, h_max, active);      
-      std::cerr << "##################### Loaded Image OVERLAY" << std::endl;
     }
     return true;
   }
@@ -540,7 +532,6 @@ namespace ratman {
 					  const QString & /*qName*/,
 					  const QXmlAttributes &attributes) {
 
-    std::cerr << "##################### WMS" << std::endl;
 
     std::string srs = terrain_view_->terrain_layer()->model()->srs();
     aabox2d_t uv_box = terrain_view_->terrain_layer()->model()->uv_box();
@@ -675,7 +666,6 @@ namespace ratman {
 
     QString active_str = attributes.value("active");
     if (!active_str.isEmpty()) {
-      std::cerr << "Group Active found" << std::endl; 
       active = (active_str.toInt(&ok)==1);
       if (!ok) {
 	error_str_ = QObject::tr("attribute=\"active\" not an int.");
@@ -695,10 +685,8 @@ namespace ratman {
 
     if (state_==STATE_BASE_LAYERS) {
       terrain_view_->terrain_layer()->model()->insert_base_color_layer(id.toStdString(),fetcher,first_level, last_level, h_min, h_max, active);
-      std::cerr << "##################### TMS BASE" << std::endl;
     } else if (state_==STATE_OVERLAY_LAYERS) {
       terrain_view_->terrain_layer()->model()->insert_overlay_color_layer(id.toStdString(),fetcher,first_level, last_level, h_min, h_max, active);      
-      std::cerr << "##################### TMS OVERLAY" << std::endl;
     }
     return true;
   }
@@ -729,17 +717,14 @@ namespace ratman {
       group->set_priority(group_priority);
     }
 
-    std::cerr << "Check for Group Active" << std::endl; 
     group->set_active(false);
     QString active = attributes.value("active");
     if (!active.isEmpty()) {
-      std::cerr << "Group Active found" << std::endl; 
       int group_active = active.toInt(&ok);
       if (!ok) {
 	error_str_ = QObject::tr("attribute=\"active\" not a int.");
 	return false;
       }
-      std::cerr << "Group Active " << group_active << std::endl; 
       if(group_active==1) {
 	group->set_active(true);
       }
@@ -788,16 +773,11 @@ namespace ratman {
 
     QString wfs_classification_field = attributes.value("wfs_classification_field");
     QString wfs_classification_legend_field = attributes.value("wfs_classification_legend_field");
-    qDebug() << "config_parser" << wfs_classification_legend_field;
     geonames_search* search_engine = NULL;
     if (server_type=="local") {
       search_engine = new local_geonames_search(placenames_fname.toStdString(), 
 						id.toStdString());
     } else if (server_type=="wfs") {
-      std::cerr << "################ WFS" << std::endl;
-      std::cerr << wfs_feature.toStdString() << std::endl;
-      std::cerr << wfs_property.toStdString() << std::endl;
-      std::cerr << "################ WFS" << std::endl;
       search_engine = new wfs_geonames_search(placenames_fname.toStdString(),
 					      id.toStdString(),
 					      wfs_namespace.toStdString(),
@@ -911,10 +891,6 @@ namespace ratman {
       streaming_engine = new local_geonames_search(placenames_fname.toStdString(), 
 						   id.toStdString());
     } else if (server_type=="wfs") {
-      std::cerr << "################ WFS" << std::endl;
-      std::cerr << wfs_feature.toStdString() << std::endl;
-      std::cerr << wfs_property.toStdString() << std::endl;
-      std::cerr << "################ WFS" << std::endl;
       streaming_engine = new wfs_geonames_search(placenames_fname.toStdString(),
 						 id.toStdString(),
 						 wfs_namespace.toStdString(),
@@ -1262,7 +1238,7 @@ namespace ratman {
 #endif
     } else {
       error_str_ = QObject::tr("unknown tag ") + qName;
-      std::cerr << "Unknown tag " << qName.toStdString() << " State: " << state_ << std::endl;
+      std::cerr << "[nav3d][error] config_unknown_tag name=" << qName.toStdString() << " state=" << state_ << std::endl;
       return false;
     }
     current_str_.clear();

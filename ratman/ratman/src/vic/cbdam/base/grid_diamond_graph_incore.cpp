@@ -75,7 +75,8 @@ namespace cbdam {
     // FIXME ######################
 #endif
     read_roots(30);
-    SL_TRACE_OUT(-1) << "read root " << (is_open_? "OK" : "FAILED") << std::endl;
+    std::cerr << "[terrain] geometry_root_ready connected="
+	      << (is_open_ ? "true" : "false") << std::endl;
   }
 
   void grid_diamond_graph_incore::read_roots(uint32_t timeout_s) {
@@ -86,7 +87,7 @@ namespace cbdam {
     geometry_fetcher_t* root_fetcher = new geometry_fetcher_t(root_url);
     root_fetcher->connect();
     if (!root_fetcher->is_connected()) {
-      SL_TRACE_OUT(-1) << "root fetcher not connected" << std::endl;
+      std::cerr << "[terrain][error] geometry_root_open_failed" << std::endl;
       return;
     } else {
       std::size_t root_count = uvh_xyz_transform()->root_count();

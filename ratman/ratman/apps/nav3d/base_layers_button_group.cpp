@@ -37,7 +37,7 @@ base_layers_button_group::base_layers_button_group(ratman::terrain_renderable* t
 
 void base_layers_button_group::handling_clicked(int i) {
   if (i != terrain_->model()->active_base_layer()) {
-    std::cerr << "change_texture_layer " << i << std::endl;
+    std::cerr << "[nav3d] base_texture_layer_changed index=" << i << std::endl;
     terrain_->model()->set_base_color_layer_active(i);
     //    emit is_active(i);
   }

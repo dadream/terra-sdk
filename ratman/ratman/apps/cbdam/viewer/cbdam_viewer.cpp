@@ -117,7 +117,7 @@ static void print_error_and_exit(const std::string& message) {
 }
 
 int main( int argc, char **argv ) {
-  std::cerr << "starting program" << std::endl;
+  std::cerr << "[viewer] process_started" << std::endl;
   arg_program_name = std::string(argv[0]);
   arg_parser.accept_extra_arguments(true);
   arg_parser.reset_defaults();
@@ -152,12 +152,13 @@ int main( int argc, char **argv ) {
   // load heights
   std::string elevation_file_name = arg_elevation_file_name.to_string();
   if (elevation_file_name.empty()) {
-    std::cerr << "no elevation file name specified (use --elevation option)" << std::endl;
+    std::cerr << "[viewer][error] elevation_missing" << std::endl;
     delete cbdam_w;
     return 1;
   } else {
     if (!cbdam_w->open(elevation_file_name)) {
-      std::cerr << "unable to load elevation " << elevation_file_name << std::endl;
+      std::cerr << "[viewer][error] elevation_load_failed url="
+		<< elevation_file_name << std::endl;
       delete cbdam_w;
       return 2;
     }
@@ -169,11 +170,11 @@ int main( int argc, char **argv ) {
   cbdam::aabox2d_t uv_box = cbdam_w->elevation_fetcher()->uv_box();
   std::size_t quad_width = 256;
   for(std::size_t i = 0; i < color_file_names.size(); ++i) {
-    std::cerr << "adding texture layer " << color_file_names[i] << std::endl;
     cbdam::geoimage_quad_fetcher* fetcher = new cbdam::victms_geoimage_quad_fetcher(color_file_names[i], srs, uv_box, quad_width);
     fetcher->connect();
     if (fetcher->is_connected()) {
-      std::cerr << "connected to texture layer " << color_file_names[i] << std::endl;
+      std::cerr << "[viewer] texture_layer_connected url="
+		<< color_file_names[i] << std::endl;
       std::size_t first_level = 0;
       std::size_t last_level = 64;
       // SOME HACKS FOR SELCTION OF base vs overlay and heights. if 4rd layer is clouds it will be active up to 3000km.
@@ -183,7 +184,8 @@ int main( int argc, char **argv ) {
       double max_altitude = 10e30;
       cbdam_w->insert_color_layer(color_file_names[i], fetcher, first_level, last_level, min_altitude, max_altitude, is_base_layer, is_active);
     } else {
-      std::cerr << "cannot connect to texture layer " << color_file_names[i] << std::endl;
+      std::cerr << "[viewer][error] texture_layer_connect_failed url="
+		<< color_file_names[i] << std::endl;
     }
   }
   
@@ -229,7 +231,7 @@ int main( int argc, char **argv ) {
 #endif
   
   if (!arg_procedural_texture.empty()) {
-    std::cerr << "adding procedural texture layer" << std::endl;
+    std::cerr << "[viewer] procedural_texture_layer_added" << std::endl;
     cbdam::geoimage_quad_fetcher* fetcher = new cbdam::dummy_geoimage_quad_fetcher(srs, uv_box, quad_width);
     std::size_t first_level = 0;
     std::size_t last_level = 64;
@@ -258,7 +260,7 @@ int main( int argc, char **argv ) {
       window_height = std::atoi(verify_window_size.substr(x_pos + 1).c_str());
     }
     if (window_width <= 0 || window_height <= 0) {
-      std::cerr << "invalid verify window size " << verify_window_size << std::endl;
+      std::cerr << "[viewer][error] verify_window_size_invalid value=" << verify_window_size << std::endl;
       delete cbdam_w;
       return 3;
     }
@@ -273,7 +275,7 @@ int main( int argc, char **argv ) {
   if (!verify_script.empty()) {
     std::string verify_output_dir = arg_verify_output_dir.to_string();
     if (verify_output_dir.empty()) {
-      std::cerr << "--verify-output-dir is required with --verify-script" << std::endl;
+      std::cerr << "[viewer][error] verify_output_dir_missing" << std::endl;
       delete cbdam_w;
       return 3;
     }

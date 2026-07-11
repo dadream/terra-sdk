@@ -34,12 +34,11 @@ namespace ratman {
   }
 
   void bookmarks::load_kml(QString filename){
-    std::cerr << "bookmarks filename " <<filename.toStdString()<< std::endl;
     clear_container();
     std::istream* in_file = network::instance()->istream_open(filename.toStdString());
     
     if (!in_file) {
-      std::cerr << "BOOKMARKS ERROR unable to connect to kml service" << std::endl;
+      std::cerr << "[nav3d][warning] bookmarks_unavailable url=" << filename.toStdString() << std::endl;
     } else {
       QByteArray bArray;
       while ( in_file->good() ) {
@@ -149,15 +148,15 @@ namespace ratman {
   }
 
   void bookmarks::save_kml(QString filename){
-    std::cerr << "Open File " << filename.toStdString() << std::endl;
+    std::cerr << "[nav3d] bookmarks_save_started url=" << filename.toStdString() << std::endl;
     QFile file(filename);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)){
-      std::cerr << "ERROR failed to write in kml file" << std::endl;
+      std::cerr << "[nav3d][error] bookmarks_save_failed" << std::endl;
       return;
     }
     QTextStream bookmarks(&file);
     doc_.documentElement().save(bookmarks,0);
-    std::cerr << "Saved bookmarks " << std::endl;
+    std::cerr << "[nav3d] bookmarks_saved" << std::endl;
   }
 
   void bookmarks::insert_xml_node(const QString& s,const point3d_t& p, const point3d_t& o){

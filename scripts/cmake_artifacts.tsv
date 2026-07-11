@@ -1,0 +1,23 @@
+# kind	artifact	mode
+sl	libsl.a	file
+lib	libvic_math.a	file
+lib	libvic_xml.a	file
+lib	libvic_img.a	file
+lib	libvic_curlstream.a	file
+lib	libvic_fetcher.a	file
+lib	libvic_qxml.a	file
+lib	libvic_mpi.a	file
+lib	libvic_gl.a	file
+lib	libvic_persistent.a	file
+lib	libvic_vfs.a	file
+lib	libvic_geo_base.a	file
+lib	libvic_geo_srs.a	file
+lib	libvic_geo_builder.a	file
+lib	libvic_cbdam_geo.a	file
+lib	libvic_cbdam_base.a	file
+lib	libvic_ratman.a	file
+bin	vic_geo_raster_quadtree_builder	executable
+bin	vic_cbdam_mpi_builder	executable
+bin	vic_cbdam_viewer	executable
+bin	vic_ratman_nav3d	executable
+module	mod_victms.so	file

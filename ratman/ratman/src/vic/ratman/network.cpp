@@ -59,7 +59,7 @@ namespace ratman {
     vic::icurlstream ifile;
     ifile.open(url.c_str());
     if (!ifile) {
-      std::cerr << "qimage_fetch: Failed to open " << url << std::endl;
+      std::cerr << "[nav3d][warning] image_fetch_open_failed url=" << url << std::endl;
     } else {
       QByteArray data;
       while (ifile.good()) {
@@ -68,11 +68,9 @@ namespace ratman {
 	if (ifile.good()) data.append(c);
       }
       if (ifile.fail() &&!ifile.eof()) {
-	std::cerr << "qimage_fetch: Read error for " << url << std::endl;
+	std::cerr << "[nav3d][warning] image_fetch_read_failed url=" << url << std::endl;
       } else {
-	std::cerr << "qimage_fetch: Creating image from data_sz=" << data.size() << std::endl; 
 	result = new QImage(QImage::fromData(data));
-	std::cerr << "qimage_fetch: Image " << result->width() << "x" << result->height() << std::endl;
       }
       ifile.close();
     }

@@ -186,9 +186,8 @@ qgl_window_cbdam::~qgl_window_cbdam() {
 } 
 
 void qgl_window_cbdam::initializeGL() {
-  std::cerr << "initialize GL\n";
+  std::cerr << "[viewer] opengl_initialized" << std::endl;
   std::size_t x_bytes = 72 * 1024 * 1024;
-  std::cerr << "set texture cache capacity "  << sl::human_readable_size(x_bytes) << std::endl;
   m_renderer->set_texture_cache_capacity(x_bytes);
   m_renderer->init_opengl();
   set_initial_position();
@@ -385,7 +384,6 @@ void qgl_window_cbdam::timerEvent ( QTimerEvent * /* e */ ) {
 void qgl_window_cbdam::mouseMoveEvent ( QMouseEvent * e ) { 
   if ( e->modifiers() & Qt::ShiftModifier ) {
     m_current_intersection = current_graph_intersection_from_cursor_position( e->pos().x(), e->pos().y());
-    if (m_current_intersection.first) {std::cerr << "ray  intersection at " << m_current_intersection.second << "\n";}
   } else {
     if (  e->buttons() & (Qt::LeftButton | Qt::MidButton | Qt::RightButton )) {
       sl::fixed_size_point<2,int> pos( e->pos().x(), e->pos().y() );
@@ -470,7 +468,7 @@ void qgl_window_cbdam::keyPressEvent( QKeyEvent *e )
       emit stop_rendering();
       break;
     case Qt::Key_4 :
-      std::cerr << "STEREO DISABLED" << std::endl;
+      std::cerr << "[viewer] setting_unchanged name=stereo reason=unsupported" << std::endl;
 #if 0
       m_renderer->set_stereo_enabled( !m_renderer->is_stereo_enabled() );
       if ( m_renderer->is_stereo_enabled() ) {
@@ -499,14 +497,14 @@ void qgl_window_cbdam::keyPressEvent( QKeyEvent *e )
       break;
     case Qt::Key_L :
       m_renderer->set_shading_enabled(!m_renderer->is_shading_enabled());	
-      std::cerr << "shading " << m_renderer->is_shading_enabled() << std::endl;
+      std::cerr << "[viewer] setting_changed name=shading enabled=" << m_renderer->is_shading_enabled() << std::endl;
       break;
     case Qt::Key_G :
-      std::cerr << "FOG DISABLE" << std::endl;
+      std::cerr << "[viewer] setting_unchanged name=fog reason=unsupported" << std::endl;
       break;
     case Qt::Key_V :
       m_renderer->set_adaptive_tolerance_enabled(!m_renderer->is_adaptive_tolerance_enabled());	
-      std::cerr << std::endl << "adaptive tolerance " << m_renderer->is_adaptive_tolerance_enabled() << std::endl;
+      std::cerr << "[viewer] setting_changed name=adaptive_tolerance enabled=" << m_renderer->is_adaptive_tolerance_enabled() << std::endl;
       break;
     case Qt::Key_Q :
       set_initial_position();
@@ -542,7 +540,7 @@ void qgl_window_cbdam::keyPressEvent( QKeyEvent *e )
 	m_terrain_model->update_start();
       }
       thread_running = !thread_running;
-      std::cerr << "thread_running = " << thread_running << std::endl;
+      std::cerr << "[viewer] setting_changed name=update_thread enabled=" << thread_running << std::endl;
      break;
     case Qt::Key_O :
       m_building_renderer.set_occlusion_culling_enabled(!m_building_renderer.is_occlusion_culling_enabled());
@@ -559,7 +557,7 @@ void qgl_window_cbdam::keyPressEvent( QKeyEvent *e )
 	}
 
 	//	m_renderer->clear_texture_cache();
-	std::cerr << "Set active overlay layer " << active_color_layer_idx_ << "/" << m_terrain_model->overlay_color_layer_count() << std::endl;
+	std::cerr << "[viewer] overlay_layer_changed index=" << active_color_layer_idx_ << " count=" << m_terrain_model->overlay_color_layer_count() << std::endl;
       }
       break;
     case Qt::Key_U :
@@ -664,7 +662,7 @@ bool qgl_window_cbdam::open(const std::string& height_url) {
       m_renderer = new cbdam::terrain_model_renderer(m_terrain_model);
       
       if (m_terrain_model->is_planar()) {
-	std::cerr << "planar" << std::endl;
+	std::cerr << "[viewer] terrain_connected projection=planar" << std::endl;
 	const cbdam::planar_coordinate_transform* geo_xform = 
 	  dynamic_cast<const cbdam::planar_coordinate_transform*>(m_terrain_model->uvh_xyz_transform());
 	m_camera_controller = new cbdam::camera_controller_flight(&m_camera);
@@ -673,22 +671,23 @@ bool qgl_window_cbdam::open(const std::string& height_url) {
 	const cbdam::spherical_coordinate_transform* geo_xform = 
 	  dynamic_cast<const cbdam::spherical_coordinate_transform*>(m_terrain_model->uvh_xyz_transform());
 	m_planet_radius = geo_xform->radius();
-	std::cerr << "planet radius " << m_planet_radius << std::endl;
+	std::cerr << "[viewer] terrain_connected projection=spherical radius="
+		  << m_planet_radius << std::endl;
 	m_camera_controller = new cbdam::camera_controller_vtrackball(&m_camera);
       } 
       
-      std::cerr << "update_start" << std::endl;
       m_terrain_model->update_start();
       thread_running = true;
-      std::cerr << "update_started" << std::endl;
+      std::cerr << "[viewer] update_thread_started" << std::endl;
       
-      print_commands();
       result = true;
     } else {
-      std::cerr << "failed to load terrain model " << height_url << std::endl;
+      std::cerr << "[viewer][error] terrain_model_load_failed url="
+		<< height_url << std::endl;
     }
   } else {
-    std::cerr << "unable to connect fetcher to " << height_url << std::endl;
+    std::cerr << "[viewer][error] terrain_fetcher_connect_failed url="
+	      << height_url << std::endl;
   }
 
   return result;
@@ -700,7 +699,7 @@ bool qgl_window_cbdam::init_buildings(const char* fname) {
     return false;
   } else {
     m_building_renderer.set_scene_pointer(&m_building_hierarchy);
-    std::cerr << "Read building bsp with " << m_building_hierarchy.size() << " nodes\n";
+    std::cerr << "[viewer] buildings_loaded nodes=" << m_building_hierarchy.size() << std::endl;
     return true;
   }
 }
@@ -1033,7 +1032,8 @@ void qgl_window_cbdam::set_initial_position() {
       m_verify_pitch = 0.0;
       m_verify_yaw = 0.0;
       set_verify_flight_view(pos);
-      std::cerr << "set position " << pos[0] << " "  << pos[1] << " "  << pos[2] << std::endl;
+      std::cerr << "[viewer] initial_camera_set position="
+		<< pos[0] << "," << pos[1] << "," << pos[2] << std::endl;
     }
   }
 }
@@ -1212,7 +1212,7 @@ std::pair<bool, cbdam::point3d_t> qgl_window_cbdam::current_graph_intersection_f
       return std::make_pair(false, cbdam::point3d_t(0,0,0));
     }
   } else {
-    std::cerr << "unable to unproject " << x << ", " << y << std::endl;
+    std::cerr << "[viewer][warning] unproject_failed x=" << x << " y=" << y << std::endl;
     return std::make_pair(false, cbdam::point3d_t(0,0,0));
   }
 }

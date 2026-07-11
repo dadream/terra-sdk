@@ -27,6 +27,7 @@
 #include <QApplication>
 #include <QMessageBox>
 #include <cassert>
+#include <iostream>
 
 namespace ratman {
 
@@ -88,7 +89,6 @@ namespace ratman {
     } else {
       // Init OpenGL
       if (first_frame_) {
-	SL_TRACE_OUT(1) << "INIT OPENGL!" << std::endl;
 	renderer_->init_opengl();
 
 	if (!renderer_->is_opengl_supported()) {
@@ -96,6 +96,7 @@ namespace ratman {
 	  QMessageBox::critical( 0, QApplication::tr("Graphics error" ), msg, QMessageBox::Abort,0 );
 	  qFatal("%s", qPrintable(msg));
 	}
+	std::cerr << "[nav3d] renderer_initialized" << std::endl;
       }
 
       // Render

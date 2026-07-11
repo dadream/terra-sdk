@@ -1,5 +1,5 @@
 option(TERRA_SDK_ENABLE_SDK_SMOKE_TESTS
-    "Build and run additive SDK-level smoke tests for platform-neutral base modules." ON)
+    "Build and run SDK-level smoke tests for platform-neutral base modules." ON)
 
 if(TERRA_SDK_ENABLE_SDK_SMOKE_TESTS)
     set(_terra_sdk_sdk_smoke_targets)
@@ -25,7 +25,7 @@ if(TERRA_SDK_ENABLE_SDK_SMOKE_TESTS)
 
         list(APPEND _terra_sdk_sdk_smoke_targets
             terra_sdk_base_math_xml_smoke)
-        message(STATUS "Configured additive SDK smoke test terra_sdk_base_math_xml_smoke")
+        message(STATUS "Configured SDK smoke test terra_sdk_base_math_xml_smoke")
     endif()
 
     if(NOT TARGET vic_base_img)
@@ -47,7 +47,7 @@ if(TERRA_SDK_ENABLE_SDK_SMOKE_TESTS)
 
         list(APPEND _terra_sdk_sdk_smoke_targets
             terra_sdk_base_img_smoke)
-        message(STATUS "Configured additive SDK smoke test terra_sdk_base_img_smoke")
+        message(STATUS "Configured SDK smoke test terra_sdk_base_img_smoke")
     endif()
 
     if(NOT TARGET vic_base_curlstream)
@@ -69,7 +69,7 @@ if(TERRA_SDK_ENABLE_SDK_SMOKE_TESTS)
 
         list(APPEND _terra_sdk_sdk_smoke_targets
             terra_sdk_base_curlstream_smoke)
-        message(STATUS "Configured additive SDK smoke test terra_sdk_base_curlstream_smoke")
+        message(STATUS "Configured SDK smoke test terra_sdk_base_curlstream_smoke")
     endif()
 
     if(NOT TARGET vic_base_qxml)
@@ -91,7 +91,7 @@ if(TERRA_SDK_ENABLE_SDK_SMOKE_TESTS)
 
         list(APPEND _terra_sdk_sdk_smoke_targets
             terra_sdk_base_qxml_smoke)
-        message(STATUS "Configured additive SDK smoke test terra_sdk_base_qxml_smoke")
+        message(STATUS "Configured SDK smoke test terra_sdk_base_qxml_smoke")
     endif()
 
     if(NOT TARGET vic_base_fetcher)
@@ -113,7 +113,7 @@ if(TERRA_SDK_ENABLE_SDK_SMOKE_TESTS)
 
         list(APPEND _terra_sdk_sdk_smoke_targets
             terra_sdk_base_fetcher_smoke)
-        message(STATUS "Configured additive SDK smoke test terra_sdk_base_fetcher_smoke")
+        message(STATUS "Configured SDK smoke test terra_sdk_base_fetcher_smoke")
     endif()
 
     if(NOT TARGET vic_base_persistent)
@@ -135,7 +135,7 @@ if(TERRA_SDK_ENABLE_SDK_SMOKE_TESTS)
 
         list(APPEND _terra_sdk_sdk_smoke_targets
             terra_sdk_base_persistent_smoke)
-        message(STATUS "Configured additive SDK smoke test terra_sdk_base_persistent_smoke")
+        message(STATUS "Configured SDK smoke test terra_sdk_base_persistent_smoke")
     endif()
 
     if(NOT TARGET vic_base_mpi)
@@ -157,7 +157,7 @@ if(TERRA_SDK_ENABLE_SDK_SMOKE_TESTS)
 
         list(APPEND _terra_sdk_sdk_smoke_targets
             terra_sdk_base_mpi_smoke)
-        message(STATUS "Configured additive SDK smoke test terra_sdk_base_mpi_smoke")
+        message(STATUS "Configured SDK smoke test terra_sdk_base_mpi_smoke")
     endif()
 
     if(NOT TARGET vic_base_gl)
@@ -179,7 +179,7 @@ if(TERRA_SDK_ENABLE_SDK_SMOKE_TESTS)
 
         list(APPEND _terra_sdk_sdk_smoke_targets
             terra_sdk_base_gl_smoke)
-        message(STATUS "Configured additive SDK smoke test terra_sdk_base_gl_smoke")
+        message(STATUS "Configured SDK smoke test terra_sdk_base_gl_smoke")
     endif()
 
     if(NOT TARGET vic_core_geo_base)
@@ -203,7 +203,7 @@ if(TERRA_SDK_ENABLE_SDK_SMOKE_TESTS)
 
         list(APPEND _terra_sdk_sdk_smoke_targets
             terra_sdk_geo_tilemap_smoke)
-        message(STATUS "Configured additive SDK smoke test terra_sdk_geo_tilemap_smoke")
+        message(STATUS "Configured SDK smoke test terra_sdk_geo_tilemap_smoke")
 
         add_executable(terra_sdk_geo_victms_smoke
             "${_terra_sdk_core_smoke_dir}/sdk_geo_victms_smoke.cpp")
@@ -222,7 +222,7 @@ if(TERRA_SDK_ENABLE_SDK_SMOKE_TESTS)
 
         list(APPEND _terra_sdk_sdk_smoke_targets
             terra_sdk_geo_victms_smoke)
-        message(STATUS "Configured additive SDK smoke test terra_sdk_geo_victms_smoke")
+        message(STATUS "Configured SDK smoke test terra_sdk_geo_victms_smoke")
     endif()
 
     if(NOT TARGET vic_core_geo_srs)
@@ -246,7 +246,7 @@ if(TERRA_SDK_ENABLE_SDK_SMOKE_TESTS)
 
         list(APPEND _terra_sdk_sdk_smoke_targets
             terra_sdk_geo_srs_smoke)
-        message(STATUS "Configured additive SDK smoke test terra_sdk_geo_srs_smoke")
+        message(STATUS "Configured SDK smoke test terra_sdk_geo_srs_smoke")
     endif()
 
     if(NOT TARGET vic_core_geo_builder)
@@ -270,7 +270,7 @@ if(TERRA_SDK_ENABLE_SDK_SMOKE_TESTS)
 
         list(APPEND _terra_sdk_sdk_smoke_targets
             terra_sdk_geo_builder_smoke)
-        message(STATUS "Configured additive SDK smoke test terra_sdk_geo_builder_smoke")
+        message(STATUS "Configured SDK smoke test terra_sdk_geo_builder_smoke")
     endif()
 
     if(NOT TARGET vic_core_vfs)
@@ -294,7 +294,7 @@ if(TERRA_SDK_ENABLE_SDK_SMOKE_TESTS)
 
         list(APPEND _terra_sdk_sdk_smoke_targets
             terra_sdk_vfs_repository_smoke)
-        message(STATUS "Configured additive SDK smoke test terra_sdk_vfs_repository_smoke")
+        message(STATUS "Configured SDK smoke test terra_sdk_vfs_repository_smoke")
     endif()
 
     if(NOT TARGET vic_core_cbdam_geo)
@@ -318,7 +318,7 @@ if(TERRA_SDK_ENABLE_SDK_SMOKE_TESTS)
 
         list(APPEND _terra_sdk_sdk_smoke_targets
             terra_sdk_cbdam_geo_smoke)
-        message(STATUS "Configured additive SDK smoke test terra_sdk_cbdam_geo_smoke")
+        message(STATUS "Configured SDK smoke test terra_sdk_cbdam_geo_smoke")
     endif()
 
     if(NOT TARGET vic_core_cbdam_base)
@@ -342,7 +342,7 @@ if(TERRA_SDK_ENABLE_SDK_SMOKE_TESTS)
 
         list(APPEND _terra_sdk_sdk_smoke_targets
             terra_sdk_cbdam_repository_smoke)
-        message(STATUS "Configured additive SDK smoke test terra_sdk_cbdam_repository_smoke")
+        message(STATUS "Configured SDK smoke test terra_sdk_cbdam_repository_smoke")
     endif()
 
     if(NOT TARGET vic_core_ratman)
@@ -366,20 +366,11 @@ if(TERRA_SDK_ENABLE_SDK_SMOKE_TESTS)
 
         list(APPEND _terra_sdk_sdk_smoke_targets
             terra_sdk_ratman_core_smoke)
-        message(STATUS "Configured additive SDK smoke test terra_sdk_ratman_core_smoke")
+        message(STATUS "Configured SDK smoke test terra_sdk_ratman_core_smoke")
     endif()
 
     if(_terra_sdk_sdk_smoke_targets)
-        set(_terra_sdk_sdk_smoke_commands)
-        foreach(_terra_sdk_sdk_smoke_target IN LISTS _terra_sdk_sdk_smoke_targets)
-            list(APPEND _terra_sdk_sdk_smoke_commands
-                COMMAND "$<TARGET_FILE:${_terra_sdk_sdk_smoke_target}>")
-        endforeach()
-
         add_custom_target(terra_sdk_sdk_smoke_tests
-            ${_terra_sdk_sdk_smoke_commands}
-            DEPENDS ${_terra_sdk_sdk_smoke_targets}
-            WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
-            VERBATIM)
+            DEPENDS ${_terra_sdk_sdk_smoke_targets})
     endif()
 endif()

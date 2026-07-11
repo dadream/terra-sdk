@@ -1,0 +1,10 @@
+<ratman version="2.0">
+  <init>
+    <home u="512" v="512" h="1300"/>
+    <camera_bounds u_min="0" v_min="0" u_max="1024" v_max="1024" h_min="10" h_max="3000000"/>
+  </init>
+  <elevation url="/workspace/testdata/datasets/ps_1k/reference/terrain" id="PS 1k Elevation" about="Local PS 1k terrain"/>
+  <base_layers>
+    <tms id="PS 1k Texture" url="/workspace/testdata/datasets/ps_1k/reference/texture/victms.xml" first_level="0" last_level="64" active="1" about="Local PS 1k texture"/>
+  </base_layers>
+</ratman>

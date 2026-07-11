@@ -1,0 +1,12 @@
+.git
+.cache
+.clangd
+build
+out
+workspace_old
+viewer_verify_output
+CMakeUserPresets.json
+compile_commands.json
+*.log
+*.user
+*~

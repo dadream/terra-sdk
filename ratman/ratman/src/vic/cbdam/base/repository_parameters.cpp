@@ -135,7 +135,6 @@ namespace cbdam {
       std::cerr << doc.error_msg() << std::endl;
       return;
     }
-    SL_TRACE_OUT(-1) << "done" << std::endl;
   }
   
   void repository_parameters::write_to_file(const char* file_name, bool print) const {

@@ -46,7 +46,7 @@ parameters_dialog::parameters_dialog(QWidget *parent)
 void parameters_dialog::set_tool(ratman::atmosphere* a){
   atm_ = a; 
   if (atm_ == 0) {
-    SL_TRACE_OUT(-1) << "SET NULL ATMOSPHERE" << std::endl;
+    std::cerr << "[nav3d] setting_changed name=atmosphere enabled=false" << std::endl;
   }
   atm_->set_daytime(ui.TimeSlider->value());
   atm_->set_minutes(ui.TimeSlider_2->value());

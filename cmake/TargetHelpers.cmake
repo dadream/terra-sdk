@@ -14,7 +14,7 @@ function(terra_sdk_write_artifact_registry output_file)
         endforeach()
     endif()
 
-    message(STATUS "Wrote additive CMake artifact registry: ${output_file}")
+    message(STATUS "Wrote CMake artifact registry: ${output_file}")
 endfunction()
 
 function(terra_sdk_add_static_library target_name)

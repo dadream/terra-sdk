@@ -1,5 +1,5 @@
 option(TERRA_SDK_ENABLE_RATMAN_SERVICE_MOD_VICTMS
-    "Build the additive CMake target for the Apache mod_victms module." ON)
+    "Build the CMake target for the Apache mod_victms module." ON)
 
 if(TERRA_SDK_ENABLE_RATMAN_SERVICE_MOD_VICTMS)
     if(NOT EXISTS "${TERRA_SDK_RATMAN_SOURCE_DIR}/apache_mod_victms/mod_victms.cpp")
@@ -30,6 +30,6 @@ if(TERRA_SDK_ENABLE_RATMAN_SERVICE_MOD_VICTMS)
         target_compile_options(vic_service_mod_victms PRIVATE "-include" "unistd.h")
 
         add_library(vic::service_mod_victms ALIAS vic_service_mod_victms)
-        message(STATUS "Configured additive CMake target vic_service_mod_victms -> mod_victms.so")
+        message(STATUS "Configured CMake target vic_service_mod_victms -> mod_victms.so")
     endif()
 endif()

@@ -1,0 +1,20 @@
+{
+  "capture": "tilted_zoom_out",
+  "frame": 51,
+  "width": 1280,
+  "height": 720,
+  "camera_position": [512.5, 512.5, 661.076],
+  "camera_distance": 1076.45,
+  "pixel_tolerance": 2,
+  "statistics_mode": 0,
+  "wireframe_enabled": false,
+  "color_enabled": true,
+  "patch_color_enabled": false,
+  "draw_bounding_volumes_enabled": false,
+  "shading_enabled": true,
+  "adaptive_tolerance_enabled": true,
+  "terrain_connected": true,
+  "planar": true,
+  "rendered_triangles": 86016,
+  "mean_fps": 96.0975
+}

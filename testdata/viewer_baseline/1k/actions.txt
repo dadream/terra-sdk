@@ -1,0 +1,29 @@
+# Standard 1k CBDAM viewer verification sequence.
+wait_frames 20
+capture initial_birdview
+
+zoom_in 8
+wait_frames 10
+capture birdview_zoom_in
+
+tilt 45
+wait_frames 10
+capture tilted_45
+
+zoom_out 5
+wait_frames 10
+capture tilted_zoom_out
+
+rotate 30
+wait_frames 10
+capture tilted_rotate
+
+key f
+wait_frames 5
+capture statistics
+
+reset
+wait_frames 10
+capture reset
+
+exit

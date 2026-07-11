@@ -69,7 +69,7 @@ namespace ratman {
 	// set background priority
 	cbdam::background_thread::run();
 
-	std::cerr << std::endl  << std::endl << "START REAL RUN" << std::endl << std::endl << std::endl;
+	std::cerr << "[nav3d] update_thread_started" << std::endl;
 
         while (!stop_requested()) {
 	  cbdam::background_thread::cpu_long_yield();

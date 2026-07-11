@@ -41,7 +41,7 @@ namespace cbdam {
   void cbdam_diamond_fetcher::direct_connect() {
     // base url is something like cbdamrepo.data or cbdamrepo.root, while params are in cbdamrepo.xml
     std::string file_name = sl::pathname_without_extension(base_url()) + ".xml";
-    repository_parameters_.read_from_file(file_name.c_str(), true);
+    repository_parameters_.read_from_file(file_name.c_str(), false);
     is_connected_ = repository_parameters_.last_operation_success();
 
     srs_ = repository_parameters_.srs();
@@ -51,10 +51,10 @@ namespace cbdam {
     if (is_connected_) {
       data_repo_.open_read(base_url());
       if (!data_repo_.is_open()) {
-	SL_TRACE_OUT(-1) << "LOCAL: Failed to open " << base_url() << " for reading" << std::endl;
+	std::cerr << "[terrain][error] repository_open_failed url=" << base_url() << std::endl;
 	is_connected_ = false;
       } else {
-	SL_TRACE_OUT(-1) << "LOCAL: " << base_url() << " open for reading" << std::endl;
+	std::cerr << "[terrain] repository_opened url=" << base_url() << std::endl;
 	is_connected_ = true;
       }
     }
@@ -84,7 +84,7 @@ namespace cbdam {
   void cbdam_diamond_fetcher::http_connect() {
     std::string file_name = sl::pathname_without_extension(base_url()) + ".xml";
     SL_TRACE_OUT(1) << "reading parameters from " << file_name << std::endl;
-    repository_parameters_.read_from_file(file_name.c_str(), true);
+    repository_parameters_.read_from_file(file_name.c_str(), false);
     is_connected_ = repository_parameters_.last_operation_success();
 
     srs_ = repository_parameters_.srs();

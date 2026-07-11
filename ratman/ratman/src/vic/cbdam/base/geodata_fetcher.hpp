@@ -31,6 +31,7 @@
 #include <list>
 #include <map>
 #include <cassert>
+#include <iostream>
 
 // libCurl
 #include <curl/curl.h>
@@ -125,6 +126,7 @@ namespace cbdam {
     aabox2d_t           uv_box_;
     std::string         about_;
     bool                is_connected_;
+    std::size_t         failed_request_count_;
 
   protected: // http
 
@@ -285,11 +287,8 @@ namespace cbdam {
 					     const std::string& default_srs,
 					     const aabox2d_t& default_uv_box,								  
 					     const std::string& default_about) :
-    base_url_(url), srs_(default_srs), uv_box_(default_uv_box), about_(default_about), is_connected_(false) {
-
-    SL_TRACE_OUT(-1) << 
-      "Creating service for: " << url << " BATCH_COUNT=" << batch_count() <<
-      std::endl;
+    base_url_(url), srs_(default_srs), uv_box_(default_uv_box), about_(default_about),
+    is_connected_(false), failed_request_count_(0) {
 
     result_buffer_capacity_ = 16; // FIXME
 
@@ -713,8 +712,6 @@ namespace cbdam {
 
       req_url_[i] = http_url_string(it->first, it->second);
 
-      SL_TRACE_OUT(-1) << "URL: " << req_url_[i] << std::endl;
-
       curl_easy_setopt(req_connection_[i], CURLOPT_URL, req_url_[i].c_str());
       curl_easy_setopt(req_connection_[i], CURLOPT_WRITEFUNCTION, detail::geodata_fetcher_curl_callback_append_to_byte_array);
       curl_easy_setopt(req_connection_[i], CURLOPT_WRITEDATA, (void *)&(req_byte_array_[i]));
@@ -738,7 +735,8 @@ namespace cbdam {
 						const key_t& k,
 						const byte_array_t& data) {
     // Default: map not found and empy to NULL, OK to data, others to error
-    if ((code == CURLE_HTTP_NOT_FOUND) || 
+    if ((code == CURLE_HTTP_NOT_FOUND) ||
+	(code == CURLE_FILE_COULDNT_READ_FILE) ||
 	(code == CURLE_OK && data.empty())) {
       handle_nodata_response(k);
     } else if (code == CURLE_OK) {
@@ -787,7 +785,15 @@ namespace cbdam {
  
   template <class T>
   void geodata_fetcher<T>::handle_error_response(const key_t& k, const std::string& message) {
-    SL_TRACE_OUT(-1) << "Error for key = " << k[0] << " " << k[1] << " " << k[2] << ": " << message << std::endl;
+    ++failed_request_count_;
+    if ((failed_request_count_ == 1) ||
+	((failed_request_count_ & (failed_request_count_ - 1)) == 0)) {
+      std::cerr << "[terrain][warning] tile_fetch_failed"
+		<< " count=" << failed_request_count_
+		<< " key=" << k[0] << "," << k[1] << "," << k[2]
+		<< " source=" << base_url_
+		<< " reason=" << message << std::endl;
+    }
     push_result(k, std::make_pair(FAILED, (T*)0));
   }
 

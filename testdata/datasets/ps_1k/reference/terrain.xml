@@ -1,0 +1,15 @@
+<cbdam>
+   <info
+     patch_dim="64"
+     height_scale_factor="9.76563e-05"
+     srs="EPSG:4326"
+     about="CBDAM Elevation Layer"
+   />
+   <coordinate_transform
+     type="planar"
+     u0="0"
+     v0="0"
+     u1="1025"
+     v1="1025"
+   />
+</cbdam>

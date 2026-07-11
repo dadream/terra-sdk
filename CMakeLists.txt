@@ -55,12 +55,6 @@ message(STATUS "install prefix: ${CMAKE_INSTALL_PREFIX}")
 
 message(STATUS "spacelib is configured as in-tree target Terra::sl")
 
-if(EXISTS "${TERRA_SDK_RATMAN_SOURCE_DIR}/ratman/ratman.pro")
-    message(STATUS "ratman qmake project detected")
-else()
-    message(WARNING "ratman qmake project not found at ${TERRA_SDK_RATMAN_SOURCE_DIR}")
-endif()
-
 set(_terra_sdk_cmake_smoke_dependencies)
 foreach(_terra_sdk_smoke_target
         sl

@@ -2,7 +2,7 @@
 
 ## Goal
 
-`spacelib` now has C++14 as its minimum C++ standard. This plan captures the remaining legacy compatibility code and defines a staged modernization path that preserves the public `sl` API, numeric behavior, serialized data formats, and downstream `ratman` / `terra-sdk-web` validation.
+`spacelib` now has C++14 as its minimum C++ standard. This plan captures the remaining legacy compatibility code and defines a staged modernization path that preserves the public `sl` API, numeric behavior, serialized data formats, and integrated `terra-sdk` validation.
 
 ## Current Checkpoint
 
@@ -50,7 +50,7 @@
 - Clean build-time compatibility first, implementation internals second, performance-sensitive structures last.
 - Keep `sl::` public names stable; replace internals before changing API shape.
 - Every phase must keep the Docker CMake build warning-clean.
-- Public-header or ABI-adjacent changes must run downstream `ratman` / `terra-sdk-web` gates.
+- Public-header or ABI-adjacent changes must run the integrated Ratman application and full `terra-sdk` baseline gates.
 
 ## Phased Plan
 
@@ -99,18 +99,16 @@
 ## Validation Commands
 
 ```bash
-cd /home/holo/terra-sdk-anti/spacelib
-docker run --rm --user 1000:1000 -v /home/holo/terra-sdk-anti:/wksp -w /wksp/spacelib qt-dev-env cmake -S . -B build/codex_upgrade -DSL_TEST=ON
-docker run --rm --user 1000:1000 -v /home/holo/terra-sdk-anti:/wksp -w /wksp/spacelib qt-dev-env bash -lc 'cmake --build build/codex_upgrade -- -j4 > build/codex_upgrade/build.log 2>&1'
-grep -n "warning:" build/codex_upgrade/build.log
-docker run --rm --user 1000:1000 -v /home/holo/terra-sdk-anti:/wksp -w /wksp/spacelib/build/codex_upgrade qt-dev-env ctest --output-on-failure
+cd /home/holo/terra-sdk-anti/terra-sdk
+CMAKE_BUILD_LOG=viewer_verify_output/spacelib_cxx14_upgrade.log \
+  bash scripts/build_cmake.sh
 ```
 
 Public-header or ABI-adjacent changes must additionally run:
 
 ```bash
-cd /home/holo/terra-sdk-anti/terra-sdk-web
-bash build/verify_cmake_migration.sh
+cd /home/holo/terra-sdk-anti/terra-sdk
+bash scripts/verify_baseline.sh
 ```
 
 ## Commit Strategy

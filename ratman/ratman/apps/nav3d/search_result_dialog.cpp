@@ -70,7 +70,6 @@ void search_result_dialog::search(const QString& search_text,
 }
 
 void search_result_dialog::handling_doubleclicking(QTreeWidgetItem *item, int /*col*/) {
-  std::cerr << "Double click" << std::endl;
   search_result_item* search_item = dynamic_cast<search_result_item*>(item);
   if (search_item) {
     emit item_doubleclicked(search_item->engine(), search_item->entry());

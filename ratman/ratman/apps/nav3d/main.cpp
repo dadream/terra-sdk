@@ -60,6 +60,7 @@ int main(int argc, char *argv[]) {
   QApplication app(argc, argv);
 #endif
 
+  std::cerr << "[nav3d] process_started" << std::endl;
   app.connect( &app, SIGNAL(lastWindowClosed()), &app, SLOT(quit()) );
 
   std::string filename;
@@ -158,7 +159,7 @@ int main(int argc, char *argv[]) {
   if (filename.empty()) {
     ratman::config* cfg=ratman::config::instance();
     if (cfg->error()) {
-      std::cerr << cfg->error_msg().toStdString() << std::endl;
+      std::cerr << "[nav3d][error] config_load_failed reason=" << cfg->error_msg().toStdString() << std::endl;
       exit(1);
     }
     filename = cfg->index_file_url().toStdString();
@@ -238,6 +239,7 @@ int main(int argc, char *argv[]) {
   QBuffer file(&data);
   QXmlInputSource xml_input(&file);
   if (reader.parse(xml_input)) {
+    std::cerr << "[nav3d] config_loaded url=" << filename << std::endl;
     progress.setValue(90);
     app.processEvents();
     if (progress.wasCanceled()) {
@@ -252,6 +254,7 @@ int main(int argc, char *argv[]) {
     }
 
     gui->show();
+    std::cerr << "[nav3d] ui_ready" << std::endl;
 
 #ifdef QTSINGLEAPPLICATION
     app.setActivationWindow(gui);

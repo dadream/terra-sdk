@@ -155,25 +155,17 @@ namespace cbdam {
       if (xml.empty()) {
 	SL_TRACE_OUT(-1) << "Error while streaming from " << base_url() << std::endl;
       } else {
-	SL_TRACE_OUT(1) << "xml: " << xml << std::endl;	
-
-	std::cerr << "[DEBUG] http_connect: XML read:\n" << xml << std::endl;
 	if (xml.find("<victms>") != std::string::npos) {
-	  std::cerr << "[DEBUG] http_connect: found <victms>" << std::endl;
 	  // Translate victms.xml to TileMap XML
 	  std::istringstream in(xml);
 	  vic::xml::document doc;
 	  doc.parse(in);
-	  std::cerr << "[DEBUG] http_connect: doc error: " << (doc.error() ? "YES" : "NO") << " msg: " << doc.error_msg() << std::endl;
 	  vic::xml::node_iterator root = doc.first_root("victms");
-	  std::cerr << "[DEBUG] http_connect: root tag: " << (root.is_null() ? "NULL" : root.tag()) << std::endl;
 	  if (!root.is_null()) {
 	    for (vic::xml::node_iterator it = root.down(); !it.is_null(); it = it.next()) {
-	      std::cerr << "[DEBUG] http_connect: child tag: " << it.tag() << std::endl;
 	      if (it.tag() == "tilemap") {
 		vic::geo::base::tilemap_config tc;
 		if (tc.parse(it)) {
-		  std::cerr << "[DEBUG] http_connect: successfully parsed tilemap_config name=" << tc.name() << std::endl;
 		  std::ostringstream out;
 		  std::string tileset_url = base_url();
 		  // Strip filename (victms.xml) from tileset_url to get base path
@@ -206,12 +198,12 @@ namespace cbdam {
 
 	tilemap_resource_ = new vic::geo::base::tms_tilemap_resource(xml);
 	
-	// FIXME: Check SRS, etc.
-	SL_TRACE_OUT(-1) << "Check Tilemap SRS, BOX, ..." << std::endl;
-
 	is_connected_ = tilemap_resource_->last_operation_success();
-	if (!is_connected_) {
-	  std::cerr << "unable to connect to " << base_url() << " error: " << tilemap_resource_->last_error_message() << std::endl;
+	if (is_connected_) {
+	  std::cerr << "[terrain] texture_source_connected url=" << base_url() << std::endl;
+	} else {
+	  std::cerr << "[terrain][error] texture_source_connect_failed url=" << base_url()
+		    << " reason=" << tilemap_resource_->last_error_message() << std::endl;
 	}
       }
     }

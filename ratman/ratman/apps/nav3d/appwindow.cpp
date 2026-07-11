@@ -333,14 +333,11 @@ void AppWindow::recursive_create_treewidget(QTreeWidget* tree_widget,
       recursive_create_treewidget(tree_widget, item, layer->child(i));
     }
   }
-  std::cerr << "=== END: " << layer->name() << std::endl;
 }
 
 void AppWindow::create_terrain_widget(QTreeWidget* tree_widget,
                                       QTreeWidgetItem* parent,
                                       ratman::terrain_renderable* terrain) {
-  std::cerr << "=== BEGIN TERRAIN: " << terrain->name() << std::endl;
-
   assert(terrain);
   assert(terrain->model());
 
@@ -403,8 +400,12 @@ void AppWindow::create_terrain_widget(QTreeWidget* tree_widget,
     overlayButtons->addButton(rb, i);
   }
 
-  //std::cerr << "=== END: " << terrain->name() << std::endl;
-  
+  std::cerr << "[nav3d] terrain_ready name=" << terrain->name()
+	    << " base_layers=" << tm->base_color_layer_count()
+	    << " overlay_layers=" << tm->overlay_color_layer_count() << std::endl;
+  std::cerr << "[nav3d] texture_layers_ready"
+            << " base_count=" << tm->base_color_layer_count()
+            << " overlay_count=" << tm->overlay_color_layer_count() << std::endl;
 }
 
 void AppWindow::create_treewidget_layers() {
@@ -495,7 +496,7 @@ void AppWindow::search() {
   double lon=0;
   double lat=0;
   if (get_decimal_coord(ui_.lineEdit->text(), lon, lat)) {
-    std::cerr << "GOTO: " << lon << " " << lat << std::endl;
+    std::cerr << "[nav3d] camera_goto_requested lon=" << lon << " lat=" << lat << std::endl;
     goto_location(lon, lat);
   } else {
 

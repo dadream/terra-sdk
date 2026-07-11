@@ -1,9 +1,15 @@
 /build/
 /out/
+/workspace_old/
+/viewer_verify_output/
+/viewer_*.log
 /.cache/
 /CMakeUserPresets.json
 /compile_commands.json
 /.clangd/
+/testdata/viewer_baseline/*/baseline_report.html
+__pycache__/
+*.pyc
 *.swp
 *.user
 *.orig

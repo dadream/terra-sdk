@@ -720,10 +720,7 @@ namespace ratman {
     double time_s = sl::median(0.0, 12.0, dist_m/desired_speed_m_s);
 
     // Compute animation and start it
-    std::cerr << "qgl_scene_view::goto_oriented_location()" << std::endl;
-    std::cerr << "START" << std::endl << start_pos << std::endl;
-    std::cerr << "END" << std::endl << end_pos << std::endl;
-    std::cerr << "h_travel " << h_travel << " h_factor " << h_factor << " desired_speed_m_s " << desired_speed_m_s << " dist_m " << dist_m << " time_s " << time_s << std::endl;
+    std::cerr << "[nav3d] camera_flight_started distance_m=" << dist_m << " duration_s=" << time_s << std::endl;
     camera_animation_.compute_fly_from_to(start_pos, end_pos, time_s*1000);
     camera_animation_.start();
   }
@@ -854,7 +851,7 @@ namespace ratman {
         return std::make_pair(false, point3d_t(0,0,0));
       }
     } else {
-      SL_TRACE_OUT(-1) << "unable to unproject " << x << ", " << y << std::endl;
+      std::cerr << "[nav3d][warning] unproject_failed x=" << x << " y=" << y << std::endl;
       return std::make_pair(false, point3d_t(0,0,0));
     }
   }
