@@ -30,6 +30,8 @@ dataset_metadata::dataset_metadata()
     : format_version(1),
       patch_dimension(0),
       height_scale_factor(0.0),
+      srs(),
+      about(),
       transform(coordinate_transform_kind::planar),
       bounds(),
       radius(0.0) {}

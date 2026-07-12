@@ -1,9 +1,11 @@
 add_library(terra_core STATIC
     src/core/coordinate_transform.cpp
     src/core/grid.cpp
+    src/core/metadata.cpp
     src/core/wmts.cpp
     include/terra/core/coordinate_transform.hpp
     include/terra/core/grid.hpp
+    include/terra/core/metadata.hpp
     include/terra/core/types.hpp
     include/terra/core/wmts.hpp)
 add_library(Terra::core ALIAS terra_core)
@@ -45,8 +47,10 @@ endif()
 
 add_library(terra_frame STATIC
     src/frame/camera.cpp
+    src/frame/frame_packet.cpp
     src/frame/lod.cpp
     include/terra/frame/camera.hpp
+    include/terra/frame/frame_packet.hpp
     include/terra/frame/lod.hpp)
 add_library(Terra::frame ALIAS terra_frame)
 

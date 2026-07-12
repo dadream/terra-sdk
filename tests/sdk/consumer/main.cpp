@@ -1,8 +1,10 @@
 #include <terra/core/coordinate_transform.hpp>
 #include <terra/core/grid.hpp>
+#include <terra/core/metadata.hpp>
 #include <terra/core/wmts.hpp>
 #include <terra/codec/cbdam_height.hpp>
 #include <terra/frame/camera.hpp>
+#include <terra/frame/frame_packet.hpp>
 #include <terra/frame/lod.hpp>
 
 #include <cmath>
@@ -18,6 +20,17 @@ int main() {
       std::fabs(xyz[2] - 6378000.0) < 0.000001;
   const bool topology_matches =
       roots.size() == 8 && roots[0].id()[1] == 134217728;
+  terra::core::dataset_metadata metadata;
+  metadata.patch_dimension = 64U;
+  metadata.height_scale_factor = 0.015625;
+  metadata.srs = "EPSG:4326";
+  metadata.transform = terra::core::coordinate_transform_kind::cylindrical;
+  metadata.bounds = terra::core::bounds2d(
+      terra::core::vector2d{{-180.0, -90.0}},
+      terra::core::vector2d{{180.0, 90.0}});
+  metadata.radius = 6378000.0;
+  const bool metadata_matches =
+      terra::core::validate_dataset_metadata(metadata).valid();
   const terra::core::global_geodetic_wmts_selector selector(1, 17);
   const terra::core::wmts_tile_key west = selector.select(
       terra::core::bounds2d(terra::core::vector2d{{-180.0, -90.0}},
@@ -39,9 +52,14 @@ int main() {
           0.0, 64U, 0.01F, camera.snapshot());
   const bool lod_matches =
       !invalid_lod.complete && invalid_lod.patches.empty();
-  return transform_matches && topology_matches &&
+  const terra::frame::frame_packet packet =
+      terra::frame::make_frame_packet(1U, camera.snapshot(), invalid_lod);
+  const bool packet_matches =
+      terra::frame::validate_frame_packet(packet) ==
+      terra::frame::frame_packet_status::ok;
+  return transform_matches && topology_matches && metadata_matches &&
                  texture_selection_matches && camera_matches && codec_matches &&
-                 lod_matches
+                 lod_matches && packet_matches
              ? 0
              : 1;
 }

@@ -27,6 +27,17 @@ add_test(NAME terra_sdk_core_dependency_closure
         "-DLINK_MANIFEST=${_terra_sdk_core_link_manifest}"
         -P "${CMAKE_SOURCE_DIR}/sdk/cmake/CheckTerraSdkDependencies.cmake")
 
+add_executable(terra_sdk_core_metadata_golden
+    terra_core_metadata_golden.cpp)
+target_link_libraries(terra_sdk_core_metadata_golden PRIVATE Terra::core)
+target_compile_features(terra_sdk_core_metadata_golden PRIVATE cxx_std_14)
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(terra_sdk_core_metadata_golden PRIVATE -Wall -Wextra)
+endif()
+add_test(NAME terra_sdk_core_metadata_golden
+    COMMAND "$<TARGET_FILE:terra_sdk_core_metadata_golden>"
+        "${_terra_sdk_core_golden}")
+
 add_executable(terra_sdk_core_topology_golden
     terra_core_topology_golden.cpp)
 target_link_libraries(terra_sdk_core_topology_golden PRIVATE Terra::core)
@@ -70,6 +81,16 @@ add_test(NAME terra_sdk_frame_camera_golden
     COMMAND "$<TARGET_FILE:terra_sdk_frame_camera_golden>"
         "${_terra_sdk_core_golden}")
 
+add_executable(terra_sdk_frame_packet
+    terra_frame_packet.cpp)
+target_link_libraries(terra_sdk_frame_packet PRIVATE Terra::frame)
+target_compile_features(terra_sdk_frame_packet PRIVATE cxx_std_14)
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(terra_sdk_frame_packet PRIVATE -Wall -Wextra)
+endif()
+add_test(NAME terra_sdk_frame_packet
+    COMMAND "$<TARGET_FILE:terra_sdk_frame_packet>")
+
 add_executable(terra_sdk_frame_lod_golden
     terra_frame_lod_golden.cpp)
 target_link_libraries(terra_sdk_frame_lod_golden PRIVATE Terra::frame)
@@ -101,10 +122,14 @@ set_tests_properties(terra_sdk_core_dependency_guard_link PROPERTIES
 
 add_custom_target(terra_sdk_core_tests
     DEPENDS
+        terra_sdk_core_metadata_golden
         terra_sdk_core_topology_golden
         terra_sdk_core_transform_golden
         terra_sdk_core_wmts_selection)
 add_custom_target(terra_sdk_codec_tests
     DEPENDS terra_sdk_codec_patch_golden)
 add_custom_target(terra_sdk_frame_tests
-    DEPENDS terra_sdk_frame_camera_golden terra_sdk_frame_lod_golden)
+    DEPENDS
+        terra_sdk_frame_camera_golden
+        terra_sdk_frame_lod_golden
+        terra_sdk_frame_packet)

@@ -59,7 +59,7 @@ Native characterization coverage now includes:
 M2 characterization is complete. M3 native SDK extraction must match these
 fixtures; native-versus-Wasm parity is added in M5.
 
-## M3: In Progress
+## M3: Complete
 
 The current additive extraction provides:
 
@@ -72,15 +72,24 @@ The current additive extraction provides:
 - deterministic cylindrical child wrapping, shared-fragment refinement,
   oriented bounds, Morton ordering, and LOD cuts matching all 412 M2 LOD
   properties for the 8/28/62-leaf thresholds;
+- a typed dataset metadata contract with explicit validation results for
+  format version, patch shape, transforms, bounds, scale, SRS, and radius;
+- backend-neutral frame packets carrying camera state, bounded LOD decisions,
+  texture requests, and WebGL1-compatible terrain mesh buffers;
 - explicit status results for malformed framing, exhausted range streams,
-  unsupported shapes, and resource limits;
+  unsupported shapes, invalid frame buffers, and resource limits;
 - source-include and target-link dependency closure checks;
 - install/export support through `find_package(TerraSdk)` for all three
   targets;
 - an installed-consumer build/run test and a warning-free focused gate.
 
-Viewer and nav3d remain linked to their original CBDAM targets. Remaining M3
-work includes metadata parsing and backend-neutral frame packets.
+Metadata serialization parsing remains at the service or TypeScript boundary;
+the C++ core validates the resulting typed values and does not embed a JSON or
+XML dependency. Frame packets define the asynchronous boundary between SDK
+decisions, fetched/decoded resources, and the future Mini Program renderer.
+
+Viewer and nav3d remain linked to their original CBDAM targets. M3 is complete;
+the next implementation milestone is the versioned terrain delivery service.
 
 ## Verification Evidence
 

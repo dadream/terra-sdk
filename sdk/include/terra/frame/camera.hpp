@@ -20,15 +20,15 @@ struct axis_aligned_box3d {
 };
 
 struct camera_snapshot {
-  double distance;
-  double near_plane;
-  double far_plane;
-  double tilt_radians;
-  core::vector3d position;
-  matrix4d projection;
-  matrix4d view;
-  matrix4d projection_view;
-  std::array<plane4d, 6> clip_planes;
+  double distance = 0.0;
+  double near_plane = 0.0;
+  double far_plane = 0.0;
+  double tilt_radians = 0.0;
+  core::vector3d position{{0.0, 0.0, 0.0}};
+  matrix4d projection{{}};
+  matrix4d view{{}};
+  matrix4d projection_view{{}};
+  std::array<plane4d, 6> clip_planes{{}};
 };
 
 class globe_camera {
