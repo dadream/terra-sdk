@@ -1,6 +1,8 @@
 add_library(terra_core STATIC
     src/core/coordinate_transform.cpp
+    src/core/grid.cpp
     include/terra/core/coordinate_transform.hpp
+    include/terra/core/grid.hpp
     include/terra/core/types.hpp)
 add_library(Terra::core ALIAS terra_core)
 

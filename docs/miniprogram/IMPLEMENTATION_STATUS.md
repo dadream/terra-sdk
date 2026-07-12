@@ -61,16 +61,16 @@ fixtures; native-versus-Wasm parity is added in M5.
 
 ## M3: In Progress
 
-The first additive extraction slice provides:
+The current additive extraction provides:
 
 - a C++14-only `Terra::core` target with standard-library public types;
-- planar and cylindrical coordinate transforms matching the M2 golden;
+- planar/cylindrical transforms and root topology matching the M2 golden;
 - source-include and target-link dependency closure checks;
 - install/export support through `find_package(TerraSdk)` and `Terra::core`;
 - an installed-consumer build/run test and a warning-free focused gate.
 
 Viewer and nav3d remain linked to their original CBDAM targets. Remaining M3
-work includes metadata parsing, topology, camera/culling, LOD, texture
+work includes metadata parsing, camera/culling, LOD, texture
 selection, patch decoding, and the `Terra::codec` and `Terra::frame` targets.
 
 ## Verification Evidence

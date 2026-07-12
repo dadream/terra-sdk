@@ -27,7 +27,7 @@ docker run --rm \
       -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_INSTALL_PREFIX=/wksp/output
     cmake --build /wksp/build/cmake \
-      --target terra_core terra_sdk_core_transform_golden \
+      --target terra_core terra_sdk_core_tests \
       --parallel "'"${BUILD_JOBS}"'"
     cd /wksp/build/cmake
     ctest --output-on-failure -R "^terra_sdk_core_"
