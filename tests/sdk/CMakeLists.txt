@@ -34,6 +34,16 @@ add_test(NAME terra_sdk_core_topology_golden
     COMMAND "$<TARGET_FILE:terra_sdk_core_topology_golden>"
         "${_terra_sdk_core_golden}")
 
+add_executable(terra_sdk_core_wmts_selection
+    terra_core_wmts_selection.cpp)
+target_link_libraries(terra_sdk_core_wmts_selection PRIVATE Terra::core)
+target_compile_features(terra_sdk_core_wmts_selection PRIVATE cxx_std_14)
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(terra_sdk_core_wmts_selection PRIVATE -Wall -Wextra)
+endif()
+add_test(NAME terra_sdk_core_wmts_selection
+    COMMAND "$<TARGET_FILE:terra_sdk_core_wmts_selection>")
+
 set(_terra_sdk_dependency_fixture_dir
     "${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
 add_test(NAME terra_sdk_core_dependency_guard_include
@@ -55,4 +65,5 @@ set_tests_properties(terra_sdk_core_dependency_guard_link PROPERTIES
 add_custom_target(terra_sdk_core_tests
     DEPENDS
         terra_sdk_core_topology_golden
-        terra_sdk_core_transform_golden)
+        terra_sdk_core_transform_golden
+        terra_sdk_core_wmts_selection)

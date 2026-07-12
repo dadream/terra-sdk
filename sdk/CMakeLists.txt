@@ -1,9 +1,11 @@
 add_library(terra_core STATIC
     src/core/coordinate_transform.cpp
     src/core/grid.cpp
+    src/core/wmts.cpp
     include/terra/core/coordinate_transform.hpp
     include/terra/core/grid.hpp
-    include/terra/core/types.hpp)
+    include/terra/core/types.hpp
+    include/terra/core/wmts.hpp)
 add_library(Terra::core ALIAS terra_core)
 
 set_target_properties(terra_core PROPERTIES
