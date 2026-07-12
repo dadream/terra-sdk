@@ -45,7 +45,9 @@ endif()
 
 add_library(terra_frame STATIC
     src/frame/camera.cpp
-    include/terra/frame/camera.hpp)
+    src/frame/lod.cpp
+    include/terra/frame/camera.hpp
+    include/terra/frame/lod.hpp)
 add_library(Terra::frame ALIAS terra_frame)
 
 set_target_properties(terra_frame PROPERTIES

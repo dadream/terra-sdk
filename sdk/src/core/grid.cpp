@@ -1,5 +1,8 @@
 #include <terra/core/grid.hpp>
 
+#include <limits>
+#include <stdexcept>
+
 namespace terra {
 namespace core {
 namespace {
@@ -22,6 +25,26 @@ grid_point midpoint(const grid_point& left, const grid_point& right) {
   return {{midpoint_component(left[0], right[0]),
            midpoint_component(left[1], right[1]),
            midpoint_component(left[2], right[2])}};
+}
+
+grid_value checked_grid_value(std::int64_t value) {
+  if (value < std::numeric_limits<grid_value>::min() ||
+      value > std::numeric_limits<grid_value>::max()) {
+    throw std::overflow_error("grid diamond child coordinate overflow");
+  }
+  return static_cast<grid_value>(value);
+}
+
+grid_point add(const grid_point& left, const grid_point& right) {
+  return {{checked_grid_value(static_cast<std::int64_t>(left[0]) + right[0]),
+           checked_grid_value(static_cast<std::int64_t>(left[1]) + right[1]),
+           checked_grid_value(static_cast<std::int64_t>(left[2]) + right[2])}};
+}
+
+grid_point subtract(const grid_point& left, const grid_point& right) {
+  return {{checked_grid_value(static_cast<std::int64_t>(left[0]) - right[0]),
+           checked_grid_value(static_cast<std::int64_t>(left[1]) - right[1]),
+           checked_grid_value(static_cast<std::int64_t>(left[2]) - right[2])}};
 }
 
 grid_point canonical_point(std::size_t index) {
@@ -81,6 +104,9 @@ grid_point grid_diamond::parent_id(std::size_t index) const {
 
 grid_point grid_diamond::child_id(std::size_t parent_index,
                                   std::size_t child_index) const {
+  if (parent_index > 1U || child_index > 1U) {
+    throw std::out_of_range("grid diamond child index must be zero or one");
+  }
   const std::size_t corner_index = 2 * parent_index + child_index;
   const grid_point invalid = invalid_grid_point();
   if (corners_.at(corner_index) == invalid ||
@@ -89,6 +115,57 @@ grid_point grid_diamond::child_id(std::size_t parent_index,
   }
   return midpoint(corners_[corner_index],
                   corners_[(corner_index + 1) % 4]);
+}
+
+grid_diamond grid_diamond::cylindrical_child_diamond(
+    std::size_t parent_index, std::size_t child_index) const {
+  const grid_point center = id();
+  const grid_point child_center = child_id(parent_index, child_index);
+  const grid_point other_corner =
+      add(child_center, subtract(child_center, center));
+
+  grid_diamond child;
+  if (parent_index == 0U && child_index == 0U) {
+    child = grid_diamond(corners_[1], center, corners_[0], other_corner);
+  } else if (parent_index == 0U && child_index == 1U) {
+    child = grid_diamond(corners_[1], other_corner, corners_[2], center);
+  } else if (parent_index == 1U && child_index == 0U) {
+    child = grid_diamond(corners_[3], center, corners_[2], other_corner);
+  } else {
+    child = grid_diamond(corners_[3], other_corner, corners_[0], center);
+  }
+
+  const grid_value minimum = grid_coordinate_min / 2;
+  const grid_value maximum = grid_coordinate_max / 2;
+  std::array<grid_point, 2> external{{child.corner(1), child.corner(3)}};
+  bool changed = false;
+  for (grid_point& point : external) {
+    for (std::size_t axis = 0U; axis < 3U; axis += 2U) {
+      grid_value delta = 0;
+      if (point[axis] < minimum) {
+        delta = minimum - point[axis];
+        point[axis] = minimum;
+      } else if (point[axis] > maximum) {
+        delta = point[axis] - maximum;
+        point[axis] = maximum;
+      }
+      if (delta == 0) {
+        continue;
+      }
+      const std::size_t other_axis = (axis + 2U) % 4U;
+      if (point[other_axis] == maximum) {
+        point[other_axis] -= delta;
+      } else if (point[other_axis] == minimum) {
+        point[other_axis] += delta;
+      }
+      changed = true;
+      break;
+    }
+  }
+  return changed
+             ? grid_diamond(child.corner(0), external[0], child.corner(2),
+                            external[1])
+             : child;
 }
 
 grid_diamond planar_root() {

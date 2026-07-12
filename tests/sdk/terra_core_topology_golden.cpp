@@ -86,6 +86,16 @@ int main(int argc, char** argv) {
     }
     check_diamond(golden, "planar.topology.root", terra::core::planar_root());
 
+    bool invalid_child_rejected = false;
+    try {
+      static_cast<void>(roots[0].child_id(0U, 2U));
+    } catch (const std::out_of_range&) {
+      invalid_child_rejected = true;
+    }
+    if (!invalid_child_rejected) {
+      throw std::runtime_error("invalid grid child index was accepted");
+    }
+
     std::cout << "Terra::core root topology matches the M2 golden.\n";
     return 0;
   } catch (const std::exception& error) {

@@ -69,6 +69,9 @@ The current additive extraction provides:
   global-geodetic WMTS selection matching the M2 contracts;
 - CBDAM height-record framing plus a decode-only, bounds-checked range/quadtree
   codec matching the real `64x64` M2 globe patch golden;
+- deterministic cylindrical child wrapping, shared-fragment refinement,
+  oriented bounds, Morton ordering, and LOD cuts matching all 412 M2 LOD
+  properties for the 8/28/62-leaf thresholds;
 - explicit status results for malformed framing, exhausted range streams,
   unsupported shapes, and resource limits;
 - source-include and target-link dependency closure checks;
@@ -77,8 +80,7 @@ The current additive extraction provides:
 - an installed-consumer build/run test and a warning-free focused gate.
 
 Viewer and nav3d remain linked to their original CBDAM targets. Remaining M3
-work includes metadata parsing, deterministic LOD extraction, and
-backend-neutral frame packets.
+work includes metadata parsing and backend-neutral frame packets.
 
 ## Verification Evidence
 

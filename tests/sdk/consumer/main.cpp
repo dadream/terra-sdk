@@ -3,6 +3,7 @@
 #include <terra/core/wmts.hpp>
 #include <terra/codec/cbdam_height.hpp>
 #include <terra/frame/camera.hpp>
+#include <terra/frame/lod.hpp>
 
 #include <cmath>
 
@@ -33,8 +34,14 @@ int main() {
   const bool codec_matches =
       terra::codec::decode_cbdam_height_record(nullptr, 0U, patch_record) ==
       terra::codec::decode_status::invalid_argument;
+  const terra::frame::lod_cut invalid_lod =
+      terra::frame::select_procedural_cylindrical_lod(
+          0.0, 64U, 0.01F, camera.snapshot());
+  const bool lod_matches =
+      !invalid_lod.complete && invalid_lod.patches.empty();
   return transform_matches && topology_matches &&
-                 texture_selection_matches && camera_matches && codec_matches
+                 texture_selection_matches && camera_matches && codec_matches &&
+                 lod_matches
              ? 0
              : 1;
 }

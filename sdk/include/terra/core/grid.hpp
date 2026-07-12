@@ -28,6 +28,8 @@ class grid_diamond {
   grid_point parent_id(std::size_t index) const;
   grid_point child_id(std::size_t parent_index,
                       std::size_t child_index) const;
+  grid_diamond cylindrical_child_diamond(std::size_t parent_index,
+                                         std::size_t child_index) const;
 
  private:
   std::array<grid_point, 4> corners_;
