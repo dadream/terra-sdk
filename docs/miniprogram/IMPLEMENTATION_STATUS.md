@@ -59,6 +59,20 @@ Native characterization coverage now includes:
 M2 characterization is complete. M3 native SDK extraction must match these
 fixtures; native-versus-Wasm parity is added in M5.
 
+## M3: In Progress
+
+The first additive extraction slice provides:
+
+- a C++14-only `Terra::core` target with standard-library public types;
+- planar and cylindrical coordinate transforms matching the M2 golden;
+- source-include and target-link dependency closure checks;
+- install/export support through `find_package(TerraSdk)` and `Terra::core`;
+- an installed-consumer build/run test and a warning-free focused gate.
+
+Viewer and nav3d remain linked to their original CBDAM targets. Remaining M3
+work includes metadata parsing, topology, camera/culling, LOD, texture
+selection, patch decoding, and the `Terra::codec` and `Terra::frame` targets.
+
 ## Verification Evidence
 
 The implementation worktree passed:
@@ -66,6 +80,7 @@ The implementation worktree passed:
 ```bash
 bash scripts/verify_miniprogram_foundation.sh
 bash scripts/verify_miniprogram_native_golden.sh
+bash scripts/verify_miniprogram_sdk.sh
 bash scripts/verify_baseline.sh
 bash scripts/verify_globe.sh
 ```

@@ -8,6 +8,7 @@ EXECUTED_STEPS=()
 RUN_LAYOUT_CHECK=${RUN_LAYOUT_CHECK:-1}
 RUN_BUILD=${RUN_BUILD:-1}
 RUN_MINIPROGRAM_NATIVE_GOLDEN=${RUN_MINIPROGRAM_NATIVE_GOLDEN:-1}
+RUN_MINIPROGRAM_SDK=${RUN_MINIPROGRAM_SDK:-1}
 RUN_ARTIFACT_CHECK=${RUN_ARTIFACT_CHECK:-1}
 RUN_INSTALL_CHECK=${RUN_INSTALL_CHECK:-1}
 RUN_SERVICE_SMOKE=${RUN_SERVICE_SMOKE:-1}
@@ -65,6 +66,9 @@ if should_run "${RUN_BUILD}"; then
 fi
 if should_run "${RUN_MINIPROGRAM_NATIVE_GOLDEN}"; then
   run_step bash scripts/verify_miniprogram_native_golden.sh
+fi
+if should_run "${RUN_MINIPROGRAM_SDK}"; then
+  run_step bash scripts/verify_miniprogram_sdk.sh
 fi
 if should_run "${RUN_ARTIFACT_CHECK}"; then
   run_step bash scripts/check_cmake_artifacts.sh

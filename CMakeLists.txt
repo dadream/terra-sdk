@@ -37,6 +37,7 @@ add_library(Terra::sl ALIAS sl)
 
 include(Dependencies)
 include(TargetHelpers)
+add_subdirectory(sdk)
 include(RatmanBaseTargets)
 include(RatmanCoreTargets)
 include(RatmanAppTargets)
@@ -57,6 +58,8 @@ message(STATUS "spacelib is configured as in-tree target Terra::sl")
 
 set(_terra_sdk_cmake_smoke_dependencies)
 foreach(_terra_sdk_smoke_target
+        terra_core
+        terra_sdk_core_tests
         sl
         vic_base_math
         vic_base_xml
