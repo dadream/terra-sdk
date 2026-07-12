@@ -23,7 +23,28 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(terra_core PRIVATE -Wall -Wextra)
 endif()
 
-install(TARGETS terra_core
+add_library(terra_frame STATIC
+    src/frame/camera.cpp
+    include/terra/frame/camera.hpp)
+add_library(Terra::frame ALIAS terra_frame)
+
+set_target_properties(terra_frame PROPERTIES
+    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
+    EXPORT_NAME frame
+    OUTPUT_NAME terra_frame)
+
+target_compile_features(terra_frame PUBLIC cxx_std_14)
+target_include_directories(terra_frame
+    PUBLIC
+        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+        "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>")
+target_link_libraries(terra_frame PUBLIC Terra::core)
+
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(terra_frame PRIVATE -Wall -Wextra)
+endif()
+
+install(TARGETS terra_core terra_frame
     EXPORT TerraSdkTargets
     ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
     COMPONENT TerraSdk)
@@ -54,6 +75,9 @@ install(FILES
 
 terra_sdk_record_artifact(lib
     "${CMAKE_STATIC_LIBRARY_PREFIX}terra_core${CMAKE_STATIC_LIBRARY_SUFFIX}"
+    file)
+terra_sdk_record_artifact(lib
+    "${CMAKE_STATIC_LIBRARY_PREFIX}terra_frame${CMAKE_STATIC_LIBRARY_SUFFIX}"
     file)
 
 if(BUILD_TESTING)

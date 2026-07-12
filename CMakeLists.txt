@@ -59,7 +59,9 @@ message(STATUS "spacelib is configured as in-tree target Terra::sl")
 set(_terra_sdk_cmake_smoke_dependencies)
 foreach(_terra_sdk_smoke_target
         terra_core
+        terra_frame
         terra_sdk_core_tests
+        terra_sdk_frame_tests
         sl
         vic_base_math
         vic_base_xml

@@ -1,6 +1,7 @@
 #include <terra/core/coordinate_transform.hpp>
 #include <terra/core/grid.hpp>
 #include <terra/core/wmts.hpp>
+#include <terra/frame/camera.hpp>
 
 #include <cmath>
 
@@ -22,8 +23,13 @@ int main() {
       256);
   const bool texture_selection_matches =
       west.is_valid() && west.matrix == 1 && west.column == 0;
+  const float y_fov = static_cast<float>(30.0 * (3.14 / 180.0));
+  const terra::frame::globe_camera camera(
+      static_cast<float>(6378000.0), 1280, 720, y_fov);
+  const bool camera_matches =
+      camera.is_valid() && camera.snapshot().position[2] > 6378000.0;
   return transform_matches && topology_matches &&
-                 texture_selection_matches
+                 texture_selection_matches && camera_matches
              ? 0
              : 1;
 }
