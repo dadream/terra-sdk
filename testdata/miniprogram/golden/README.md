@@ -11,7 +11,10 @@ extraction. They are characterization evidence, not a new public data format.
   IDs, corners, first child patch IDs, and the viewer-equivalent globe camera
   sequence. Camera records include projection/view/PV matrices, clip planes,
   and fixed bounding-volume visibility results for initial, zoom, tilt, yaw,
-  and reset states.
+  and reset states. The same report freezes three converged procedural
+  zero-residual LOD cuts with 8, 28, and 62 leaf patch IDs. These cuts execute
+  current root geometry, bounding-volume, priority heap, `extract_cut`, refine,
+  and coarsen code without repository timing or network data.
 - `globe_patch_record.bin` is the 48-byte record for detail key
   `(-134217728, 134217728, 134217728)` extracted from the reviewed globe
   repository. It contains a 44-byte first patch and no second fragment.

@@ -34,18 +34,21 @@ Still required before M1 can be marked complete:
 - configured request-domain ArrayBuffer result;
 - reviewed reference-device frame and memory thresholds.
 
-## M2: In Progress
+## M2: Complete
 
 Native characterization coverage now includes:
 
 - checked-in globe and planar metadata matching the desktop cylindrical and
   1k reference datasets;
-- a 379-line golden report for planar/cylindrical metadata, coordinate
+- a 791-line golden report for planar/cylindrical metadata, coordinate
   transforms, canonical grid points, root topology, first child patch IDs, and
   the viewer-equivalent globe camera action sequence;
 - exact camera projection/view/PV matrices, clip planes, camera positions, and
   fixed bounding-volume visibility results for initial, zoom, 45-degree tilt,
   30-degree yaw, and reset states;
+- three deterministic, converged procedural LOD cuts containing 8, 28, and 62
+  leaf patch IDs across levels 0 through 4, using the current root geometry,
+  bounding-volume, heap priority, refine/coarsen, and `extract_cut` paths;
 - a checked-in real globe detail record plus golden framing, `64x64` residual
   decode statistics, sample values, and raw/decoded hashes;
 - global-geodetic WMTS level, row, column, matrix-offset, and URL mapping
@@ -53,8 +56,8 @@ Native characterization coverage now includes:
 - dedicated CTests and focused Docker verification script;
 - default integration into the complete baseline gate.
 
-Deterministic deeper LOD cuts and native-versus-Wasm parity remain for
-subsequent M2/M3 slices.
+M2 characterization is complete. M3 native SDK extraction must match these
+fixtures; native-versus-Wasm parity is added in M5.
 
 ## Verification Evidence
 
@@ -68,6 +71,6 @@ bash scripts/verify_globe.sh
 ```
 
 The complete CMake build contained no `warning:` matches. The 1k baseline,
-viewer globe fixed views, and nav3d globe capture passed. In the latest globe
-run, viewer capture mean differences ranged from 0.0 to approximately 0.7261
-within the 2.0 limit; the nav3d globe difference was 0.0.
+viewer globe fixed views, and nav3d globe capture passed. All viewer globe
+captures remained within the 2.0 mean-difference limit; the nav3d globe
+difference was 0.0.

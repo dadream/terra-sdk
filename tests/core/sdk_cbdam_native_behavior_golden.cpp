@@ -240,6 +240,142 @@ void append_camera_behavior(std::ostringstream& output, double radius) {
   append_camera_state(output, "reset", fixture);
 }
 
+class procedural_lod_graph : public cbdam::grid_diamond_graph_incore {
+ public:
+  void initialize(const cbdam::repository_parameters& parameters,
+                  const projective_map_t& projection,
+                  const rigid_body_map_t& view) {
+    clear();
+    height_repository_parameters_ = &parameters;
+    delta_height_codec_.init(height_patch_dim(), height_scale_factor(),
+                             uvh_xyz_transform());
+    procedural_height_.resize(
+        sl::index<2>(height_patch_dim(), height_patch_dim()));
+    for (std::size_t row = 0; row < height_patch_dim(); ++row) {
+      for (std::size_t column = 0; column < height_patch_dim(); ++column) {
+        procedural_height_(row, column) = 0;
+      }
+    }
+
+    // Root samples include the boundary row and column; residual patches do not.
+    array2_height_t root_height(height_patch_dim() + 1,
+                                height_patch_dim() + 1);
+    for (std::size_t row = 0; row <= height_patch_dim(); ++row) {
+      for (std::size_t column = 0; column <= height_patch_dim(); ++column) {
+        root_height(row, column) = 0;
+      }
+    }
+
+    for (int root_index = 0; root_index < 8; ++root_index) {
+      const grid_diamond_t root =
+          grid_diamond_t::cylindrical_canonical_root(root_index);
+      build_canonical_root(root, &root_height);
+      grid_diamond_map_iterator_t it =
+          diamond_map_by_level_[0]->find(root);
+      if (it != diamond_map_by_level_[0]->end()) {
+        it->second.set_procedural(true);
+      }
+    }
+
+    camera_pv_ = projection * view;
+    sl::quaternion<double> rotation;
+    cbdam::vector3d_t position;
+    (~view).factorize_to(rotation, position);
+    view_point_ = cbdam::point3d_t(position[0], position[1], position[2]);
+    data_missing_fraction_ = 1.0;
+    previous_threshold_ = -1.0f;
+    is_open_ = true;
+    set_decoded_diamond_budget(1024);
+    init_heaps();
+  }
+
+  bool converge(float threshold, const projective_map_t& projection,
+                const rigid_body_map_t& view) {
+    for (std::size_t pass = 0; pass < 256; ++pass) {
+      int updates = 0;
+      extract_cut(threshold, projection, view, updates);
+      if (updates == 0 && data_missing_fraction() == 0.0) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  cbdam::priority_diamond priority(
+      std::size_t level,
+      const grid_diamond_map_const_iterator_t& iterator) const {
+    return get_priority_diamond(level, iterator);
+  }
+};
+
+bool append_lod_behavior(std::ostringstream& output,
+                         const cbdam::repository_parameters& parameters,
+                         double radius, std::string& error) {
+  camera_fixture camera_state(radius);
+  const float thresholds[] = {0.010000f, 0.005000f, 0.002500f};
+  const std::size_t threshold_count =
+      sizeof(thresholds) / sizeof(thresholds[0]);
+
+  output << "lod.mode=procedural_zero_residual\n";
+  output << "lod.threshold_count=" << threshold_count << "\n";
+  for (std::size_t threshold_index = 0;
+       threshold_index < threshold_count; ++threshold_index) {
+    procedural_lod_graph graph;
+    graph.initialize(parameters, camera_state.camera.projection(),
+                     camera_state.camera.view());
+    if (!graph.converge(thresholds[threshold_index],
+                        camera_state.camera.projection(),
+                        camera_state.camera.view())) {
+      error = "procedural LOD cut did not converge";
+      return false;
+    }
+
+    const std::string prefix =
+        "lod.threshold." + std::to_string(threshold_index);
+    output << prefix << ".value="
+           << format_double(thresholds[threshold_index]) << "\n";
+    output << prefix << ".graph_level_count=" << graph.level_count() << "\n";
+
+    std::size_t cut_count = 0;
+    for (std::size_t level = 0; level < graph.level_count(); ++level) {
+      std::size_t level_cut_count = 0;
+      for (procedural_lod_graph::grid_diamond_map_const_iterator_t it =
+               graph.level_begin(level);
+           it != graph.level_end(level); ++it) {
+        if (it->second.is_leaf()) {
+          ++level_cut_count;
+        }
+      }
+      cut_count += level_cut_count;
+      output << prefix << ".level." << level
+             << ".leaf_count=" << level_cut_count << "\n";
+    }
+    output << prefix << ".cut_count=" << cut_count << "\n";
+
+    std::size_t patch_index = 0;
+    for (std::size_t level = 0; level < graph.level_count(); ++level) {
+      for (procedural_lod_graph::grid_diamond_map_const_iterator_t it =
+               graph.level_begin(level);
+           it != graph.level_end(level); ++it) {
+        if (!it->second.is_leaf()) {
+          continue;
+        }
+        const cbdam::priority_diamond priority = graph.priority(level, it);
+        const std::string patch_prefix =
+            prefix + ".patch." + std::to_string(patch_index);
+        output << patch_prefix << ".level=" << level << "\n";
+        append_grid_point(output, patch_prefix + ".id", it->first.id());
+        output << patch_prefix << ".visible="
+               << (priority.visible() ? "true" : "false") << "\n";
+        output << patch_prefix << ".priority="
+               << format_double(priority.priority()) << "\n";
+        ++patch_index;
+      }
+    }
+  }
+  return true;
+}
+
 bool append_planar_behavior(const std::string& metadata_path,
                             std::ostringstream& output,
                             std::string& error) {
@@ -428,6 +564,9 @@ bool build_report(const std::string& globe_metadata_path,
   }
 
   append_camera_behavior(output, transform->radius());
+  if (!append_lod_behavior(output, parameters, transform->radius(), error)) {
+    return false;
+  }
   if (!append_planar_behavior(planar_metadata_path, output, error)) {
     return false;
   }
@@ -502,7 +641,7 @@ int main(int argc, char** argv) {
 
   std::cout
       << "SDK golden passed: planar/cylindrical metadata, coordinates, "
-         "topology, camera, and frustum behavior"
+         "topology, camera, frustum, and LOD behavior"
       << std::endl;
   return 0;
 }
