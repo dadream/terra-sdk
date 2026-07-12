@@ -16,6 +16,7 @@ lib	libvic_geo_builder.a	file
 lib	libvic_cbdam_geo.a	file
 lib	libvic_cbdam_base.a	file
 lib	libvic_ratman.a	file
+lib	libterra_codec.a	file
 lib	libterra_core.a	file
 lib	libterra_frame.a	file
 bin	vic_geo_raster_quadtree_builder	executable

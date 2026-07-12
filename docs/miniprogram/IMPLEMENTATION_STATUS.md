@@ -63,16 +63,22 @@ fixtures; native-versus-Wasm parity is added in M5.
 
 The current additive extraction provides:
 
-- a C++14-only `Terra::core` target with standard-library public types;
+- C++14-only `Terra::core`, `Terra::codec`, and `Terra::frame` targets
+  with standard-library public types;
 - planar/cylindrical transforms, root topology, camera/frustum culling, and
   global-geodetic WMTS selection matching the M2 contracts;
+- CBDAM height-record framing plus a decode-only, bounds-checked range/quadtree
+  codec matching the real `64x64` M2 globe patch golden;
+- explicit status results for malformed framing, exhausted range streams,
+  unsupported shapes, and resource limits;
 - source-include and target-link dependency closure checks;
-- install/export support through `find_package(TerraSdk)` and `Terra::core`;
+- install/export support through `find_package(TerraSdk)` for all three
+  targets;
 - an installed-consumer build/run test and a warning-free focused gate.
 
 Viewer and nav3d remain linked to their original CBDAM targets. Remaining M3
-work includes metadata parsing, LOD, patch decoding, frame packets, and the
-`Terra::codec` target.
+work includes metadata parsing, deterministic LOD extraction, and
+backend-neutral frame packets.
 
 ## Verification Evidence
 

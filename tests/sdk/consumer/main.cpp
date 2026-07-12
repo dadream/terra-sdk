@@ -1,6 +1,7 @@
 #include <terra/core/coordinate_transform.hpp>
 #include <terra/core/grid.hpp>
 #include <terra/core/wmts.hpp>
+#include <terra/codec/cbdam_height.hpp>
 #include <terra/frame/camera.hpp>
 
 #include <cmath>
@@ -28,8 +29,12 @@ int main() {
       static_cast<float>(6378000.0), 1280, 720, y_fov);
   const bool camera_matches =
       camera.is_valid() && camera.snapshot().position[2] > 6378000.0;
+  terra::codec::height_patch_record patch_record;
+  const bool codec_matches =
+      terra::codec::decode_cbdam_height_record(nullptr, 0U, patch_record) ==
+      terra::codec::decode_status::invalid_argument;
   return transform_matches && topology_matches &&
-                 texture_selection_matches && camera_matches
+                 texture_selection_matches && camera_matches && codec_matches
              ? 0
              : 1;
 }

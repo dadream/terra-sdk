@@ -23,6 +23,26 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(terra_core PRIVATE -Wall -Wextra)
 endif()
 
+add_library(terra_codec STATIC
+    src/codec/cbdam_height.cpp
+    include/terra/codec/cbdam_height.hpp)
+add_library(Terra::codec ALIAS terra_codec)
+
+set_target_properties(terra_codec PROPERTIES
+    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
+    EXPORT_NAME codec
+    OUTPUT_NAME terra_codec)
+
+target_compile_features(terra_codec PUBLIC cxx_std_14)
+target_include_directories(terra_codec
+    PUBLIC
+        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+        "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>")
+
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(terra_codec PRIVATE -Wall -Wextra)
+endif()
+
 add_library(terra_frame STATIC
     src/frame/camera.cpp
     include/terra/frame/camera.hpp)
@@ -44,7 +64,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(terra_frame PRIVATE -Wall -Wextra)
 endif()
 
-install(TARGETS terra_core terra_frame
+install(TARGETS terra_core terra_codec terra_frame
     EXPORT TerraSdkTargets
     ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
     COMPONENT TerraSdk)
@@ -75,6 +95,9 @@ install(FILES
 
 terra_sdk_record_artifact(lib
     "${CMAKE_STATIC_LIBRARY_PREFIX}terra_core${CMAKE_STATIC_LIBRARY_SUFFIX}"
+    file)
+terra_sdk_record_artifact(lib
+    "${CMAKE_STATIC_LIBRARY_PREFIX}terra_codec${CMAKE_STATIC_LIBRARY_SUFFIX}"
     file)
 terra_sdk_record_artifact(lib
     "${CMAKE_STATIC_LIBRARY_PREFIX}terra_frame${CMAKE_STATIC_LIBRARY_SUFFIX}"

@@ -27,11 +27,11 @@ docker run --rm \
       -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_INSTALL_PREFIX=/wksp/output
     cmake --build /wksp/build/cmake \
-      --target terra_core terra_frame terra_sdk_core_tests \
-        terra_sdk_frame_tests \
+      --target terra_core terra_codec terra_frame terra_sdk_core_tests \
+        terra_sdk_codec_tests terra_sdk_frame_tests \
       --parallel "'"${BUILD_JOBS}"'"
     cd /wksp/build/cmake
-    ctest --output-on-failure -R "^terra_sdk_(core|frame)_"
+    ctest --output-on-failure -R "^terra_sdk_(core|codec|frame)_"
 
     cmake -E remove_directory /wksp/build/miniprogram_sdk_install
     cmake -E remove_directory /wksp/build/miniprogram_sdk_consumer

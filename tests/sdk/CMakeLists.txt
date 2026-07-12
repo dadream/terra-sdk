@@ -1,5 +1,9 @@
 set(_terra_sdk_core_golden
     "${CMAKE_SOURCE_DIR}/testdata/miniprogram/golden/native_behavior_v1.txt")
+set(_terra_sdk_patch_record
+    "${CMAKE_SOURCE_DIR}/testdata/miniprogram/golden/globe_patch_record.bin")
+set(_terra_sdk_patch_golden
+    "${CMAKE_SOURCE_DIR}/testdata/miniprogram/golden/patch_decode_v1.txt")
 
 add_executable(terra_sdk_core_transform_golden
     terra_core_coordinate_transform_golden.cpp)
@@ -12,7 +16,7 @@ endif()
 set(_terra_sdk_core_link_manifest
     "${CMAKE_CURRENT_BINARY_DIR}/terra_core_links.txt")
 file(GENERATE OUTPUT "${_terra_sdk_core_link_manifest}"
-    CONTENT "core.private=$<TARGET_PROPERTY:terra_core,LINK_LIBRARIES>\ncore.interface=$<TARGET_PROPERTY:terra_core,INTERFACE_LINK_LIBRARIES>\nframe.private=$<TARGET_PROPERTY:terra_frame,LINK_LIBRARIES>\nframe.interface=$<TARGET_PROPERTY:terra_frame,INTERFACE_LINK_LIBRARIES>\n")
+    CONTENT "core.private=$<TARGET_PROPERTY:terra_core,LINK_LIBRARIES>\ncore.interface=$<TARGET_PROPERTY:terra_core,INTERFACE_LINK_LIBRARIES>\ncodec.private=$<TARGET_PROPERTY:terra_codec,LINK_LIBRARIES>\ncodec.interface=$<TARGET_PROPERTY:terra_codec,INTERFACE_LINK_LIBRARIES>\nframe.private=$<TARGET_PROPERTY:terra_frame,LINK_LIBRARIES>\nframe.interface=$<TARGET_PROPERTY:terra_frame,INTERFACE_LINK_LIBRARIES>\n")
 
 add_test(NAME terra_sdk_core_transform_golden
     COMMAND "$<TARGET_FILE:terra_sdk_core_transform_golden>"
@@ -43,6 +47,17 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 add_test(NAME terra_sdk_core_wmts_selection
     COMMAND "$<TARGET_FILE:terra_sdk_core_wmts_selection>")
+
+add_executable(terra_sdk_codec_patch_golden
+    terra_codec_patch_golden.cpp)
+target_link_libraries(terra_sdk_codec_patch_golden PRIVATE Terra::codec)
+target_compile_features(terra_sdk_codec_patch_golden PRIVATE cxx_std_14)
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(terra_sdk_codec_patch_golden PRIVATE -Wall -Wextra)
+endif()
+add_test(NAME terra_sdk_codec_patch_golden
+    COMMAND "$<TARGET_FILE:terra_sdk_codec_patch_golden>"
+        "${_terra_sdk_patch_record}" "${_terra_sdk_patch_golden}")
 
 add_executable(terra_sdk_frame_camera_golden
     terra_frame_camera_golden.cpp)
@@ -78,5 +93,7 @@ add_custom_target(terra_sdk_core_tests
         terra_sdk_core_topology_golden
         terra_sdk_core_transform_golden
         terra_sdk_core_wmts_selection)
+add_custom_target(terra_sdk_codec_tests
+    DEPENDS terra_sdk_codec_patch_golden)
 add_custom_target(terra_sdk_frame_tests
     DEPENDS terra_sdk_frame_camera_golden)
