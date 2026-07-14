@@ -23,4 +23,5 @@ bin	vic_geo_raster_quadtree_builder	executable
 bin	vic_cbdam_mpi_builder	executable
 bin	vic_cbdam_viewer	executable
 bin	vic_ratman_nav3d	executable
+bin	terra_terrain_service	executable
 module	mod_victms.so	file

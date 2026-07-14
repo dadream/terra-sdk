@@ -12,6 +12,7 @@ RUN_MINIPROGRAM_SDK=${RUN_MINIPROGRAM_SDK:-1}
 RUN_ARTIFACT_CHECK=${RUN_ARTIFACT_CHECK:-1}
 RUN_INSTALL_CHECK=${RUN_INSTALL_CHECK:-1}
 RUN_SERVICE_SMOKE=${RUN_SERVICE_SMOKE:-1}
+RUN_TERRAIN_SERVICE_SMOKE=${RUN_TERRAIN_SERVICE_SMOKE:-1}
 RUN_BUILDER_CLI_SMOKE=${RUN_BUILDER_CLI_SMOKE:-1}
 RUN_BUILDER_1K_REBUILD=${RUN_BUILDER_1K_REBUILD:-1}
 RUN_BUILDER_VIEWER_SMOKE=${RUN_BUILDER_VIEWER_SMOKE:-1}
@@ -78,6 +79,9 @@ if should_run "${RUN_INSTALL_CHECK}"; then
 fi
 if should_run "${RUN_SERVICE_SMOKE}"; then
   run_step bash scripts/verify_service_victms_cmake_smoke.sh
+fi
+if should_run "${RUN_TERRAIN_SERVICE_SMOKE}"; then
+  run_step bash scripts/verify_terrain_service.sh
 fi
 if should_run "${RUN_BUILDER_CLI_SMOKE}"; then
   run_step bash scripts/verify_builder_cli_smoke.sh

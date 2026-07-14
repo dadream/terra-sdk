@@ -91,6 +91,40 @@ decisions, fetched/decoded resources, and the future Mini Program renderer.
 Viewer and nav3d remain linked to their original CBDAM targets. M3 is complete;
 the next implementation milestone is the versioned terrain delivery service.
 
+## M4: Complete
+
+The versioned terrain delivery milestone provides:
+
+- a read-only `terra_terrain_service` adapter over existing
+  `terrain.xml/.root/.data` repositories with no format conversion;
+- v1 manifest, root, and detail endpoints using standard JSON and exact
+  `application/octet-stream` repository records;
+- explicit `400`, `404`, `405`, `500`, and `503` contracts without
+  leaking storage paths;
+- content length, format version, FNV-1a integrity, ETag/304, HEAD, and
+  immutable patch caching contracts;
+- deterministic C++ tests for current-reader byte parity, malformed and
+  out-of-range keys, missing and cross-repository records, truncation,
+  same-length corruption, unsafe IDs, and conditional requests;
+- real HTTP smoke coverage using curl as a client with no VIC VFS or Berkeley
+  DB dependency;
+- exact service parity for both the checked-in 1k repository and the external
+  805,306,368-byte cylindrical globe detail repository;
+- HTTPS reverse-proxy, immutable dataset ID, Mini Program request-domain,
+  ArrayBuffer validation, runtime dependency, and credential handling
+  documentation.
+
+The 1k root/detail SHA-256 values are
+`e7715fa22c5951e900e72656cf7fa9aaa4612fae3b4427e969ae22626792e799`
+and `840f43eff7d49de194239c9978b0cd0e9ced33f056988a78bb214b7ea7af2512`.
+The globe root/detail values are
+`48a11255aeb26ae5b1894c059c42c0047548386b3981ddd44114a501bc3905df`
+and `8768dee59a22796dffa19f9309c4a742970cc030dea445f064ca21eff531d93f`.
+No `.root` or `.data` file is present in `apps/miniprogram`.
+
+M4 is complete. The next implementation milestone is the WebAssembly SDK and
+native-versus-Wasm parity gate.
+
 ## Verification Evidence
 
 The implementation worktree passed:
@@ -99,11 +133,14 @@ The implementation worktree passed:
 bash scripts/verify_miniprogram_foundation.sh
 bash scripts/verify_miniprogram_native_golden.sh
 bash scripts/verify_miniprogram_sdk.sh
+bash scripts/verify_terrain_service.sh
+bash scripts/verify_terrain_service_globe.sh
 bash scripts/verify_baseline.sh
 bash scripts/verify_globe.sh
 ```
 
-The complete CMake build contained no `warning:` matches. The 1k baseline,
+The complete CMake build contained no `warning:` matches. Terrain service
+HTTP and payload parity gates passed for 1k and globe. The 1k baseline,
 viewer globe fixed views, and nav3d globe capture passed. All viewer globe
 captures remained within the 2.0 mean-difference limit; the nav3d globe
 difference was 0.0.

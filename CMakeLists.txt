@@ -40,6 +40,7 @@ include(TargetHelpers)
 add_subdirectory(sdk)
 include(RatmanBaseTargets)
 include(RatmanCoreTargets)
+add_subdirectory(services/terrain)
 include(RatmanAppTargets)
 include(RatmanServiceTargets)
 include(RatmanSdkSmokeTests)
@@ -84,6 +85,8 @@ foreach(_terra_sdk_smoke_target
         vic_app_cbdam_viewer
         vic_app_ratman_nav3d
         vic_service_mod_victms
+        terra_terrain_service
+        terra_terrain_service_contract
         terra_sdk_sdk_smoke_tests)
     if(TARGET ${_terra_sdk_smoke_target})
         list(APPEND _terra_sdk_cmake_smoke_dependencies ${_terra_sdk_smoke_target})
