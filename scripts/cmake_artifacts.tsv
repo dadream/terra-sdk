@@ -19,6 +19,7 @@ lib	libvic_ratman.a	file
 lib	libterra_codec.a	file
 lib	libterra_core.a	file
 lib	libterra_frame.a	file
+lib	libterra_c_api.a	file
 bin	vic_geo_raster_quadtree_builder	executable
 bin	vic_cbdam_mpi_builder	executable
 bin	vic_cbdam_viewer	executable

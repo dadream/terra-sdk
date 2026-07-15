@@ -1,0 +1,30 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 16,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "wasm-release",
+      "displayName": "Terra SDK Wasm Release",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/../../workspace_old/build/wasm",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_TOOLCHAIN_FILE": "/usr/share/emscripten/cmake/Modules/Platform/Emscripten.cmake",
+        "TERRA_SDK_SOURCE_ROOT": "${sourceDir}/../.."
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "wasm-release",
+      "configurePreset": "wasm-release",
+      "targets": [
+        "terra_sdk_wasm"
+      ]
+    }
+  ]
+}

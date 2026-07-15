@@ -1,5 +1,6 @@
 #include <terra/core/grid.hpp>
 
+#include <cstdlib>
 #include <limits>
 #include <stdexcept>
 
@@ -27,10 +28,26 @@ grid_point midpoint(const grid_point& left, const grid_point& right) {
            midpoint_component(left[2], right[2])}};
 }
 
+[[noreturn]] void grid_overflow() {
+#if defined(TERRA_SDK_NO_EXCEPTIONS)
+  std::abort();
+#else
+  throw std::overflow_error("grid diamond child coordinate overflow");
+#endif
+}
+
+[[noreturn]] void grid_index_error() {
+#if defined(TERRA_SDK_NO_EXCEPTIONS)
+  std::abort();
+#else
+  throw std::out_of_range("grid diamond child index must be zero or one");
+#endif
+}
+
 grid_value checked_grid_value(std::int64_t value) {
   if (value < std::numeric_limits<grid_value>::min() ||
       value > std::numeric_limits<grid_value>::max()) {
-    throw std::overflow_error("grid diamond child coordinate overflow");
+    grid_overflow();
   }
   return static_cast<grid_value>(value);
 }
@@ -105,7 +122,7 @@ grid_point grid_diamond::parent_id(std::size_t index) const {
 grid_point grid_diamond::child_id(std::size_t parent_index,
                                   std::size_t child_index) const {
   if (parent_index > 1U || child_index > 1U) {
-    throw std::out_of_range("grid diamond child index must be zero or one");
+    grid_index_error();
   }
   const std::size_t corner_index = 2 * parent_index + child_index;
   const grid_point invalid = invalid_grid_point();

@@ -16,7 +16,7 @@ endif()
 set(_terra_sdk_core_link_manifest
     "${CMAKE_CURRENT_BINARY_DIR}/terra_core_links.txt")
 file(GENERATE OUTPUT "${_terra_sdk_core_link_manifest}"
-    CONTENT "core.private=$<TARGET_PROPERTY:terra_core,LINK_LIBRARIES>\ncore.interface=$<TARGET_PROPERTY:terra_core,INTERFACE_LINK_LIBRARIES>\ncodec.private=$<TARGET_PROPERTY:terra_codec,LINK_LIBRARIES>\ncodec.interface=$<TARGET_PROPERTY:terra_codec,INTERFACE_LINK_LIBRARIES>\nframe.private=$<TARGET_PROPERTY:terra_frame,LINK_LIBRARIES>\nframe.interface=$<TARGET_PROPERTY:terra_frame,INTERFACE_LINK_LIBRARIES>\n")
+    CONTENT "core.private=$<TARGET_PROPERTY:terra_core,LINK_LIBRARIES>\ncore.interface=$<TARGET_PROPERTY:terra_core,INTERFACE_LINK_LIBRARIES>\ncodec.private=$<TARGET_PROPERTY:terra_codec,LINK_LIBRARIES>\ncodec.interface=$<TARGET_PROPERTY:terra_codec,INTERFACE_LINK_LIBRARIES>\nframe.private=$<TARGET_PROPERTY:terra_frame,LINK_LIBRARIES>\nframe.interface=$<TARGET_PROPERTY:terra_frame,INTERFACE_LINK_LIBRARIES>\nc_api.private=$<TARGET_PROPERTY:terra_c_api,LINK_LIBRARIES>\nc_api.interface=$<TARGET_PROPERTY:terra_c_api,INTERFACE_LINK_LIBRARIES>\n")
 
 add_test(NAME terra_sdk_core_transform_golden
     COMMAND "$<TARGET_FILE:terra_sdk_core_transform_golden>"
@@ -91,6 +91,16 @@ endif()
 add_test(NAME terra_sdk_frame_packet
     COMMAND "$<TARGET_FILE:terra_sdk_frame_packet>")
 
+add_executable(terra_sdk_frame_mesh
+    terra_frame_mesh.cpp)
+target_link_libraries(terra_sdk_frame_mesh PRIVATE Terra::frame)
+target_compile_features(terra_sdk_frame_mesh PRIVATE cxx_std_14)
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(terra_sdk_frame_mesh PRIVATE -Wall -Wextra)
+endif()
+add_test(NAME terra_sdk_frame_mesh
+    COMMAND "$<TARGET_FILE:terra_sdk_frame_mesh>")
+
 add_executable(terra_sdk_frame_lod_golden
     terra_frame_lod_golden.cpp)
 target_link_libraries(terra_sdk_frame_lod_golden PRIVATE Terra::frame)
@@ -101,6 +111,36 @@ endif()
 add_test(NAME terra_sdk_frame_lod_golden
     COMMAND "$<TARGET_FILE:terra_sdk_frame_lod_golden>"
         "${_terra_sdk_core_golden}")
+
+add_executable(terra_sdk_c_api_contract
+    terra_c_api_contract.cpp)
+target_link_libraries(terra_sdk_c_api_contract PRIVATE Terra::c_api)
+target_compile_features(terra_sdk_c_api_contract PRIVATE cxx_std_14)
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(terra_sdk_c_api_contract PRIVATE -Wall -Wextra)
+endif()
+add_test(NAME terra_sdk_c_api_contract
+    COMMAND "$<TARGET_FILE:terra_sdk_c_api_contract>"
+        "${_terra_sdk_patch_record}")
+
+add_executable(terra_sdk_c_api_header terra_c_api_header.c)
+target_link_libraries(terra_sdk_c_api_header PRIVATE Terra::c_api)
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(terra_sdk_c_api_header PRIVATE -Wall -Wextra)
+endif()
+add_test(NAME terra_sdk_c_api_header
+    COMMAND "$<TARGET_FILE:terra_sdk_c_api_header>")
+
+add_executable(terra_sdk_c_api_parity
+    terra_c_api_parity.cpp)
+target_link_libraries(terra_sdk_c_api_parity PRIVATE Terra::c_api)
+target_compile_features(terra_sdk_c_api_parity PRIVATE cxx_std_14)
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(terra_sdk_c_api_parity PRIVATE -Wall -Wextra)
+endif()
+add_test(NAME terra_sdk_c_api_parity
+    COMMAND "$<TARGET_FILE:terra_sdk_c_api_parity>"
+        "${_terra_sdk_patch_record}")
 
 set(_terra_sdk_dependency_fixture_dir
     "${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
@@ -132,4 +172,10 @@ add_custom_target(terra_sdk_frame_tests
     DEPENDS
         terra_sdk_frame_camera_golden
         terra_sdk_frame_lod_golden
+        terra_sdk_frame_mesh
         terra_sdk_frame_packet)
+add_custom_target(terra_sdk_c_api_tests
+    DEPENDS
+        terra_sdk_c_api_contract
+        terra_sdk_c_api_header
+        terra_sdk_c_api_parity)

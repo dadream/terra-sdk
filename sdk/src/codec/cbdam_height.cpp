@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdlib>
 #include <limits>
 #include <new>
 #include <stdexcept>
@@ -330,6 +331,14 @@ void decode_quadtree(integer_decoder& decoder,
   }
 }
 
+[[noreturn]] void height_patch_range_error() {
+#if defined(TERRA_SDK_NO_EXCEPTIONS)
+  std::abort();
+#else
+  throw std::out_of_range("height patch coordinate is outside the patch");
+#endif
+}
+
 }  // namespace
 
 bool height_patch::empty() const {
@@ -339,7 +348,7 @@ bool height_patch::empty() const {
 std::int32_t height_patch::at(std::uint32_t row,
                               std::uint32_t column) const {
   if (row >= rows || column >= columns) {
-    throw std::out_of_range("height patch coordinate is outside the patch");
+    height_patch_range_error();
   }
   return values.at(static_cast<std::size_t>(row) * columns + column);
 }
@@ -358,7 +367,9 @@ decode_status decode_cbdam_height_patch(const std::uint8_t* data,
     return header_status;
   }
 
+#if !defined(TERRA_SDK_NO_EXCEPTIONS)
   try {
+#endif
     output.rows = header.rows;
     output.columns = header.columns;
     output.values.assign(static_cast<std::size_t>(header.rows) *
@@ -382,10 +393,12 @@ decode_status decode_cbdam_height_patch(const std::uint8_t* data,
           std::min<std::int64_t>(std::numeric_limits<std::int32_t>::max(),
                                  dequantized)));
     }
+#if !defined(TERRA_SDK_NO_EXCEPTIONS)
   } catch (const std::bad_alloc&) {
     output = height_patch();
     return decode_status::resource_limit;
   }
+#endif
   return decode_status::ok;
 }
 

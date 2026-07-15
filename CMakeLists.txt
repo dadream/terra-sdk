@@ -61,8 +61,10 @@ set(_terra_sdk_cmake_smoke_dependencies)
 foreach(_terra_sdk_smoke_target
         terra_core
         terra_frame
+        terra_c_api
         terra_sdk_core_tests
         terra_sdk_frame_tests
+        terra_sdk_c_api_tests
         sl
         vic_base_math
         vic_base_xml

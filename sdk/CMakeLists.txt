@@ -49,9 +49,11 @@ add_library(terra_frame STATIC
     src/frame/camera.cpp
     src/frame/frame_packet.cpp
     src/frame/lod.cpp
+    src/frame/mesh.cpp
     include/terra/frame/camera.hpp
     include/terra/frame/frame_packet.hpp
-    include/terra/frame/lod.hpp)
+    include/terra/frame/lod.hpp
+    include/terra/frame/mesh.hpp)
 add_library(Terra::frame ALIAS terra_frame)
 
 set_target_properties(terra_frame PROPERTIES
@@ -70,7 +72,29 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(terra_frame PRIVATE -Wall -Wextra)
 endif()
 
-install(TARGETS terra_core terra_codec terra_frame
+add_library(terra_c_api STATIC
+    src/c_api/terra.cpp
+    include/terra/c_api/terra.h)
+add_library(Terra::c_api ALIAS terra_c_api)
+
+set_target_properties(terra_c_api PROPERTIES
+    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
+    EXPORT_NAME c_api
+    OUTPUT_NAME terra_c_api)
+
+target_compile_features(terra_c_api PUBLIC cxx_std_14)
+target_include_directories(terra_c_api
+    PUBLIC
+        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+        "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>")
+target_link_libraries(terra_c_api
+    PUBLIC Terra::core Terra::codec Terra::frame)
+
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(terra_c_api PRIVATE -Wall -Wextra)
+endif()
+
+install(TARGETS terra_core terra_codec terra_frame terra_c_api
     EXPORT TerraSdkTargets
     ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
     COMPONENT TerraSdk)
@@ -107,6 +131,9 @@ terra_sdk_record_artifact(lib
     file)
 terra_sdk_record_artifact(lib
     "${CMAKE_STATIC_LIBRARY_PREFIX}terra_frame${CMAKE_STATIC_LIBRARY_SUFFIX}"
+    file)
+terra_sdk_record_artifact(lib
+    "${CMAKE_STATIC_LIBRARY_PREFIX}terra_c_api${CMAKE_STATIC_LIBRARY_SUFFIX}"
     file)
 
 if(BUILD_TESTING)

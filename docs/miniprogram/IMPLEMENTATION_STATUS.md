@@ -125,6 +125,39 @@ No `.root` or `.data` file is present in `apps/miniprogram`.
 M4 is complete. The next implementation milestone is the WebAssembly SDK and
 native-versus-Wasm parity gate.
 
+## M5: Complete
+
+The WebAssembly SDK milestone provides:
+
+- a stable, handle-based C ABI with explicit status codes, sized/versioned
+  structures, caller-owned buffers, allocation helpers, and a pure-C consumer
+  test;
+- a CMake/Emscripten build that compiles the platform-neutral SDK directly,
+  uses no browser glue, virtual filesystem, DOM API, pthread, or embedded
+  network stack, and emits a reproducible standalone Wasm module;
+- a small `WXWebAssembly` facade that supplies only the required imports and
+  reacquires typed-array views whenever linear memory grows;
+- bounded Wasm memory with a 16 MiB initial size and 64 MiB maximum, plus an
+  automated growth/view-invalidation contract;
+- deterministic CBDAM triangular-strip indices for a `64x64` patch: 2,145
+  vertices, 4,096 non-degenerate triangles, 24,573 16-bit indices, and FNV-1a
+  hash `2327969341`;
+- byte-for-byte native/Wasm parity for camera state, patch decisions,
+  priorities, request lists, index topology, real globe patch submission, and
+  decoded-value statistics;
+- two-clean-build reproducibility, package size, imports, memory limits,
+  warning, loader, install, and package-manifest checks in one focused gate;
+- packaged headers, facade, manifest, and `terra_sdk.wasm` under
+  `workspace_old/package/miniprogram/` without credentials or desktop-only
+  dependencies.
+
+The verified Wasm module is 51,796 bytes with SHA-256
+`5b96af3fe751a017a712c5ecb40835cd1e3b757eaf993b717646ea32e47d4f8c`.
+Both complete desktop gates pass after the C ABI and no-exception Wasm work,
+and the frozen viewer/nav3d source and direct target declarations are
+unchanged. M5 is complete; the next implementation milestone is the Mini
+Program WebGL globe renderer.
+
 ## Verification Evidence
 
 The implementation worktree passed:
@@ -133,14 +166,16 @@ The implementation worktree passed:
 bash scripts/verify_miniprogram_foundation.sh
 bash scripts/verify_miniprogram_native_golden.sh
 bash scripts/verify_miniprogram_sdk.sh
+bash scripts/verify_miniprogram_wasm.sh
 bash scripts/verify_terrain_service.sh
 bash scripts/verify_terrain_service_globe.sh
 bash scripts/verify_baseline.sh
 bash scripts/verify_globe.sh
 ```
 
-The complete CMake build contained no `warning:` matches. Terrain service
-HTTP and payload parity gates passed for 1k and globe. The 1k baseline,
-viewer globe fixed views, and nav3d globe capture passed. All viewer globe
-captures remained within the 2.0 mean-difference limit; the nav3d globe
-difference was 0.0.
+The complete CMake and Wasm builds contained no `warning:` matches. Native and
+Wasm reports matched byte for byte, two clean Wasm builds were identical, and
+the Mini Program facade passed its memory-growth tests. Terrain service HTTP
+and payload parity gates passed for 1k and globe. The 1k baseline, viewer globe
+fixed views, and nav3d globe capture passed. All viewer globe captures remained
+within the 2.0 mean-difference limit; the nav3d globe difference was 0.0.

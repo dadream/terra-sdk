@@ -4,5 +4,6 @@ project(TerraSdkConsumer LANGUAGES CXX)
 find_package(TerraSdk CONFIG REQUIRED)
 
 add_executable(terra_sdk_consumer main.cpp)
-target_link_libraries(terra_sdk_consumer PRIVATE Terra::core Terra::codec Terra::frame)
+target_link_libraries(terra_sdk_consumer PRIVATE
+    Terra::core Terra::codec Terra::frame Terra::c_api)
 target_compile_features(terra_sdk_consumer PRIVATE cxx_std_14)

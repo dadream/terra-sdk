@@ -1,3 +1,4 @@
+#include <terra/c_api/terra.h>
 #include <terra/core/coordinate_transform.hpp>
 #include <terra/core/grid.hpp>
 #include <terra/core/metadata.hpp>
@@ -6,8 +7,11 @@
 #include <terra/frame/camera.hpp>
 #include <terra/frame/frame_packet.hpp>
 #include <terra/frame/lod.hpp>
+#include <terra/frame/mesh.hpp>
 
 #include <cmath>
+#include <cstdint>
+#include <vector>
 
 int main() {
   const terra::core::coordinate_transform transform =
@@ -57,9 +61,18 @@ int main() {
   const bool packet_matches =
       terra::frame::validate_frame_packet(packet) ==
       terra::frame::frame_packet_status::ok;
+  std::vector<std::uint16_t> indices;
+  const bool mesh_matches =
+      terra::frame::make_triangular_patch_strip_indices(64U, indices) ==
+          terra::frame::mesh_index_status::ok &&
+      indices.size() == 24573U;
+  const bool c_api_matches =
+      terra_abi_version() == TERRA_C_API_VERSION &&
+      terra_sizeof_manifest_v1() == sizeof(terra_manifest_v1);
   return transform_matches && topology_matches && metadata_matches &&
                  texture_selection_matches && camera_matches && codec_matches &&
-                 lod_matches && packet_matches
+                 lod_matches && packet_matches && mesh_matches &&
+                 c_api_matches
              ? 0
              : 1;
 }
