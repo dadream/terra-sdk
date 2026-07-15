@@ -251,6 +251,15 @@ lod_patch priority(std::size_t level, const node& value,
   lod_patch result;
   result.level = level;
   result.id = value.diamond.id();
+  for (std::size_t corner = 0U; corner < result.corners.size(); ++corner) {
+    result.corners[corner] = value.diamond.corner(corner);
+  }
+  for (std::size_t fragment = 0U; fragment < value.has_fragment.size();
+       ++fragment) {
+    if (value.has_fragment[fragment]) {
+      result.fragment_mask |= std::uint8_t(1U) << fragment;
+    }
+  }
   result.visible = is_visible(value.bounds, context.camera.clip_planes);
   if (!result.visible || level >= context.maximum_level) {
     return result;
@@ -410,6 +419,21 @@ lod_cut select_procedural_cylindrical_lod(
       }
       ++result.leaf_count_by_level[level];
       result.patches.push_back(priority(level, entry.second, context));
+    }
+    for (const level_map::value_type& entry : context.levels[level]) {
+      const lod_patch patch = priority(level, entry.second, context);
+      if (level == 0U) {
+        lod_record_request root_request;
+        root_request.kind = lod_record_kind::root;
+        root_request.patch = patch;
+        result.record_requests.push_back(root_request);
+      }
+      if (!entry.second.leaf) {
+        lod_record_request detail_request;
+        detail_request.kind = lod_record_kind::detail;
+        detail_request.patch = patch;
+        result.record_requests.push_back(detail_request);
+      }
     }
   }
   return result;

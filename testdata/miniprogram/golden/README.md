@@ -18,6 +18,13 @@ extraction. They are characterization evidence, not a new public data format.
 - `globe_patch_record.bin` is the 48-byte record for detail key
   `(-134217728, 134217728, 134217728)` extracted from the reviewed globe
   repository. It contains a 44-byte first patch and no second fragment.
+- `globe_root_0_record.bin` and `globe_root_0_detail_record.bin` are
+  root/detail records for `(0, 134217728, 134217728)`;
+  `globe_root_3_record.bin` and `globe_root_3_detail_record.bin` are the
+  peer records for `(-134217728, 134217728, 0)`. Together they reconstruct
+  both fragments of child `(-134217728, 134217728, 134217728)` before its
+  detail record is applied. The hierarchy parity test compares every generated
+  vertex with the legacy lifting implementation.
 - `patch_decode_v1.txt` freezes record framing plus decoded `64x64` residual
   dimensions, statistics, sample values, and raw/decoded FNV-1a hashes.
 - Floating values use classic locale, fixed six-decimal formatting, and

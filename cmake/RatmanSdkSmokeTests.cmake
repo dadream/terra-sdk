@@ -360,6 +360,29 @@ if(TERRA_SDK_ENABLE_SDK_SMOKE_TESTS)
                 WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
         endif()
 
+        add_executable(terra_sdk_codec_hierarchy_legacy_parity
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/sdk/terra_codec_hierarchy_legacy_parity.cpp")
+        target_link_libraries(terra_sdk_codec_hierarchy_legacy_parity
+            PRIVATE Terra::codec vic_core_cbdam_base terra_sdk_project_options)
+        target_include_directories(terra_sdk_codec_hierarchy_legacy_parity
+            PRIVATE
+                "${TERRA_SDK_RATMAN_SOURCE_DIR}/ratman/src"
+                "${TERRA_SDK_RATMAN_SOURCE_DIR}/base/src")
+        if(BUILD_TESTING)
+            add_test(NAME terra_sdk_codec_hierarchy_legacy_parity
+                COMMAND "$<TARGET_FILE:terra_sdk_codec_hierarchy_legacy_parity>"
+                    "${_terra_sdk_miniprogram_golden_dir}/globe_root_0_record.bin"
+                    "${_terra_sdk_miniprogram_golden_dir}/globe_root_0_detail_record.bin"
+                    "${_terra_sdk_miniprogram_golden_dir}/globe_root_3_record.bin"
+                    "${_terra_sdk_miniprogram_golden_dir}/globe_root_3_detail_record.bin"
+                    "${_terra_sdk_miniprogram_golden_dir}/globe_patch_record.bin"
+                WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
+        endif()
+        if(TARGET terra_sdk_codec_tests)
+            add_dependencies(terra_sdk_codec_tests
+                terra_sdk_codec_hierarchy_legacy_parity)
+        endif()
+
         add_executable(terra_sdk_cbdam_patch_decode_golden
             "${_terra_sdk_core_smoke_dir}/sdk_cbdam_patch_decode_golden.cpp")
         target_link_libraries(terra_sdk_cbdam_patch_decode_golden
@@ -380,10 +403,12 @@ if(TERRA_SDK_ENABLE_SDK_SMOKE_TESTS)
         list(APPEND _terra_sdk_sdk_smoke_targets
             terra_sdk_cbdam_repository_smoke
             terra_sdk_cbdam_native_behavior_golden
+            terra_sdk_codec_hierarchy_legacy_parity
             terra_sdk_cbdam_patch_decode_golden)
         message(STATUS "Configured SDK smoke test terra_sdk_cbdam_repository_smoke")
         message(STATUS "Configured SDK golden test terra_sdk_cbdam_native_behavior_golden")
         message(STATUS "Configured SDK golden test terra_sdk_cbdam_patch_decode_golden")
+        message(STATUS "Configured SDK parity test terra_sdk_codec_hierarchy_legacy_parity")
     endif()
 
     if(NOT TARGET vic_core_ratman)

@@ -33,6 +33,10 @@ set +e
       cd /wksp/build/cmake
       ctest --output-on-failure -R "^terra_sdk_c_api_(contract|parity)$"
       /wksp/build/cmake/sdk/tests/terra_sdk_c_api_parity \
+        /workspace/testdata/miniprogram/golden/globe_root_0_record.bin \
+        /workspace/testdata/miniprogram/golden/globe_root_0_detail_record.bin \
+        /workspace/testdata/miniprogram/golden/globe_root_3_record.bin \
+        /workspace/testdata/miniprogram/golden/globe_root_3_detail_record.bin \
         /workspace/testdata/miniprogram/golden/globe_patch_record.bin \
         > /wksp/build/wasm/native_parity.txt
     '
@@ -57,6 +61,10 @@ set +e
     "${WASM_IMAGE}" \
     node tests/wasm/terra_wasm_parity.js \
       workspace_old/build/wasm/terra_sdk.wasm \
+      testdata/miniprogram/golden/globe_root_0_record.bin \
+      testdata/miniprogram/golden/globe_root_0_detail_record.bin \
+      testdata/miniprogram/golden/globe_root_3_record.bin \
+      testdata/miniprogram/golden/globe_root_3_detail_record.bin \
       testdata/miniprogram/golden/globe_patch_record.bin \
       workspace_old/build/wasm/native_parity.txt \
       workspace_old/build/wasm/package

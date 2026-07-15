@@ -90,11 +90,40 @@ int global_geodetic_wmts_selector::closest_level(
 
 wmts_tile_key global_geodetic_wmts_selector::select(
     const bounds2d& bounds, std::size_t tile_width) const {
+  const double width = bounds.maximum[0] - bounds.minimum[0];
+  const double height = bounds.maximum[1] - bounds.minimum[1];
+  if (!is_valid() || tile_width == 0 || !std::isfinite(width) ||
+      !std::isfinite(height) || width <= 0.0 || height <= 0.0) {
+    return wmts_tile_key();
+  }
+  const int level = closest_level(
+      std::max(width, height) / static_cast<double>(tile_width), tile_width);
+  return level < 0 ? wmts_tile_key() : select_level(bounds, level);
+}
+
+wmts_tile_key global_geodetic_wmts_selector::select_clamped(
+    const bounds2d& bounds, std::size_t tile_width) const {
+  const double width = bounds.maximum[0] - bounds.minimum[0];
+  const double height = bounds.maximum[1] - bounds.minimum[1];
+  if (!is_valid() || tile_width == 0 || !std::isfinite(width) ||
+      !std::isfinite(height) || width <= 0.0 || height <= 0.0) {
+    return wmts_tile_key();
+  }
+  int level = closest_level(
+      std::max(width, height) / static_cast<double>(tile_width), tile_width);
+  if (level < 0) {
+    level = maximum_level_;
+  }
+  return select_level(bounds, level);
+}
+
+wmts_tile_key global_geodetic_wmts_selector::select_level(
+    const bounds2d& bounds, int level) const {
   const double min_x = bounds.minimum[0];
   const double min_y = bounds.minimum[1];
   const double max_x = bounds.maximum[0];
   const double max_y = bounds.maximum[1];
-  if (!is_valid() || tile_width == 0 ||
+  if (!is_valid() || level < 0 || level > maximum_level_ ||
       !std::isfinite(min_x) || !std::isfinite(min_y) ||
       !std::isfinite(max_x) || !std::isfinite(max_y) ||
       min_x < minimum_longitude || max_x > maximum_longitude ||
@@ -103,33 +132,43 @@ wmts_tile_key global_geodetic_wmts_selector::select(
     return wmts_tile_key();
   }
 
-  const double units_per_pixel =
-      std::max((max_x - min_x) / static_cast<double>(tile_width),
-               (max_y - min_y) / static_cast<double>(tile_width));
-  const int level = closest_level(units_per_pixel, tile_width);
-  if (level < 0) {
-    return wmts_tile_key();
-  }
-
   const std::size_t rows = power_of_two(level);
-  const std::size_t columns = 2 * rows;
+  const std::size_t columns = 2U * rows;
   const double tile_span = level_zero_tile_span / static_cast<double>(rows);
   const double center_x = 0.5 * (min_x + max_x);
   const double center_y = 0.5 * (min_y + max_y);
-  const int tms_x = static_cast<int>(
+  const int column = static_cast<int>(
       std::floor((center_x - minimum_longitude) / tile_span));
-  const int tms_y = static_cast<int>(
+  const int tms_row = static_cast<int>(
       std::floor((center_y - minimum_latitude) / tile_span));
-  if (tms_x < 0 || tms_y < 0 ||
-      static_cast<std::size_t>(tms_x) >= columns ||
-      static_cast<std::size_t>(tms_y) >= rows) {
+  if (column < 0 || tms_row < 0 ||
+      static_cast<std::size_t>(column) >= columns ||
+      static_cast<std::size_t>(tms_row) >= rows) {
     return wmts_tile_key();
   }
-
   return wmts_tile_key(
       level, level + matrix_level_offset_,
-      static_cast<int>(rows - 1 - static_cast<std::size_t>(tms_y)),
-      tms_x);
+      static_cast<int>(rows - 1U - static_cast<std::size_t>(tms_row)),
+      column);
+}
+
+bounds2d global_geodetic_wmts_selector::tile_bounds(
+    const wmts_tile_key& tile) const {
+  if (!is_valid() || !tile.is_valid() || tile.level > maximum_level_ ||
+      tile.matrix != tile.level + matrix_level_offset_) {
+    return bounds2d();
+  }
+  const std::size_t rows = power_of_two(tile.level);
+  const std::size_t columns = 2U * rows;
+  if (static_cast<std::size_t>(tile.row) >= rows ||
+      static_cast<std::size_t>(tile.column) >= columns) {
+    return bounds2d();
+  }
+  const double span = level_zero_tile_span / static_cast<double>(rows);
+  const double min_x = minimum_longitude + tile.column * span;
+  const double max_y = maximum_latitude - tile.row * span;
+  return bounds2d(vector2d{{min_x, max_y - span}},
+                  vector2d{{min_x + span, max_y}});
 }
 
 int global_geodetic_wmts_selector::subdomain(

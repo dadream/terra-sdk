@@ -4,6 +4,16 @@ set(_terra_sdk_patch_record
     "${CMAKE_SOURCE_DIR}/testdata/miniprogram/golden/globe_patch_record.bin")
 set(_terra_sdk_patch_golden
     "${CMAKE_SOURCE_DIR}/testdata/miniprogram/golden/patch_decode_v1.txt")
+set(_terra_sdk_root0_record
+    "${CMAKE_SOURCE_DIR}/testdata/miniprogram/golden/globe_root_0_record.bin")
+set(_terra_sdk_root0_detail_record
+    "${CMAKE_SOURCE_DIR}/testdata/miniprogram/golden/globe_root_0_detail_record.bin")
+set(_terra_sdk_root3_record
+    "${CMAKE_SOURCE_DIR}/testdata/miniprogram/golden/globe_root_3_record.bin")
+set(_terra_sdk_root3_detail_record
+    "${CMAKE_SOURCE_DIR}/testdata/miniprogram/golden/globe_root_3_detail_record.bin")
+set(_terra_sdk_child_detail_record
+    "${CMAKE_SOURCE_DIR}/testdata/miniprogram/golden/globe_patch_record.bin")
 
 add_executable(terra_sdk_core_transform_golden
     terra_core_coordinate_transform_golden.cpp)
@@ -70,6 +80,16 @@ add_test(NAME terra_sdk_codec_patch_golden
     COMMAND "$<TARGET_FILE:terra_sdk_codec_patch_golden>"
         "${_terra_sdk_patch_record}" "${_terra_sdk_patch_golden}")
 
+add_executable(terra_sdk_codec_hierarchy
+    terra_codec_hierarchy.cpp)
+target_link_libraries(terra_sdk_codec_hierarchy PRIVATE Terra::codec)
+target_compile_features(terra_sdk_codec_hierarchy PRIVATE cxx_std_14)
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(terra_sdk_codec_hierarchy PRIVATE -Wall -Wextra)
+endif()
+add_test(NAME terra_sdk_codec_hierarchy
+    COMMAND "$<TARGET_FILE:terra_sdk_codec_hierarchy>")
+
 add_executable(terra_sdk_frame_camera_golden
     terra_frame_camera_golden.cpp)
 target_link_libraries(terra_sdk_frame_camera_golden PRIVATE Terra::frame)
@@ -101,6 +121,16 @@ endif()
 add_test(NAME terra_sdk_frame_mesh
     COMMAND "$<TARGET_FILE:terra_sdk_frame_mesh>")
 
+add_executable(terra_sdk_frame_surface_mesh
+    terra_frame_surface_mesh.cpp)
+target_link_libraries(terra_sdk_frame_surface_mesh PRIVATE Terra::frame)
+target_compile_features(terra_sdk_frame_surface_mesh PRIVATE cxx_std_14)
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(terra_sdk_frame_surface_mesh PRIVATE -Wall -Wextra)
+endif()
+add_test(NAME terra_sdk_frame_surface_mesh
+    COMMAND "$<TARGET_FILE:terra_sdk_frame_surface_mesh>")
+
 add_executable(terra_sdk_frame_lod_golden
     terra_frame_lod_golden.cpp)
 target_link_libraries(terra_sdk_frame_lod_golden PRIVATE Terra::frame)
@@ -121,7 +151,9 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 add_test(NAME terra_sdk_c_api_contract
     COMMAND "$<TARGET_FILE:terra_sdk_c_api_contract>"
-        "${_terra_sdk_patch_record}")
+        "${_terra_sdk_root0_record}" "${_terra_sdk_root0_detail_record}"
+        "${_terra_sdk_root3_record}" "${_terra_sdk_root3_detail_record}"
+        "${_terra_sdk_child_detail_record}")
 
 add_executable(terra_sdk_c_api_header terra_c_api_header.c)
 target_link_libraries(terra_sdk_c_api_header PRIVATE Terra::c_api)
@@ -140,7 +172,9 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 add_test(NAME terra_sdk_c_api_parity
     COMMAND "$<TARGET_FILE:terra_sdk_c_api_parity>"
-        "${_terra_sdk_patch_record}")
+        "${_terra_sdk_root0_record}" "${_terra_sdk_root0_detail_record}"
+        "${_terra_sdk_root3_record}" "${_terra_sdk_root3_detail_record}"
+        "${_terra_sdk_child_detail_record}")
 
 set(_terra_sdk_dependency_fixture_dir
     "${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
@@ -167,12 +201,15 @@ add_custom_target(terra_sdk_core_tests
         terra_sdk_core_transform_golden
         terra_sdk_core_wmts_selection)
 add_custom_target(terra_sdk_codec_tests
-    DEPENDS terra_sdk_codec_patch_golden)
+    DEPENDS
+        terra_sdk_codec_hierarchy
+        terra_sdk_codec_patch_golden)
 add_custom_target(terra_sdk_frame_tests
     DEPENDS
         terra_sdk_frame_camera_golden
         terra_sdk_frame_lod_golden
         terra_sdk_frame_mesh
+        terra_sdk_frame_surface_mesh
         terra_sdk_frame_packet)
 add_custom_target(terra_sdk_c_api_tests
     DEPENDS

@@ -32,6 +32,10 @@ class global_geodetic_wmts_selector {
 
   wmts_tile_key select(const bounds2d& bounds,
                        std::size_t tile_width) const;
+  wmts_tile_key select_clamped(const bounds2d& bounds,
+                               std::size_t tile_width) const;
+  wmts_tile_key select_level(const bounds2d& bounds, int level) const;
+  bounds2d tile_bounds(const wmts_tile_key& tile) const;
   int subdomain(const wmts_tile_key& tile,
                 int subdomain_count) const;
 

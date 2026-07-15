@@ -27,7 +27,9 @@ endif()
 
 add_library(terra_codec STATIC
     src/codec/cbdam_height.cpp
-    include/terra/codec/cbdam_height.hpp)
+    src/codec/cbdam_hierarchy.cpp
+    include/terra/codec/cbdam_height.hpp
+    include/terra/codec/cbdam_hierarchy.hpp)
 add_library(Terra::codec ALIAS terra_codec)
 
 set_target_properties(terra_codec PROPERTIES
@@ -50,10 +52,12 @@ add_library(terra_frame STATIC
     src/frame/frame_packet.cpp
     src/frame/lod.cpp
     src/frame/mesh.cpp
+    src/frame/surface_mesh.cpp
     include/terra/frame/camera.hpp
     include/terra/frame/frame_packet.hpp
     include/terra/frame/lod.hpp
-    include/terra/frame/mesh.hpp)
+    include/terra/frame/mesh.hpp
+    include/terra/frame/surface_mesh.hpp)
 add_library(Terra::frame ALIAS terra_frame)
 
 set_target_properties(terra_frame PROPERTIES
@@ -66,7 +70,7 @@ target_include_directories(terra_frame
     PUBLIC
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
         "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>")
-target_link_libraries(terra_frame PUBLIC Terra::core)
+target_link_libraries(terra_frame PUBLIC Terra::core Terra::codec)
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(terra_frame PRIVATE -Wall -Wextra)

@@ -32,7 +32,8 @@ enum {
 
 enum {
   TERRA_REQUEST_ROOT = 1,
-  TERRA_REQUEST_PATCH = 2
+  TERRA_REQUEST_DETAIL = 2,
+  TERRA_REQUEST_PATCH = TERRA_REQUEST_DETAIL
 };
 
 typedef struct terra_manifest_v1 {
@@ -48,6 +49,8 @@ typedef struct terra_manifest_v1 {
   double maximum_u;
   double maximum_v;
   double radius;
+  uint32_t texture_matrix_level_offset;
+  uint32_t texture_maximum_level;
 } terra_manifest_v1;
 
 typedef struct terra_viewport_v1 {
@@ -73,6 +76,13 @@ typedef struct terra_patch_key_v1 {
   int32_t k;
 } terra_patch_key_v1;
 
+typedef struct terra_texture_key_v1 {
+  uint32_t level;
+  int32_t matrix;
+  int32_t row;
+  int32_t column;
+} terra_texture_key_v1;
+
 typedef struct terra_request_v1 {
   uint32_t struct_size;
   uint32_t kind;
@@ -87,6 +97,20 @@ typedef struct terra_patch_decision_v1 {
   uint32_t reserved;
 } terra_patch_decision_v1;
 
+typedef struct terra_draw_range_v1 {
+  uint32_t struct_size;
+  uint32_t fragment;
+  terra_patch_key_v1 key;
+  terra_texture_key_v1 texture;
+  uint32_t first_vertex;
+  uint32_t vertex_count;
+  uint32_t first_index;
+  uint32_t index_count;
+  double origin[3];
+  uint32_t flags;
+  uint32_t reserved;
+} terra_draw_range_v1;
+
 typedef struct terra_frame_v1 {
   uint32_t struct_size;
   uint32_t api_version;
@@ -99,6 +123,10 @@ typedef struct terra_frame_v1 {
   uint32_t reserved;
   double camera_position[3];
   double projection_view[16];
+  uint32_t draw_count;
+  uint32_t vertex_count;
+  uint32_t position_float_count;
+  uint32_t texture_float_count;
 } terra_frame_v1;
 
 typedef struct terra_stats_v1 {
@@ -118,8 +146,10 @@ uint32_t terra_sizeof_manifest_v1(void);
 uint32_t terra_sizeof_viewport_v1(void);
 uint32_t terra_sizeof_camera_v1(void);
 uint32_t terra_sizeof_patch_key_v1(void);
+uint32_t terra_sizeof_texture_key_v1(void);
 uint32_t terra_sizeof_request_v1(void);
 uint32_t terra_sizeof_patch_decision_v1(void);
+uint32_t terra_sizeof_draw_range_v1(void);
 uint32_t terra_sizeof_frame_v1(void);
 uint32_t terra_sizeof_stats_v1(void);
 
@@ -132,10 +162,18 @@ terra_status terra_set_viewport(terra_context* context,
                                 const terra_viewport_v1* viewport);
 terra_status terra_set_camera(terra_context* context,
                               const terra_camera_v1* camera);
+terra_status terra_submit_record(terra_context* context,
+                                 uint32_t kind,
+                                 const terra_patch_key_v1* key,
+                                 const uint8_t* data,
+                                 size_t data_size);
 terra_status terra_submit_patch(terra_context* context,
                                 const terra_patch_key_v1* key,
                                 const uint8_t* data,
                                 size_t data_size);
+terra_status terra_fail_record(terra_context* context,
+                               uint32_t kind,
+                               const terra_patch_key_v1* key);
 terra_status terra_fail_patch(terra_context* context,
                               const terra_patch_key_v1* key);
 terra_status terra_update(terra_context* context, float lod_threshold);
@@ -150,6 +188,18 @@ terra_status terra_get_frame_patches(const terra_context* context,
                                      terra_patch_decision_v1* patches,
                                      size_t capacity,
                                      size_t* count);
+terra_status terra_get_draw_ranges(const terra_context* context,
+                                   terra_draw_range_v1* ranges,
+                                   size_t capacity,
+                                   size_t* count);
+terra_status terra_get_position_buffer(const terra_context* context,
+                                       float* positions,
+                                       size_t capacity,
+                                       size_t* count);
+terra_status terra_get_texture_uv_buffer(const terra_context* context,
+                                         float* texture_uv,
+                                         size_t capacity,
+                                         size_t* count);
 terra_status terra_get_index_buffer(const terra_context* context,
                                     uint16_t* indices,
                                     size_t capacity,

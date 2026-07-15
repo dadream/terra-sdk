@@ -40,6 +40,15 @@ int main() {
   expect_tile(east, 0, 1, 0, 1);
   expect_tile(north_east, 1, 2, 0, 3);
   expect_tile(south_east, 1, 2, 1, 3);
+  expect_tile(selector.select_level(
+                  bounds(90.0, 0.0, 180.0, 90.0), 1),
+              1, 2, 0, 3);
+  const terra::core::bounds2d north_east_bounds =
+      selector.tile_bounds(north_east);
+  if (north_east_bounds.minimum != terra::core::vector2d{{90.0, 0.0}} ||
+      north_east_bounds.maximum != terra::core::vector2d{{180.0, 90.0}}) {
+    return 1;
+  }
   if (selector.subdomain(west, 8) != 0 ||
       selector.subdomain(east, 8) != 1) {
     return 1;
@@ -48,7 +57,11 @@ int main() {
   const double nan = std::numeric_limits<double>::quiet_NaN();
   if (selector.select(bounds(-181.0, -90.0, 0.0, 90.0), 256).is_valid() ||
       selector.select(bounds(-180.0, -90.0, 0.0, 90.0), 0).is_valid() ||
-      selector.select(bounds(nan, -90.0, 0.0, 90.0), 256).is_valid()) {
+      selector.select(bounds(nan, -90.0, 0.0, 90.0), 256).is_valid() ||
+      selector.select_level(bounds(-180.0, -90.0, 0.0, 90.0), 18)
+          .is_valid() ||
+      selector.tile_bounds(terra::core::wmts_tile_key()).maximum !=
+          terra::core::vector2d{{0.0, 0.0}}) {
     return 1;
   }
 
