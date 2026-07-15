@@ -1,0 +1,82 @@
+.globe {
+  height: 100vh;
+  overflow: hidden;
+  position: relative;
+  width: 100vw;
+}
+
+.globe__canvas {
+  height: 100%;
+  width: 100%;
+}
+
+.globe__status {
+  background: rgba(8, 18, 28, 0.78);
+  border: 1px solid rgba(224, 238, 246, 0.22);
+  border-radius: 4px;
+  box-sizing: border-box;
+  color: #dceaf0;
+  font-size: 12px;
+  left: 14px;
+  line-height: 18px;
+  max-width: calc(100% - 28px);
+  padding: 8px 10px;
+  position: absolute;
+  top: 18px;
+}
+
+.globe__status--failed {
+  border-color: rgba(255, 120, 110, 0.8);
+  color: #ffb4aa;
+}
+
+.globe__status--warning {
+  border-color: rgba(242, 190, 85, 0.8);
+  color: #ffe09a;
+}
+
+.globe__metrics {
+  color: #9fb4be;
+  display: block;
+  font-family: monospace;
+  margin-top: 2px;
+}
+
+.globe__toolbar {
+  bottom: 20px;
+  display: flex;
+  gap: 8px;
+  left: 14px;
+  position: absolute;
+}
+
+.globe__tool {
+  align-items: center;
+  background: rgba(12, 28, 40, 0.9);
+  border: 1px solid rgba(224, 238, 246, 0.3);
+  border-radius: 4px;
+  box-sizing: border-box;
+  color: #f3fbff;
+  display: flex;
+  font-size: 15px;
+  height: 40px;
+  justify-content: center;
+  line-height: 40px;
+  margin: 0;
+  min-height: 40px;
+  min-width: 40px;
+  padding: 0;
+  width: 40px;
+}
+
+.globe__tool--retry {
+  font-size: 13px;
+  min-width: 62px;
+  padding: 0 10px;
+  width: auto;
+}
+
+.globe__tool[disabled] {
+  background: rgba(32, 44, 52, 0.8);
+  color: #6f818b;
+}

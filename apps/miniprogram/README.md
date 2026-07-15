@@ -27,3 +27,20 @@ The production M5 facade is `utils/terra_wasm.js`. The generated
 
 M1 is not complete from simulator output alone. Follow
 `docs/miniprogram/CAPABILITY_PROBE.md` for Android and iOS evidence.
+
+## Globe Runtime
+
+The default page is the M6 Blue Marble globe runtime. Build the verified Wasm
+package and stage its ignored local artifacts before opening this app in
+DevTools:
+
+```bash
+bash scripts/verify_miniprogram_wasm.sh
+bash scripts/stage_miniprogram_globe.sh
+```
+
+Set `terra.terrainServiceOrigin` in local storage to an HTTPS terrain-service
+origin registered in the Mini Program request-domain allowlist. The manifest's
+imagery host must also be registered. The checked-in runtime configuration has
+no deployment URL or credential. See `docs/miniprogram/GLOBE_RUNTIME.md` for
+the controls, cache/retry behavior, and required device evidence.

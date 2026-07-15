@@ -151,12 +151,48 @@ The WebAssembly SDK milestone provides:
   `workspace_old/package/miniprogram/` without credentials or desktop-only
   dependencies.
 
-The verified Wasm module is 51,796 bytes with SHA-256
-`5b96af3fe751a017a712c5ecb40835cd1e3b757eaf993b717646ea32e47d4f8c`.
+The latest verified Wasm module, after the M6 frame extensions, is 72,326
+bytes with SHA-256
+`f3cafb70f2e36f51628e254bfbc00bbf34a2109660738f4570ad85495e891f38`.
 Both complete desktop gates pass after the C ABI and no-exception Wasm work,
 and the frozen viewer/nav3d source and direct target declarations are
 unchanged. M5 is complete; the next implementation milestone is the Mini
 Program WebGL globe renderer.
+
+## M6: In Progress
+
+Implemented locally:
+
+- a full-canvas Globe page backed by WebGL 1 shaders, indexed terrain draws,
+  camera-relative vertices, a fallback texture, and context recovery;
+- Mini Program image decoding for global-geodetic Blue Marble tiles;
+- deterministic reset, zoom, -45 degree tilt, yaw drag, pinch zoom, and
+  viewport resize behavior mapped directly to the Terra C ABI camera;
+- bounded terrain, geometry, texture, and GPU LRU caches with stale-request
+  cancellation, terrain checksum validation, bounded terrain/image retry, and
+  user retry;
+- device DPR/texture-limit frame budgets controlling request concurrency,
+  texture/geometry budgets, and upload work;
+- host tests for manifest/payload contracts, cache/cancellation, camera-relative
+  matrices, WebGL draw/context recovery, runtime request flow, failure
+  recovery, and throttled page-state reporting, wired into the Wasm package
+  gate;
+- a generated-artifact staging script and a local operator guide at
+  `docs/miniprogram/GLOBE_RUNTIME.md`.
+
+The current `verify_miniprogram_wasm.sh` run passed native/Wasm parity,
+all five Mini Program Node tests, the warning gate, package generation, and
+two-clean-build reproducibility at 72,326 bytes. The required
+`verify_baseline.sh` and `verify_globe.sh` desktop gates also passed after the
+M6 renderer work.
+
+Still required before M6 can be marked complete:
+
+- successful DevTools, Android, and iOS Blue Marble runs with fixed initial,
+  zoom, tilt, yaw, and reset screenshots/reports;
+- review context restore and weak-network retry evidence on both devices;
+- freeze and meet the M1 reference-device frame-time, memory, and stability
+  thresholds; verify no cracks, inverted hemisphere, or image-row mismatch.
 
 ## Verification Evidence
 

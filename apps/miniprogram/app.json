@@ -1,5 +1,6 @@
 {
   "pages": [
+    "pages/globe/index",
     "pages/probe/index"
   ],
   "window": {

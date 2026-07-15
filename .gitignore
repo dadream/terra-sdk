@@ -9,6 +9,8 @@
 /.clangd/
 /testdata/viewer_baseline/*/baseline_report.html
 /apps/miniprogram/project.private.config.json
+/apps/miniprogram/wasm/terra_sdk.wasm
+/apps/miniprogram/wasm/terra_sdk_wasm_manifest.json
 /testdata/miniprogram/evidence/local/
 __pycache__/
 *.pyc

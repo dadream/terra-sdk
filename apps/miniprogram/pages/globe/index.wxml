@@ -1,0 +1,25 @@
+<view class="globe">
+  <canvas class="globe__canvas" type="webgl" id="globe"
+    disable-scroll="true" catchtouchstart="onTouchStart"
+    catchtouchmove="onTouchMove" catchtouchend="onTouchEnd"
+    catchtouchcancel="onTouchEnd"></canvas>
+  <view class="globe__status globe__status--{{statusKind}}">
+    <text>{{status}}</text>
+    <text class="globe__metrics">{{metrics}}</text>
+  </view>
+  <view class="globe__toolbar">
+    <button class="globe__tool" aria-label="Zoom out" bindtap="zoomOut"
+      disabled="{{controlsDisabled}}">-</button>
+    <button class="globe__tool" aria-label="Zoom in" bindtap="zoomIn"
+      disabled="{{controlsDisabled}}">+</button>
+    <button class="globe__tool" aria-label="Set 45 degree tilt" bindtap="tilt45"
+      disabled="{{controlsDisabled}}">45</button>
+    <button class="globe__tool" aria-label="Reset camera" bindtap="resetCamera"
+      disabled="{{controlsDisabled}}">R</button>
+    <button class="globe__tool globe__tool--retry" wx:if="{{retryVisible}}"
+      aria-label="Retry failed globe resources" bindtap="retryFailed"
+      disabled="{{controlsDisabled}}">Retry</button>
+    <button class="globe__tool" aria-label="Copy globe report" bindtap="copyReport"
+      disabled="{{!reportReady}}">C</button>
+  </view>
+</view>

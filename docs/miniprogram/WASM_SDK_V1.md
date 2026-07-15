@@ -25,7 +25,9 @@ The build uses `docker/Dockerfile.wasm`, Emscripten 3.1.5, and
 `adapters/wasm/CMakePresets.json`. The verifier builds both native and Wasm
 implementations, compares reports byte for byte, performs two clean Wasm builds
 and compares SHA-256, tests the Mini Program loader, rejects compiler warnings,
-and enforces a default 1 MiB Wasm limit.
+and enforces a default 1 MiB Wasm limit. It also runs the Mini Program globe
+protocol, WebGL resource, and runtime failure-recovery tests before staging
+these facade files.
 
 The generated package is:
 
@@ -33,6 +35,9 @@ The generated package is:
 workspace_old/package/miniprogram/
   include/terra/c_api/terra.h
   utils/terra_wasm.js
+  utils/terra_globe_common.js
+  utils/terra_webgl_renderer.js
+  utils/terra_globe_runtime.js
   wasm/terra_sdk.wasm
   wasm/terra_sdk_wasm_manifest.json
 ```
@@ -57,8 +62,8 @@ terra_load_manifest
 terra_set_viewport / terra_set_camera
 terra_update
 terra_get_requests / terra_get_frame / terra_get_frame_patches
-terra_get_index_buffer
-terra_submit_patch / terra_fail_patch
+terra_get_index_buffer / terra_get_draw_ranges
+terra_submit_record / terra_fail_record
 terra_get_stats / terra_get_last_error
 terra_destroy
 ```
@@ -68,9 +73,11 @@ with a null/zero-capacity buffer. `terra_alloc` and `terra_free` are provided fo
 copying typed data through Wasm memory. Structure-size query functions let host
 code reject an incompatible layout before writing fields.
 
-`terra_submit_patch` accepts exact terrain-service record bytes and validates
-the current frame key before decoding. `terra_fail_patch` records failure while
-leaving retry policy outside C++.
+`terra_submit_record` accepts exact terrain-service record bytes with an
+explicit root/detail kind and validates the current frame key before decoding.
+`terra_fail_record` records failure while leaving retry policy outside C++.
+The older `terra_submit_patch` and `terra_fail_patch` wrappers remain for
+source compatibility; new hosts use the explicit record calls.
 
 ## Patch Topology
 

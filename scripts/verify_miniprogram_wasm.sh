@@ -77,6 +77,30 @@ set +e
 
   docker run --rm \
     -v "${ROOT_DIR}:/workspace" \
+    -w /workspace \
+    "${WASM_IMAGE}" \
+    node tests/miniprogram/terra_globe_common_test.js
+
+  docker run --rm \
+    -v "${ROOT_DIR}:/workspace" \
+    -w /workspace \
+    "${WASM_IMAGE}" \
+    node tests/miniprogram/terra_webgl_renderer_test.js
+
+  docker run --rm \
+    -v "${ROOT_DIR}:/workspace" \
+    -w /workspace \
+    "${WASM_IMAGE}" \
+    node tests/miniprogram/terra_globe_runtime_test.js
+
+  docker run --rm \
+    -v "${ROOT_DIR}:/workspace" \
+    -w /workspace \
+    "${WASM_IMAGE}" \
+    node tests/miniprogram/globe_page_test.js
+
+  docker run --rm \
+    -v "${ROOT_DIR}:/workspace" \
     -w /workspace/adapters/wasm \
     "${WASM_IMAGE}" \
     bash -lc '
@@ -119,6 +143,12 @@ cp "${ROOT_DIR}/sdk/include/terra/c_api/terra.h" \
   "${PACKAGE_DIR}/include/terra/c_api/terra.h"
 cp "${ROOT_DIR}/apps/miniprogram/utils/terra_wasm.js" \
   "${PACKAGE_DIR}/utils/terra_wasm.js"
+cp "${ROOT_DIR}/apps/miniprogram/utils/terra_globe_common.js" \
+  "${PACKAGE_DIR}/utils/terra_globe_common.js"
+cp "${ROOT_DIR}/apps/miniprogram/utils/terra_webgl_renderer.js" \
+  "${PACKAGE_DIR}/utils/terra_webgl_renderer.js"
+cp "${ROOT_DIR}/apps/miniprogram/utils/terra_globe_runtime.js" \
+  "${PACKAGE_DIR}/utils/terra_globe_runtime.js"
 
 printf 'Mini Program Wasm verification passed: %s bytes, package %s\n' \
   "${wasm_size}" "${PACKAGE_DIR}"
