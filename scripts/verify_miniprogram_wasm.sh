@@ -85,6 +85,12 @@ set +e
     -v "${ROOT_DIR}:/workspace" \
     -w /workspace \
     "${WASM_IMAGE}" \
+    node tests/miniprogram/terra_imagery_profiles_test.js
+
+  docker run --rm \
+    -v "${ROOT_DIR}:/workspace" \
+    -w /workspace \
+    "${WASM_IMAGE}" \
     node tests/miniprogram/terra_webgl_renderer_test.js
 
   docker run --rm \
@@ -145,6 +151,8 @@ cp "${ROOT_DIR}/apps/miniprogram/utils/terra_wasm.js" \
   "${PACKAGE_DIR}/utils/terra_wasm.js"
 cp "${ROOT_DIR}/apps/miniprogram/utils/terra_globe_common.js" \
   "${PACKAGE_DIR}/utils/terra_globe_common.js"
+cp "${ROOT_DIR}/apps/miniprogram/utils/terra_imagery_profiles.js" \
+  "${PACKAGE_DIR}/utils/terra_imagery_profiles.js"
 cp "${ROOT_DIR}/apps/miniprogram/utils/terra_webgl_renderer.js" \
   "${PACKAGE_DIR}/utils/terra_webgl_renderer.js"
 cp "${ROOT_DIR}/apps/miniprogram/utils/terra_globe_runtime.js" \

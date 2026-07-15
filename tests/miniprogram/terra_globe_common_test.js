@@ -68,6 +68,16 @@ async function main() {
     'Content-Length': '3',
     'X-Terra-Checksum': 'fnv1a64:a430d84680aabd0b'
   }), /Content-Length/)
+  const secretUrl = 'https://tiles.example/wmts?tk=0123456789abcdef'
+  assert.strictEqual(common.redactSensitiveText(secretUrl),
+    'https://tiles.example/wmts?tk=[redacted]')
+  assert.deepStrictEqual(common.sanitizeDiagnosticDetail({
+    message: secretUrl,
+    key: '1/2/3'
+  }), {
+    message: 'https://tiles.example/wmts?tk=[redacted]',
+    key: '1/2/3'
+  })
 
   const selected = common.validateManifest(manifest(), 'blue-marble')
   assert.strictEqual(selected.radius, 6378000)

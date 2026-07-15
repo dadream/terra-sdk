@@ -36,6 +36,7 @@ workspace_old/package/miniprogram/
   include/terra/c_api/terra.h
   utils/terra_wasm.js
   utils/terra_globe_common.js
+  utils/terra_imagery_profiles.js
   utils/terra_webgl_renderer.js
   utils/terra_globe_runtime.js
   wasm/terra_sdk.wasm

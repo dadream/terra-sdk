@@ -44,3 +44,8 @@ origin registered in the Mini Program request-domain allowlist. The manifest's
 imagery host must also be registered. The checked-in runtime configuration has
 no deployment URL or credential. See `docs/miniprogram/GLOBE_RUNTIME.md` for
 the controls, cache/retry behavior, and required device evidence.
+
+For an authorized Tianditu img_c run, set the local profile and frontend
+credential described in docs/miniprogram/GLOBE_RUNTIME.md. The default remains
+credential-free Blue Marble; do not put either frontend or service credentials
+in tracked configuration.

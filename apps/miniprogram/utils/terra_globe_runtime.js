@@ -416,7 +416,19 @@ class TerraGlobeRuntime {
 
   async initialize() {
     const rawManifest = this.options.manifest || await this.fetchManifest()
-    this.manifest = common.validateManifest(rawManifest, this.options.textureId)
+    const imagery = this.options.imagery || null
+    if (imagery && imagery.texture) {
+      common.invariant(typeof imagery.textureId === 'string' &&
+        imagery.textureId.length > 0, 'Imagery profile texture ID is required')
+      common.invariant(typeof imagery.urlForTile === 'function',
+        'Imagery profile URL resolver is required')
+    }
+    const manifestForValidation = imagery && imagery.texture
+      ? Object.assign({}, rawManifest, { textures: [imagery.texture] })
+      : rawManifest
+    this.manifest = common.validateManifest(manifestForValidation,
+      imagery && imagery.texture ? imagery.textureId : this.options.textureId)
+    this.textureUrlResolver = imagery && imagery.texture && imagery.urlForTile
     const viewport = this.options.viewport || { width: 1, height: 1, devicePixelRatio: 1 }
     this.budget = common.deriveFrameBudget(viewport, {})
     this.canvas.width = this.budget.physicalWidth
@@ -597,7 +609,7 @@ class TerraGlobeRuntime {
       this.scheduleRender()
       this.publishState()
     } catch (error) {
-      this.lastError = error.message || String(error)
+      this.lastError = common.redactSensitiveText(error.message || String(error))
       this.diagnostic('runtime_refresh_failed', { message: this.lastError })
       this.publishState()
     } finally {
@@ -739,11 +751,15 @@ class TerraGlobeRuntime {
   }
 
   textureUrl(tile) {
-    return common.replaceTemplate(this.manifest.texture.url_template, {
-      z: tile.matrix,
-      x: tile.column,
-      y: tile.row
-    })
+    const url = this.textureUrlResolver
+      ? this.textureUrlResolver(tile)
+      : common.replaceTemplate(this.manifest.texture.url_template, {
+        z: tile.matrix,
+        x: tile.column,
+        y: tile.row
+      })
+    common.invariant(/^https:\/\//.test(url), 'Texture URL must use HTTPS')
+    return url
   }
 
   contextChanged(event) {
@@ -761,12 +777,13 @@ class TerraGlobeRuntime {
       return
     }
     this.diagnosticTimes.set(kind, now)
-    this.diagnostics.push({ kind, detail, at: now })
+    const sanitizedDetail = common.sanitizeDiagnosticDetail(detail)
+    this.diagnostics.push({ kind, detail: sanitizedDetail, at: now })
     if (this.diagnostics.length > 32) {
       this.diagnostics.shift()
     }
     if (typeof this.options.onDiagnostic === 'function') {
-      this.options.onDiagnostic(kind, detail)
+      this.options.onDiagnostic(kind, sanitizedDetail)
     }
   }
 
@@ -775,6 +792,7 @@ class TerraGlobeRuntime {
     return {
       schema: 'terra.miniprogram.globe-runtime.v1',
       datasetId: this.manifest && this.manifest.datasetId,
+      imageryId: this.manifest && this.manifest.texture.id,
       frame: this.lastFrame && {
         sequence: this.lastFrame.sequence,
         patchCount: this.lastFrame.patchCount,

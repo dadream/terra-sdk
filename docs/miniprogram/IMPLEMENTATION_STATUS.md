@@ -181,7 +181,7 @@ Implemented locally:
   `docs/miniprogram/GLOBE_RUNTIME.md`.
 
 The current `verify_miniprogram_wasm.sh` run passed native/Wasm parity,
-all five Mini Program Node tests, the warning gate, package generation, and
+all six Mini Program Node tests, the warning gate, package generation, and
 two-clean-build reproducibility at 72,326 bytes. The required
 `verify_baseline.sh` and `verify_globe.sh` desktop gates also passed after the
 M6 renderer work.
@@ -193,6 +193,39 @@ Still required before M6 can be marked complete:
 - review context restore and weak-network retry evidence on both devices;
 - freeze and meet the M1 reference-device frame-time, memory, and stability
   thresholds; verify no cracks, inverted hemisphere, or image-row mismatch.
+
+## M7: In Progress
+
+Implemented locally:
+
+- an optional tianditu-img-c profile that preserves Blue Marble as the
+  credential-free default and changes the C ABI texture selector to Tianditu
+  matrix offset 1 and maximum internal level 17;
+- exact HTTPS WMTS KVP generation using the frozen native matrix, row, column,
+  and (row + column) % 8 subdomain contract;
+- local-only frontend credential lookup, visible Tianditu attribution,
+  rate-limited diagnostics, and redaction of credential query values from
+  runtime reports and error state;
+- deterministic profile, C-ABI override, URL mapping, and report-redaction
+  tests wired into the Wasm package gate.
+
+The scheduled native online gate also passed with the authorized service-side
+credential: viewer fixed-action captures were nonblank and nav3d recorded both
+WMTS source connection and tile decode without warning/error log events. This
+validates the existing desktop WMTS contract; it is not evidence of frontend
+credential authorization.
+
+Still required before M7 can be marked complete:
+
+- register the terrain origin and all t0 through t7.tianditu.gov.cn imagery
+  domains for the authorized Mini Program;
+- validate the application-authorized frontend credential in DevTools, Android,
+  and iOS without placing it in source, package, logs, screenshots, or reports;
+- review the current provider terms, required notices, and product attribution
+  with the authorized application owner before enabling any gateway or
+  persistent tile cache;
+- capture Android and iOS imagery alignment, weak-network retry, and offline
+  Blue Marble fallback evidence.
 
 ## Verification Evidence
 
@@ -207,6 +240,7 @@ bash scripts/verify_terrain_service.sh
 bash scripts/verify_terrain_service_globe.sh
 bash scripts/verify_baseline.sh
 bash scripts/verify_globe.sh
+VERIFY_TIANDITU=1 bash scripts/verify_globe.sh
 ```
 
 The complete CMake and Wasm builds contained no `warning:` matches. Native and

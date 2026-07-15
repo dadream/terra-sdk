@@ -7,6 +7,9 @@
     <text>{{status}}</text>
     <text class="globe__metrics">{{metrics}}</text>
   </view>
+  <view wx:if="{{imageryAttribution}}" class="globe__attribution">
+    <text>{{imageryAttribution}}</text>
+  </view>
   <view class="globe__toolbar">
     <button class="globe__tool" aria-label="Zoom out" bindtap="zoomOut"
       disabled="{{controlsDisabled}}">-</button>

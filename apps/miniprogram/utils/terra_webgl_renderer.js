@@ -90,7 +90,7 @@ function imageTask(canvas, url) {
     image.onerror = (error) => {
       if (!settled) {
         settled = true
-        reject(new Error(`Texture image failed: ${error && error.message ? error.message : url}`))
+        reject(new Error('Texture image failed'))
       }
     }
     image.src = url

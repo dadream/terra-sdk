@@ -42,6 +42,15 @@
   margin-top: 2px;
 }
 
+.globe__attribution {
+  bottom: 20px;
+  color: rgba(231, 242, 246, 0.82);
+  font-size: 11px;
+  line-height: 16px;
+  position: absolute;
+  right: 14px;
+}
+
 .globe__toolbar {
   bottom: 20px;
   display: flex;

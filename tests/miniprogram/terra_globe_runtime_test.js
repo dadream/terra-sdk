@@ -2,6 +2,7 @@ const assert = require('assert')
 
 const common = require('../../apps/miniprogram/utils/terra_globe_common')
 const runtimeModule = require('../../apps/miniprogram/utils/terra_globe_runtime')
+const imageryProfiles = require('../../apps/miniprogram/utils/terra_imagery_profiles')
 
 const recordRequest = {
   kind: runtimeModule.REQUEST_ROOT,
@@ -276,6 +277,35 @@ async function testFailureRecovery() {
   result.runtime.destroy()
 }
 
+async function testTiandituProfile() {
+  const abi = new FakeAbi()
+  const token = '0123456789abcdef0123456789abcdef'
+  const imagery = imageryProfiles.resolveImageryProfile('tianditu-img-c', token)
+  const result = await createRuntime({
+    abi,
+    imagery,
+    request() {
+      return { promise: Promise.resolve(response(payload())), abort() {} }
+    }
+  })
+  await settle(4)
+  assert.strictEqual(abi.loadedManifest.texture.matrix_level_offset, 1)
+  assert.strictEqual(abi.loadedManifest.texture.maximum_level, 17)
+  assert.strictEqual(result.runtime.state().imageryId, 'tianditu-img-c')
+  const url = result.runtime.textureUrl({
+    level: 0,
+    matrix: 1,
+    row: 0,
+    column: 0
+  })
+  assert.strictEqual(url.indexOf('https://t0.tianditu.gov.cn/img_c/wmts?'), 0)
+  result.runtime.diagnostic('texture_load_failed', { message: url })
+  const report = JSON.stringify(result.runtime.state())
+  assert.strictEqual(report.indexOf(token), -1)
+  assert(report.indexOf('tk=[redacted]') >= 0)
+  result.runtime.destroy()
+}
+
 async function testWxCancellation() {
   let aborts = 0
   global.wx = {
@@ -300,6 +330,7 @@ async function testWxCancellation() {
 async function main() {
   await testSuccessfulLoadAndControls()
   await testFailureRecovery()
+  await testTiandituProfile()
   await testWxCancellation()
   console.log('Mini Program globe runtime tests passed.')
 }

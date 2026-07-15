@@ -48,6 +48,26 @@ the GPU to preserve precision at globe scale. The status panel publishes at
 most four times per second unless a critical state changes, so report UI work
 does not compete with gesture rendering.
 
+## Tianditu img_c Profile
+
+Blue Marble remains the checked-in default. To prepare an authorized local
+Tianditu run, set only local Mini Program storage:
+
+    wx.setStorageSync('terra.imageryProfile', 'tianditu-img-c')
+    wx.setStorageSync('terra.tiandituToken', '<authorized frontend credential>')
+
+The profile uses HTTPS img_c WMTS with matrices 1 through 18, maps SDK internal
+level L to matrix L + 1, keeps the native north-origin row, and selects
+subdomain (row + column) % 8. It renders the required Tianditu attribution while active.
+Register the terrain-service origin and all t0 through t7.tianditu.gov.cn
+request domains in the authorized Mini Program.
+
+Do not use a service-only credential in the Mini Program. The profile keeps the
+credential in a closure rather than runtime state; query values are redacted
+from diagnostics and copied reports. It uses only the existing in-memory image
+cache. Approval of the provider's current terms, notices, attribution, and
+request-domain configuration remains a release and device-evidence requirement.
+
 ## Controls And State
 
 - One finger drag: yaw and tilt.
@@ -58,14 +78,15 @@ does not compete with gesture rendering.
 - `Retry`: requeue terrain records or imagery that exhausted the bounded retry policy.
 - `C`: copy the current runtime report for evidence collection.
 
-The report includes frame counts, camera state, cache sizes, request activity,
-budget, renderer counters, diagnostics, and context status. It never includes
-imagery credentials.
+The report includes frame counts, camera state, the safe imagery profile ID,
+cache sizes, request activity, budget, renderer counters, diagnostics, and
+context status. It never includes imagery credentials.
 
 ## Verification Evidence
 
-Before M6 can exit, collect DevTools, Android, and iOS evidence for initial,
-zoom, tilt, yaw, reset, context loss/restore, and a weak-network retry. Store
+Before M6/M7 can exit, collect DevTools, Android, and iOS evidence for
+Blue Marble initial, zoom, tilt, yaw, reset, context loss/restore, weak-network
+retry, and authorized Tianditu imagery alignment. Store
 local screenshots and copied reports under
 `testdata/miniprogram/evidence/local/`, which is ignored. Confirm the globe has
 no cracks, inverted hemisphere, or north/south image-row mismatch, then record
@@ -77,4 +98,5 @@ Repository gates cover the deterministic parts:
 bash scripts/verify_miniprogram_wasm.sh
 bash scripts/verify_baseline.sh
 bash scripts/verify_globe.sh
+VERIFY_TIANDITU=1 bash scripts/verify_globe.sh
 ```

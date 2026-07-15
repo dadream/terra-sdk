@@ -34,6 +34,25 @@ function getHeader(headers, name) {
   return ''
 }
 
+function redactSensitiveText(value) {
+  return String(value === undefined || value === null ? '' : value)
+    .replace(/([?&](?:tk|token|access_token)=)[^&#\s]+/gi, '$1[redacted]')
+    .replace(/\b(tk|token|access_token)\s*([:=])\s*[A-Za-z0-9._-]+/gi,
+      '$1$2[redacted]')
+}
+
+function sanitizeDiagnosticDetail(detail) {
+  if (!detail || typeof detail !== 'object' || Array.isArray(detail)) {
+    return redactSensitiveText(detail)
+  }
+  const result = {}
+  Object.keys(detail).forEach((key) => {
+    const value = detail[key]
+    result[key] = typeof value === 'string' ? redactSensitiveText(value) : value
+  })
+  return result
+}
+
 function multiply32(left, right) {
   const leftLow = left & 0xffff
   const leftHigh = left >>> 16
@@ -390,9 +409,11 @@ module.exports = {
   joinServiceUrl,
   patchKeyString,
   relativeProjectionView,
+  redactSensitiveText,
   replaceTemplate,
   rowMajorToWebGlMatrix,
   selectTextureDescriptor,
+  sanitizeDiagnosticDetail,
   textureKeyString,
   validateManifest,
   validateRecordPayload

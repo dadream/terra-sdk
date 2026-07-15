@@ -1,5 +1,6 @@
 const runtimeConfig = require('../../config/runtime')
 const { TerraGlobeRuntime } = require('../../utils/terra_globe_runtime')
+const imageryProfiles = require('../../utils/terra_imagery_profiles')
 
 function touchDistance(touches) {
   if (!touches || touches.length < 2) {
@@ -28,7 +29,8 @@ Page({
     metrics: '',
     reportReady: false,
     controlsDisabled: true,
-    retryVisible: false
+    retryVisible: false,
+    imageryAttribution: ''
   },
 
   onReady() {
@@ -76,18 +78,23 @@ Page({
     if (this.unloaded || token !== this.startToken) {
       return
     }
-    const serviceOrigin = wx.getStorageSync('terra.terrainServiceOrigin') ||
-      runtimeConfig.terrainServiceOrigin
-    if (!serviceOrigin) {
-      this.fail(new Error('Terrain service origin is not configured'))
-      return
-    }
     try {
+      const serviceOrigin = wx.getStorageSync('terra.terrainServiceOrigin') ||
+        runtimeConfig.terrainServiceOrigin
+      if (!serviceOrigin) {
+        throw new Error('Terrain service origin is not configured')
+      }
+      const imagery = imageryProfiles.resolveImageryProfile(
+        wx.getStorageSync(imageryProfiles.TIANDITU_PROFILE_STORAGE_KEY) ||
+          runtimeConfig.imageryProfile,
+        wx.getStorageSync(imageryProfiles.TIANDITU_TOKEN_STORAGE_KEY),
+        runtimeConfig.textureId)
       const runtime = await TerraGlobeRuntime.create({
         canvas,
         serviceOrigin,
         manifestPath: runtimeConfig.terrainManifestPath,
         textureId: runtimeConfig.textureId,
+        imagery,
         viewport: viewport(width, height),
         onState: (state) => this.updateState(state),
         onDiagnostic: (kind) => {
@@ -104,7 +111,10 @@ Page({
         return
       }
       this.runtime = runtime
-      this.setData({ controlsDisabled: false })
+      this.setData({
+        controlsDisabled: false,
+        imageryAttribution: imagery.attribution
+      })
       this.installResizeHandler()
     } catch (error) {
       if (!this.unloaded && token === this.startToken) {

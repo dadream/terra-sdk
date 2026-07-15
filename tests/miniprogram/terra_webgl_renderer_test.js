@@ -188,11 +188,13 @@ async function main() {
   const gl = new FakeGl()
   const canvas = new FakeCanvas(gl)
   const contextEvents = []
+  const diagnostics = []
   const renderRequests = []
   const renderer = new rendererModule.TerraWebGlRenderer(canvas, {
     urlForTile: (tile) =>
       `https://tiles.example/${tile.matrix}/${tile.column}/${tile.row}.jpg`,
     onContextChange: (event) => contextEvents.push(event),
+    onDiagnostic: (kind, detail) => diagnostics.push({ kind, detail }),
     requestRender: () => renderRequests.push('requested'),
     uploadBudgetMs: 20,
     maximumTextureRetries: 0,
@@ -233,9 +235,13 @@ async function main() {
   renderer.setFrame(frame(), [draw(6)], positions, textureUv, indices)
   await settle()
   assert.strictEqual(canvas.images.length, 3)
-  canvas.images[2].onerror(new Error('offline'))
+  canvas.images[2].onerror(new Error('https://tiles.example/?tk=secret-token'))
   await settle()
   assert.strictEqual(renderer.stats().textures.failed, 1)
+  assert.strictEqual(diagnostics[diagnostics.length - 1].kind,
+    'texture_load_failed')
+  assert.strictEqual(diagnostics[diagnostics.length - 1].detail.message,
+    'Texture image failed')
   assert.strictEqual(renderer.retryTextures(), true)
   await settle()
   await settle()
