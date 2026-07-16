@@ -1,0 +1,15 @@
+{
+  "schema": "terra.miniprogram.device-evidence.v1",
+  "capturedAt": "2026-01-01T00:00:00Z",
+  "reviewer": "replace-with-reviewer",
+  "devices": [
+    "devtools",
+    "android",
+    "ios"
+  ],
+  "milestones": [
+    "M1",
+    "M6",
+    "M7"
+  ]
+}

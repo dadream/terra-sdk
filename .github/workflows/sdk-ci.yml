@@ -1,0 +1,40 @@
+name: Terra SDK Release Gate
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - feature/miniprogram-sdk
+  workflow_dispatch:
+
+jobs:
+  sdk-release:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build canonical native image
+        run: bash scripts/build_docker_image.sh
+
+      - name: Run native, service, Wasm, package, and Web evidence gates
+        run: bash scripts/verify_sdk_release.sh
+
+      - name: Upload release packages and evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: terra-sdk-release-evidence
+          if-no-files-found: warn
+          path: |
+            workspace_old/package/release/*.tar.gz
+            workspace_old/package/release/SHA256SUMS
+            workspace_old/package/release/release_manifest.json
+            viewer_verify_output/sdk_release_verify.log
+            viewer_verify_output/web_sdk/report.html
+            viewer_verify_output/web_sdk/report.json
+            viewer_verify_output/web_sdk/summary.json

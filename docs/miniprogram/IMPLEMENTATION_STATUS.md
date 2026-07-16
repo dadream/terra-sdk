@@ -15,7 +15,7 @@ implementation began.
   changes under those frozen paths.
 - `verify_miniprogram_foundation.sh` provides the focused additive gate.
 
-## M1: In Progress
+## M1: Automated Engineering Complete
 
 Implemented locally:
 
@@ -27,12 +27,17 @@ Implemented locally:
 - optional credential-free HTTPS ArrayBuffer probe;
 - host utility tests and operator documentation.
 
-Still required before M1 can be marked complete:
+Deferred final user acceptance (non-blocking):
 
 - successful WeChat DevTools run and screenshot/report;
 - successful Android and iOS runs and screenshot/reports;
 - configured request-domain ArrayBuffer result;
 - reviewed reference-device frame and memory thresholds.
+
+The checked-in device-evidence verifier defines the final local packet and
+rejects incomplete reports, invalid probe output, or textual credentials. The
+real device packet remains pending user review; it controls production-release
+approval rather than M1 engineering progress.
 
 ## M2: Complete
 
@@ -159,7 +164,7 @@ and the frozen viewer/nav3d source and direct target declarations are
 unchanged. M5 is complete; the next implementation milestone is the Mini
 Program WebGL globe renderer.
 
-## M6: In Progress
+## M6: Automated Engineering Complete
 
 Implemented locally:
 
@@ -186,7 +191,7 @@ two-clean-build reproducibility at 72,326 bytes. The required
 `verify_baseline.sh` and `verify_globe.sh` desktop gates also passed after the
 M6 renderer work.
 
-Still required before M6 can be marked complete:
+Deferred final user acceptance (non-blocking):
 
 - successful DevTools, Android, and iOS Blue Marble runs with fixed initial,
   zoom, tilt, yaw, and reset screenshots/reports;
@@ -194,7 +199,12 @@ Still required before M6 can be marked complete:
 - freeze and meet the M1 reference-device frame-time, memory, and stability
   thresholds; verify no cracks, inverted hemisphere, or image-row mismatch.
 
-## M7: In Progress
+The real Wasm/WebGL browser gate now machine-checks the fixed action sequence,
+PNG readback, transient terrain retry, reset equivalence, and context recovery.
+`verify_miniprogram_device_evidence.sh` remains the final user acceptance tool;
+it does not block M6 engineering progress or replace hardware validation.
+
+## M7: Automated Engineering Complete
 
 Implemented locally:
 
@@ -215,7 +225,7 @@ WMTS source connection and tile decode without warning/error log events. This
 validates the existing desktop WMTS contract; it is not evidence of frontend
 credential authorization.
 
-Still required before M7 can be marked complete:
+Deferred final user acceptance (non-blocking):
 
 - register the terrain origin and all t0 through t7.tianditu.gov.cn imagery
   domains for the authorized Mini Program;
@@ -227,6 +237,44 @@ Still required before M7 can be marked complete:
 - capture Android and iOS imagery alignment, weak-network retry, and offline
   Blue Marble fallback evidence.
 
+The device-evidence gate checks the final M7 review declaration, Tianditu
+profile reports, Android/iOS retry and fallback records, and textual credential
+redaction. Authorization, provider terms, visual alignment, and device results
+remain pending user review and control production-release approval, not M7
+engineering progress.
+
+## M8: Automated Engineering Complete
+
+Implemented locally:
+
+- versioned CMake exports for `Terra::core`, `Terra::codec`, `Terra::frame`,
+  and `Terra::c_api`, with C++14 and pure C installed-package examples;
+- native and Mini Program archives containing public headers/runtime files,
+  complete imported license texts, provenance notices, package manifests, and
+  deterministic file lists, without terrain repositories or credentials;
+- a release gate that scans exported targets and archive symbols for desktop
+  dependencies, creates each archive twice, compares hashes, extracts the
+  native archive, and builds/runs both examples from that extraction;
+- compatibility, status/error, ownership, cache/network, support, and final
+  acceptance policy in `docs/SDK_RELEASE.md`;
+- GitHub CI orchestration for native tests, terrain service, native/Wasm parity,
+  reproducible Wasm packaging, real WebGL evidence, and release archives.
+
+The Web gate consumes `workspace_old/package/miniprogram/wasm/terra_sdk.wasm`,
+so browser evidence is bound to the Wasm package produced in the same run and
+cannot silently use an older Mini Program staging file. The automated release
+gate deliberately does not invoke local device evidence.
+
+Deferred final user acceptance (non-blocking):
+
+- import the generated package into the authorized Mini Program project;
+- validate DevTools, one supported Android device, and one supported iOS device;
+- review application-owned Tianditu authorization, provider terms, attribution,
+  touch behavior, weak-network recovery, context recovery, memory, stability,
+  and frame time;
+- validate the final packet with `verify_miniprogram_device_evidence.sh` and
+  explicitly approve production release.
+
 ## Verification Evidence
 
 The implementation worktree passed:
@@ -236,12 +284,21 @@ bash scripts/verify_miniprogram_foundation.sh
 bash scripts/verify_miniprogram_native_golden.sh
 bash scripts/verify_miniprogram_sdk.sh
 bash scripts/verify_miniprogram_wasm.sh
+bash scripts/verify_web_sdk.sh
 bash scripts/verify_terrain_service.sh
 bash scripts/verify_terrain_service_globe.sh
+bash scripts/verify_sdk_release.sh
 bash scripts/verify_baseline.sh
 bash scripts/verify_globe.sh
 VERIFY_TIANDITU=1 bash scripts/verify_globe.sh
 ```
+
+The Web SDK gate passed 39 browser assertions with six `640x360` PNGs. The
+initial/reset/context-restored framebuffer hash was identical, zoom/tilt/yaw
+hashes were distinct, all eight root keys rendered through 10-16 draws, the
+simulated transient request recovered on its second attempt, and WebGL context
+restore reproduced the reset frame. Evidence is available under
+`viewer_verify_output/web_sdk/`.
 
 The complete CMake and Wasm builds contained no `warning:` matches. Native and
 Wasm reports matched byte for byte, two clean Wasm builds were identical, and

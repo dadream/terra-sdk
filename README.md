@@ -13,6 +13,9 @@ depend on the former adjacent repositories.
 - `ratman/ratman/apps/`: viewer, nav3d, builders, and retained legacy source.
 - `ratman/apache_mod_*/`: Apache service modules.
 - `cmake/`: integrated target and dependency definitions.
+- `sdk/`: platform-neutral C++14 libraries and the versioned C ABI.
+- `examples/`: consumers built only against an installed SDK package.
+- `apps/miniprogram/`, `adapters/wasm/`: WebAssembly and Mini Program runtime.
 - `tests/`: headless CTest smoke coverage.
 - `docker/`, `scripts/`, `testdata/`: fixed environment and regression tools.
 
@@ -54,6 +57,18 @@ control, or global imagery:
 bash scripts/verify_globe.sh
 ```
 
+Build the native and Mini Program release packages and verify them through
+installed consumers, service contracts, native/Wasm parity, and real WebGL
+browser evidence:
+
+```bash
+bash scripts/verify_sdk_release.sh
+```
+
+Release archives are written under `workspace_old/package/release/`. Manual
+DevTools/Android/iOS acceptance is intentionally the final owner step and does
+not block the automated engineering gate.
+
 A host build is also supported when dependencies are installed:
 
 ```bash
@@ -62,15 +77,18 @@ cmake --build build --target terra_sdk_cmake_smoke --parallel
 ctest --test-dir build --output-on-failure
 ```
 
-## Direction
+## SDK Status
 
-The current baseline preserves behavior; it does not yet provide a
-platform-neutral SDK. See `docs/ARCHITECTURE.md`,
-`docs/BASELINE_STATUS.md`, `docs/GLOBE_VERIFICATION.md`, and
-`docs/SDK_MINIPROGRAM_ROADMAP.md` for the dependency boundaries and staged
-path toward a WebAssembly/mini-program 3D terrain SDK.
+The repository provides a platform-neutral C++14 SDK, C ABI version 1, a
+reproducible Wasm build, a versioned terrain service, a WebGL 1 renderer, and a
+Mini Program integration sample. Desktop viewer/nav3d remain frozen downstream
+oracles rather than SDK dependencies. See `docs/SDK_RELEASE.md` and
+`docs/SDK_MINIPROGRAM_ROADMAP.md` for release boundaries and remaining final
+user acceptance.
 
 ## Licensing
 
 Imported components retain their original licenses and copyright notices. See
-`LICENSE`, `spacelib/COPYING`, and `ratman/LICENSE`.
+`LICENSE`, `NOTICE`, `spacelib/COPYING`, and `ratman/LICENSE` before
+redistribution. In particular, the imported terms do not grant unrestricted
+commercial or private-source use.

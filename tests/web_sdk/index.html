@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Terra Web SDK Evidence</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: "Segoe UI", Arial, sans-serif;
+      background: #101418;
+      color: #e8edf2;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-width: 960px; background: #101418; }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 64px;
+      padding: 0 28px;
+      border-bottom: 1px solid #35404a;
+      background: #182027;
+    }
+    h1 { margin: 0; font-size: 20px; font-weight: 650; letter-spacing: 0; }
+    #status { color: #f0c36a; font-size: 14px; }
+    main { padding: 24px 28px 32px; }
+    #live-canvas { position: fixed; left: -10000px; top: 0; }
+    #captures {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(280px, 1fr));
+      gap: 16px;
+    }
+    figure {
+      margin: 0;
+      border: 1px solid #35404a;
+      border-radius: 6px;
+      overflow: hidden;
+      background: #182027;
+    }
+    figure img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: contain; }
+    figcaption {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 10px 12px;
+      color: #bac6d0;
+      font-size: 13px;
+    }
+    #summary {
+      margin: 20px 0 0;
+      padding: 16px;
+      border-top: 1px solid #35404a;
+      color: #bac6d0;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      font: 12px/1.55 Consolas, monospace;
+    }
+    html[data-terra-status="passed"] #status { color: #72d49b; }
+    html[data-terra-status="failed"] #status { color: #ff8c8c; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Terra Web SDK Evidence</h1>
+    <div id="status">Running real Wasm and WebGL checks</div>
+  </header>
+  <main>
+    <canvas id="live-canvas" width="640" height="360"></canvas>
+    <section id="captures" aria-label="Fixed camera captures"></section>
+    <pre id="summary">Waiting for SDK output...</pre>
+    <pre id="automation-result" hidden></pre>
+  </main>
+  <script src="generated/terra_browser_bundle.js"></script>
+  <script src="harness.js"></script>
+</body>
+</html>

@@ -43,22 +43,24 @@ The endpoint must be approved for the application and return a small binary
 fixture. Do not use Tianditu tokens or signed URLs. A configured run passes only
 when the response is 2xx and contains a nonempty ArrayBuffer.
 
-## Device Evidence
+## Final Mini Program Acceptance
 
-Capture evidence from DevTools, one supported Android device, and one supported
-iOS device:
+Use the fixed local evidence packet described in
+`testdata/miniprogram/evidence/README.md`. Capture `capabilities.json` and a
+PNG probe screenshot from DevTools, one supported Android device, and one
+supported iOS device. The ArrayBuffer probe must use an approved domain and
+pass on every recorded environment; a skipped result is not M1 evidence.
 
-```text
-testdata/miniprogram/evidence/
-  devtools/capabilities.json
-  devtools/probe.png
-  android/capabilities.json
-  android/probe.png
-  ios/capabilities.json
-  ios/probe.png
+This packet is collected at the end of the SDK implementation task. It is not a
+per-iteration development blocker. Review WebGL version, maximum texture and
+renderbuffer sizes, extensions, DPR, framebuffer variation, Wasm result,
+network result, and visual output. Freeze reviewed Android/iOS frame, memory,
+and stability limits in the local `thresholds.json`; do not infer production
+limits from the simulator or the automated Web gate.
+
+Run the automated structural check after collecting evidence:
+
+```bash
+MINIPROGRAM_EVIDENCE_MILESTONES=M1 \
+  bash scripts/verify_miniprogram_device_evidence.sh
 ```
-
-Before accepting M1, review WebGL version, maximum texture/renderbuffer sizes,
-extensions, DPR, framebuffer variation, Wasm result, network result, and visual
-output. Record reference-device frame and memory thresholds in a reviewed
-follow-up; do not infer production limits from the simulator.

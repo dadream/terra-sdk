@@ -50,4 +50,10 @@ else
   echo "Node.js unavailable; skipping optional host-side JavaScript checks."
 fi
 
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "python3 is required for Mini Program device evidence verifier checks." >&2
+  exit 2
+fi
+python3 "${ROOT_DIR}/scripts/verify_miniprogram_device_evidence.py" --self-test
+
 echo "Mini Program foundation verification passed."

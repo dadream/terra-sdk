@@ -18,13 +18,16 @@ bash scripts/build_docker_image.sh
 bash scripts/build_cmake.sh
 bash scripts/verify_baseline.sh
 bash scripts/verify_globe.sh
+bash scripts/verify_sdk_release.sh
 ```
 
 The build must have zero compiler warnings. The full gate also checks CMake
 artifact registration and installation, 16 CTests, builders, `mod_victms`,
 viewer smoke/interaction captures, and nav3d terrain/texture rendering. Run
 focused scripts only while iterating; run `verify_baseline.sh` before a
-code-change commit.
+code-change commit. SDK release changes also require
+`verify_sdk_release.sh`; DevTools/Android/iOS acceptance is the repository
+owner's final manual step and does not block automated engineering progress.
 
 ## Coding Rules
 

@@ -10,8 +10,13 @@
 - `REPOSITORY_SCOPE.md`: repository ownership and generated path contract.
 - `RATMAN_BASE_SDK_READINESS.md`: base-module dependency audit.
 - `SDK_MINIPROGRAM_ROADMAP.md`: staged SDK and mini-program delivery plan.
+- `SDK_RELEASE.md`: package surfaces, compatibility policy, release gate, and
+  final manual acceptance handoff.
 - `miniprogram/WASM_SDK_V1.md`: C ABI, Emscripten package, memory, and parity contract.
 - `miniprogram/TERRAIN_SERVICE_V1.md`: versioned terrain HTTP delivery contract.
+- `miniprogram/GLOBE_RUNTIME.md`: Mini Program globe runtime and operator flow.
+- `miniprogram/WEB_SDK_EVIDENCE.md`: automated real-Wasm/WebGL browser evidence.
+- `miniprogram/CAPABILITY_PROBE.md`: final Mini Program environment acceptance.
 - `GLOBE_VERIFICATION.md`: spherical terrain and Tianditu WMTS verification.
 
 ## Viewer Baseline

@@ -32,7 +32,8 @@ Excluded from the first release:
 - viewer/nav3d behavior, controls, output, or target dependency changes;
 - a TypeScript CBDAM rewrite or use of Qt/OpenGL viewer code;
 - a new terrain repository format or globe dataset conversion;
-- Wasm threads, a POSIX virtual file system, DOM assumptions, or a browser app;
+- Wasm threads, a POSIX virtual file system, DOM assumptions in product code,
+  or a product browser app; a test-only browser harness is allowed;
 - Tianditu proxying or persistent caching without reviewed provider terms.
 
 ## Immutable Desktop Oracle
@@ -84,6 +85,26 @@ selection. WebGL consumes contiguous typed arrays, not per-vertex JS objects.
 The first runtime is single-threaded and requires no pthreads,
 SharedArrayBuffer, DOM APIs, or Emscripten virtual file system. Worker and
 OffscreenCanvas support is a later optimization gated by measured devices.
+
+## Verification Layers
+
+Development uses two evidence layers with different responsibilities:
+
+1. `verify_web_sdk.sh` is the automated development gate. It loads the real
+   `terra_sdk.wasm`, `TerraGlobeRuntime`, and `TerraWebGlRenderer` in a
+   Chromium-compatible browser, then records fixed camera states, PNG captures,
+   transient-network recovery, and WebGL context recovery. It is a test harness,
+   not a supported Web product.
+2. WeChat DevTools, Android, and iOS validation is the final product-owner
+   acceptance step. It proves `WXWebAssembly`, Mini Program WebGL behavior,
+   request-domain authorization, frontend Tianditu credentials, and physical
+   device performance. It does not block M0-M7 engineering progress.
+
+The Web gate can identify SDK, renderer, interaction, and deterministic visual
+regressions quickly. It cannot prove WeChat-specific APIs, device drivers,
+provider authorization, touch ergonomics, or production performance. Those
+items remain explicit in the final acceptance checklist rather than being
+silently inferred from browser results.
 
 ## Repository Layout
 
@@ -192,10 +213,11 @@ Tasks:
 
 Exit:
 
-- DevTools plus one Android and one iOS device provide reviewed screenshots and
-  JSON reports;
-- Wasm returns the expected value and the framebuffer is nonblank;
-- reference-device frame and memory thresholds are frozen.
+- probe source, host tests, and evidence schema checks pass;
+- the real SDK Wasm loads in the automated Web gate and its framebuffer is
+  nonblank;
+- Mini Program-specific capability and reference-device threshold review is
+  recorded as deferred final acceptance, not an M1 engineering blocker.
 
 ### M2: Native Behavior Characterization
 
@@ -272,16 +294,17 @@ Tasks:
 
 Exit:
 
-- the full Blue Marble globe renders;
-- fixed actions match exact SDK state and approved perceptual images;
-- no topology cracks, inverted hemispheres, or tile-row mismatch exist;
-- reference devices meet M1 performance and stability thresholds.
+- the automated Web gate renders the fixture globe through the real Wasm and
+  WebGL runtime;
+- fixed actions match exact SDK state and produce nonblank, distinct images;
+- transient terrain failure and WebGL context loss recover automatically;
+- topology, row mapping, and cache contracts pass deterministic tests; device
+  visual and performance review is deferred to final acceptance.
 
 ### M7: Tianditu
 
 Tasks:
 
-- validate an application-authorized frontend credential on real devices;
 - configure legal request domains and `img_c` requests;
 - show required attribution and preserve provider notices;
 - handle credential/network failures with rate-limited diagnostics;
@@ -289,9 +312,11 @@ Tasks:
 
 Exit:
 
-- Android and iOS evidence shows correctly aligned imagery;
+- URL mapping, matrix/row/column selection, redaction, attribution state, and
+  offline Blue Marble fallback pass automated tests;
 - no credential appears in source, package, logs, or reports;
-- offline globe operation remains available.
+- application credential authorization and Android/iOS visual alignment are
+  deferred to final acceptance.
 
 ### M8: SDK Release
 
@@ -299,26 +324,30 @@ Tasks:
 
 - publish versioned C++/C APIs, exports, and consumer samples;
 - audit licenses, notices, data rights, and generated artifacts;
-- add native, Wasm, service, package, and device-evidence CI;
+- add native, Wasm, service, package, and Web browser evidence CI;
 - document compatibility, errors, cache, and support policy;
+- hand the owner a final DevTools/Android/iOS acceptance checklist and local
+  evidence validator;
 - treat desktop adoption as a separate post-parity goal.
 
 Exit:
 
 - a clean checkout builds, tests, packages, and runs samples;
 - SDK artifacts contain no desktop-only or proprietary dependencies;
-- viewer/nav3d remain green desktop oracles.
+- viewer/nav3d remain green desktop oracles;
+- engineering work can complete with the owner acceptance explicitly pending;
+  only a production-release declaration waits for the owner's manual sign-off.
 
 ## Verification Matrix
 
 | Change | Focused gate | Required regression |
 | --- | --- | --- |
-| Documentation/probe | probe static checks | clean desktop worktree |
+| Documentation/probe | probe static checks | Web SDK evidence gate |
 | Core or codec | golden tests/dependency audit | both desktop gates |
 | Service | HTTP and repository parity | `verify_baseline.sh` |
 | C ABI/Wasm | native-Wasm parity/package | both desktop gates |
-| WebGL renderer | fixed state/image/device report | both desktop gates |
-| Tianditu | scheduled real-device check | offline globe gate |
+| WebGL renderer | Web fixed state/image/recovery report | both desktop gates |
+| Tianditu | mapping/redaction/fallback tests | offline Web and globe gates |
 
 Compiled gates reject `warning:`. Native core and service tests add sanitizers
 and malformed inputs where the toolchain supports them.
@@ -333,19 +362,39 @@ Each iteration:
 4. Runs required desktop gates.
 5. Reviews state, logs, and images before commit.
 
+The standard browser command is:
+
+```bash
+bash scripts/verify_web_sdk.sh
+```
+
+Its evidence is written under `viewer_verify_output/web_sdk/`. DevTools and
+device packets remain local and are validated only during final acceptance.
+
 Commits use `dadream <285083020@qq.com>`, imperative messages, and WSL Git.
 Never commit tokens, external globe data, private DevTools settings, build
 outputs, or unreviewed baseline replacements.
 
-## Completion Criteria
+## Engineering Completion Criteria
 
-The goal is complete only when:
+The implementation task is complete when:
 
 - native and Wasm behavior has deterministic parity evidence;
 - existing globe data streams through the versioned terrain service;
-- Blue Marble and authorized Tianditu render on reference Android/iOS devices;
-- interactions, weak network, cache bounds, context recovery, package size,
-  memory, stability, and frame-time gates pass;
+- the Web gate proves Blue Marble fixture rendering, fixed interactions, weak
+  network recovery, context recovery, and nonblank captures;
+- cache bounds, package size, memory bounds, and deterministic state gates pass;
 - public SDK artifacts and docs build from a clean checkout;
 - viewer/nav3d behavior, targets, logs, captures, and regression gates remain
   unchanged from the desktop oracle.
+
+## Final Mini Program Acceptance
+
+After engineering completion, the user manually validates DevTools, one
+supported Android device, and one supported iOS device. This final step covers
+`WXWebAssembly`, authorized request domains, the application-owned Tianditu
+credential, touch behavior, imagery alignment, context recovery, weak network,
+memory, stability, and frame time. The repository provides the checklist and
+`verify_miniprogram_device_evidence.sh`; pending user evidence does not block
+implementation progress, but production release approval must state that the
+manual acceptance is pending until the user signs it off.

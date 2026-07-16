@@ -127,6 +127,31 @@ install(FILES
     DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/TerraSdk"
     COMPONENT TerraSdk)
 
+install(FILES
+    "${CMAKE_SOURCE_DIR}/README.md"
+    "${CMAKE_SOURCE_DIR}/NOTICE"
+    "${CMAKE_SOURCE_DIR}/docs/SDK_RELEASE.md"
+    "${CMAKE_SOURCE_DIR}/docs/miniprogram/WASM_SDK_V1.md"
+    DESTINATION "${CMAKE_INSTALL_DATADIR}/doc/TerraSdk"
+    COMPONENT TerraSdk)
+install(DIRECTORY "${CMAKE_SOURCE_DIR}/examples/"
+    DESTINATION "${CMAKE_INSTALL_DATADIR}/doc/TerraSdk/examples"
+    COMPONENT TerraSdk
+    FILES_MATCHING
+        PATTERN "README.md"
+        PATTERN "CMakeLists.txt"
+        PATTERN "*.cpp"
+        PATTERN "*.c")
+install(FILES "${CMAKE_SOURCE_DIR}/LICENSE"
+    DESTINATION "${CMAKE_INSTALL_DATADIR}/licenses/TerraSdk"
+    COMPONENT TerraSdk)
+install(FILES "${CMAKE_SOURCE_DIR}/spacelib/COPYING"
+    DESTINATION "${CMAKE_INSTALL_DATADIR}/licenses/TerraSdk/spacelib"
+    COMPONENT TerraSdk)
+install(FILES "${CMAKE_SOURCE_DIR}/ratman/LICENSE"
+    DESTINATION "${CMAKE_INSTALL_DATADIR}/licenses/TerraSdk/ratman"
+    COMPONENT TerraSdk)
+
 terra_sdk_record_artifact(lib
     "${CMAKE_STATIC_LIBRARY_PREFIX}terra_core${CMAKE_STATIC_LIBRARY_SUFFIX}"
     file)

@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR=$(cd "$(dirname "$0")/.." && pwd)
+SDK_VERSION=$(sed -n 's/^project(TerraSdk VERSION \([^ ]*\).*/\1/p' "${ROOT_DIR}/CMakeLists.txt")
 NATIVE_IMAGE=${TERRA_SDK_DOCKER_IMAGE:-qt-dev-env}
 WASM_IMAGE=${TERRA_SDK_WASM_IMAGE:-terra-sdk-wasm:emscripten-3.1.5}
 BUILD_JOBS=${TERRA_SDK_BUILD_JOBS:-4}
@@ -12,8 +13,11 @@ LOG_FILE="${ROOT_DIR}/viewer_verify_output/miniprogram_wasm_verify.log"
 
 bash "${ROOT_DIR}/scripts/check_desktop_oracle.sh"
 bash "${ROOT_DIR}/scripts/build_wasm_image.sh"
+rm -rf "${PACKAGE_DIR}"
 mkdir -p "${BUILD_DIR}" "${PACKAGE_DIR}/include/terra/c_api" \
   "${PACKAGE_DIR}/utils" "${PACKAGE_DIR}/wasm" \
+  "${PACKAGE_DIR}/docs" "${PACKAGE_DIR}/licenses/spacelib" \
+  "${PACKAGE_DIR}/licenses/ratman" \
   "$(dirname "${LOG_FILE}")"
 
 set +e
@@ -157,6 +161,29 @@ cp "${ROOT_DIR}/apps/miniprogram/utils/terra_webgl_renderer.js" \
   "${PACKAGE_DIR}/utils/terra_webgl_renderer.js"
 cp "${ROOT_DIR}/apps/miniprogram/utils/terra_globe_runtime.js" \
   "${PACKAGE_DIR}/utils/terra_globe_runtime.js"
+cp "${ROOT_DIR}/docs/miniprogram/WASM_SDK_V1.md" \
+  "${PACKAGE_DIR}/README.md"
+cp "${ROOT_DIR}/docs/SDK_RELEASE.md" "${PACKAGE_DIR}/docs/SDK_RELEASE.md"
+cp "${ROOT_DIR}/apps/miniprogram/README.md" \
+  "${PACKAGE_DIR}/docs/MINIPROGRAM_APP.md"
+cp "${ROOT_DIR}/LICENSE" "${PACKAGE_DIR}/licenses/LICENSE"
+cp "${ROOT_DIR}/NOTICE" "${PACKAGE_DIR}/licenses/NOTICE"
+cp "${ROOT_DIR}/spacelib/COPYING" \
+  "${PACKAGE_DIR}/licenses/spacelib/COPYING"
+cp "${ROOT_DIR}/ratman/LICENSE" "${PACKAGE_DIR}/licenses/ratman/LICENSE"
+
+wasm_sha256=$(sha256sum "${PACKAGE_DIR}/wasm/terra_sdk.wasm" | awk '{print $1}')
+cat > "${PACKAGE_DIR}/release_manifest.json" <<JSON
+{
+  "schema": "terra.sdk-package.v1",
+  "sdk_version": "${SDK_VERSION}",
+  "c_abi_version": 1,
+  "wasm_size": ${wasm_size},
+  "wasm_sha256": "${wasm_sha256}",
+  "credentials_included": false,
+  "terrain_data_included": false
+}
+JSON
 
 printf 'Mini Program Wasm verification passed: %s bytes, package %s\n' \
   "${wasm_size}" "${PACKAGE_DIR}"
