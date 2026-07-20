@@ -34,8 +34,15 @@ struct terra_context {
   bool manifest_loaded = false;
   bool viewport_set = false;
   bool camera_set = false;
+  double globe_target_longitude_degrees = 0.0;
+  double globe_target_latitude_degrees = 0.0;
+  double planar_target_x = 0.0;
+  double planar_target_y = 0.0;
+  bool planar_target_set = false;
+  std::uint32_t planar_level = 0U;
   std::uint64_t sequence = 0U;
   std::vector<terra_loaded_record> loaded_records;
+  std::vector<terra_request_v1> failed_records;
   std::vector<terra_request_v1> requests;
   std::vector<terra_patch_decision_v1> patches;
   std::vector<terra_draw_range_v1> draw_ranges;
@@ -108,6 +115,31 @@ const terra_loaded_record* find_record(const terra_context& context,
         return same_record(record, kind, key);
       });
   return found == context.loaded_records.end() ? nullptr : &*found;
+}
+
+const terra_request_v1* find_failed_record(
+    const terra_context& context, std::uint32_t kind,
+    const terra_patch_key_v1& key) {
+  const auto found = std::find_if(
+      context.failed_records.begin(), context.failed_records.end(),
+      [kind, &key](const terra_request_v1& request) {
+        return request.kind == kind && same_key(request.key, key);
+      });
+  return found == context.failed_records.end() ? nullptr : &*found;
+}
+
+bool erase_failed_record(terra_context& context, std::uint32_t kind,
+                         const terra_patch_key_v1& key) {
+  const auto found = std::find_if(
+      context.failed_records.begin(), context.failed_records.end(),
+      [kind, &key](const terra_request_v1& request) {
+        return request.kind == kind && same_key(request.key, key);
+      });
+  if (found == context.failed_records.end()) {
+    return false;
+  }
+  context.failed_records.erase(found);
+  return true;
 }
 
 const terra_request_v1* find_request(const terra_context& context,
@@ -257,8 +289,11 @@ terra_status build_render_buffers(
           continue;
         }
         const terra::core::grid_diamond child =
-            parent_diamond.cylindrical_child_diamond(
-                parent_fragment, child_index);
+            context.manifest.transform == TERRA_TRANSFORM_PLANAR
+                ? parent_diamond.planar_child_diamond(
+                      parent_fragment, child_index)
+                : parent_diamond.cylindrical_child_diamond(
+                      parent_fragment, child_index);
         terra_patch_key_v1 child_key{};
         child_key.level = key.level + 1U;
         const terra::core::grid_point child_id = child.id();
@@ -301,10 +336,20 @@ terra_status build_render_buffers(
       }
       terra::frame::patch_surface_mesh mesh;
       const terra::frame::surface_mesh_status mesh_status =
-          terra::frame::make_cylindrical_patch_surface(
-              patch, fragment, height->second.fragments[fragment],
-              context.manifest.height_scale_factor,
-              context.manifest.radius, selector, mesh);
+          context.manifest.transform == TERRA_TRANSFORM_PLANAR
+              ? terra::frame::make_planar_patch_surface(
+                    patch, fragment, height->second.fragments[fragment],
+                    context.manifest.height_scale_factor,
+                    terra::core::bounds2d(
+                        terra::core::vector2d{{context.manifest.minimum_u,
+                                               context.manifest.minimum_v}},
+                        terra::core::vector2d{{context.manifest.maximum_u,
+                                               context.manifest.maximum_v}}),
+                    mesh)
+              : terra::frame::make_cylindrical_patch_surface(
+                    patch, fragment, height->second.fragments[fragment],
+                    context.manifest.height_scale_factor,
+                    context.manifest.radius, selector, mesh);
       if (mesh_status != terra::frame::surface_mesh_status::ok) {
         const terra_status status =
             mesh_status == terra::frame::surface_mesh_status::resource_limit
@@ -362,7 +407,14 @@ void reset_runtime_state(terra_context& context) {
   context.manifest_loaded = false;
   context.sequence = 0U;
   context.camera_set = false;
+  context.globe_target_longitude_degrees = 0.0;
+  context.globe_target_latitude_degrees = 0.0;
+  context.planar_target_x = 0.0;
+  context.planar_target_y = 0.0;
+  context.planar_target_set = false;
+  context.planar_level = 0U;
   context.loaded_records.clear();
+  context.failed_records.clear();
   context.requests.clear();
   context.patches.clear();
   context.draw_ranges.clear();
@@ -567,6 +619,72 @@ terra_status terra_set_camera(terra_context* context,
   return succeed(context);
 }
 
+terra_status terra_set_globe_target(terra_context* context,
+                                    double longitude_degrees,
+                                    double latitude_degrees) {
+  if (context == nullptr || !std::isfinite(longitude_degrees) ||
+      !std::isfinite(latitude_degrees) || longitude_degrees < -180.0 ||
+      longitude_degrees > 180.0 || latitude_degrees < -90.0 ||
+      latitude_degrees > 90.0) {
+    return fail(context, TERRA_STATUS_INVALID_ARGUMENT,
+                "invalid globe target");
+  }
+  if (!context->manifest_loaded) {
+    return fail(context, TERRA_STATUS_INVALID_STATE,
+                "manifest is required before globe target");
+  }
+  if (context->manifest.transform != TERRA_TRANSFORM_CYLINDRICAL) {
+    return fail(context, TERRA_STATUS_UNSUPPORTED,
+                "globe target requires a cylindrical dataset");
+  }
+  context->globe_target_longitude_degrees = longitude_degrees;
+  context->globe_target_latitude_degrees = latitude_degrees;
+  return succeed(context);
+}
+
+terra_status terra_set_planar_target(terra_context* context,
+                                     double x, double y) {
+  if (context == nullptr || !std::isfinite(x) || !std::isfinite(y)) {
+    return fail(context, TERRA_STATUS_INVALID_ARGUMENT,
+                "invalid planar target");
+  }
+  if (!context->manifest_loaded) {
+    return fail(context, TERRA_STATUS_INVALID_STATE,
+                "manifest is required before planar target");
+  }
+  if (context->manifest.transform != TERRA_TRANSFORM_PLANAR) {
+    return fail(context, TERRA_STATUS_UNSUPPORTED,
+                "planar target requires a planar dataset");
+  }
+  if (x < context->manifest.minimum_u || x > context->manifest.maximum_u ||
+      y < context->manifest.minimum_v || y > context->manifest.maximum_v) {
+    return fail(context, TERRA_STATUS_INVALID_ARGUMENT,
+                "planar target is outside dataset bounds");
+  }
+  context->planar_target_x = x;
+  context->planar_target_y = y;
+  context->planar_target_set = true;
+  return succeed(context);
+}
+
+terra_status terra_set_planar_level(terra_context* context,
+                                    std::uint32_t target_level) {
+  if (context == nullptr || target_level >= 12U) {
+    return fail(context, TERRA_STATUS_INVALID_ARGUMENT,
+                "invalid planar target level");
+  }
+  if (!context->manifest_loaded) {
+    return fail(context, TERRA_STATUS_INVALID_STATE,
+                "manifest is required before planar level");
+  }
+  if (context->manifest.transform != TERRA_TRANSFORM_PLANAR) {
+    return fail(context, TERRA_STATUS_UNSUPPORTED,
+                "planar level requires a planar dataset");
+  }
+  context->planar_level = target_level;
+  return succeed(context);
+}
+
 terra_status terra_submit_record(terra_context* context,
                                  std::uint32_t kind,
                                  const terra_patch_key_v1* key,
@@ -608,6 +726,7 @@ terra_status terra_submit_record(terra_context* context,
       context->stats.decoded_value_count += record.values.values.size();
       context->stats.loaded_patch_count = context->loaded_records.size();
     }
+    static_cast<void>(erase_failed_record(*context, kind, *key));
     return succeed(context);
   }
   TERRA_C_API_CATCH(context, "unexpected terrain record decode error")
@@ -667,13 +786,32 @@ terra_status terra_fail_record(terra_context* context,
     return fail(context, TERRA_STATUS_INVALID_ARGUMENT,
                 "invalid failed terrain record");
   }
-  if (find_request(*context, kind, *key) == nullptr) {
+  const terra_request_v1* request = find_request(*context, kind, *key);
+  if (request == nullptr) {
     return fail(context, TERRA_STATUS_NOT_FOUND,
                 "failed terrain record is not currently requested");
   }
-  ++context->stats.failed_patch_count;
+  if (find_failed_record(*context, kind, *key) == nullptr) {
+    context->failed_records.push_back(*request);
+    ++context->stats.failed_patch_count;
+  }
   context->frame.failed_patch_count =
       static_cast<std::uint32_t>(context->stats.failed_patch_count);
+  return succeed(context);
+}
+
+terra_status terra_retry_record(terra_context* context,
+                                std::uint32_t kind,
+                                const terra_patch_key_v1* key) {
+  if (context == nullptr || !valid_record_kind(kind) || key == nullptr ||
+      !valid_key(*key)) {
+    return fail(context, TERRA_STATUS_INVALID_ARGUMENT,
+                "invalid terrain record retry");
+  }
+  if (!erase_failed_record(*context, kind, *key)) {
+    return fail(context, TERRA_STATUS_NOT_FOUND,
+                "failed terrain record is not available for retry");
+  }
   return succeed(context);
 }
 
@@ -701,30 +839,73 @@ terra_status terra_update(terra_context* context, float lod_threshold) {
     return fail(context, TERRA_STATUS_INVALID_STATE,
                 "manifest and viewport are required before update");
   }
-  if (context->manifest.transform != TERRA_TRANSFORM_CYLINDRICAL) {
-    return fail(context, TERRA_STATUS_UNSUPPORTED,
-                "procedural LOD currently requires a cylindrical dataset");
-  }
   TERRA_C_API_TRY {
-    terra::frame::globe_camera camera(
-        static_cast<float>(context->manifest.radius),
-        static_cast<int>(context->viewport.width),
-        static_cast<int>(context->viewport.height),
-        static_cast<float>(context->viewport.vertical_fov_radians));
-    if (!camera.is_valid()) {
-      return fail(context, TERRA_STATUS_INVALID_STATE,
-                  "unable to construct globe camera");
+    terra::frame::camera_snapshot snapshot;
+    terra::frame::lod_cut cut;
+    if (context->manifest.transform == TERRA_TRANSFORM_PLANAR) {
+      const terra::core::bounds2d bounds(
+          terra::core::vector2d{{context->manifest.minimum_u,
+                                 context->manifest.minimum_v}},
+          terra::core::vector2d{{context->manifest.maximum_u,
+                                 context->manifest.maximum_v}});
+      terra::frame::planar_camera camera(
+          bounds, static_cast<int>(context->viewport.width),
+          static_cast<int>(context->viewport.height),
+          static_cast<float>(context->viewport.vertical_fov_radians));
+      if (!camera.is_valid()) {
+        return fail(context, TERRA_STATUS_INVALID_STATE,
+                    "unable to construct planar camera");
+      }
+      if (context->camera_set) {
+        camera.set_distance(context->camera.distance);
+        camera.set_tilt_radians(context->camera.tilt_radians);
+        camera.rotate_yaw_radians(context->camera.yaw_radians);
+      }
+      if (context->planar_target_set &&
+          !camera.set_target(context->planar_target_x,
+                             context->planar_target_y)) {
+        return fail(context, TERRA_STATUS_INVALID_STATE,
+                    "unable to set planar camera target");
+      }
+      snapshot = camera.snapshot();
+      cut = terra::frame::select_fixed_planar_lod(
+          context->manifest.patch_dimension, context->planar_level);
+    } else {
+      terra::frame::globe_camera camera(
+          static_cast<float>(context->manifest.radius),
+          static_cast<int>(context->viewport.width),
+          static_cast<int>(context->viewport.height),
+          static_cast<float>(context->viewport.vertical_fov_radians));
+      if (!camera.is_valid()) {
+        return fail(context, TERRA_STATUS_INVALID_STATE,
+                    "unable to construct globe camera");
+      }
+      if (!camera.set_target_degrees(
+              context->globe_target_longitude_degrees,
+              context->globe_target_latitude_degrees)) {
+        return fail(context, TERRA_STATUS_INVALID_STATE,
+                    "unable to set globe camera target");
+      }
+      if (context->camera_set) {
+        camera.set_distance(context->camera.distance);
+        camera.set_tilt_radians(context->camera.tilt_radians);
+        camera.rotate_yaw_radians(context->camera.yaw_radians);
+      }
+      snapshot = camera.snapshot();
+      std::vector<terra::frame::lod_detail_key> unavailable_details;
+      unavailable_details.reserve(context->failed_records.size());
+      for (const terra_request_v1& failed : context->failed_records) {
+        if (failed.kind == TERRA_REQUEST_DETAIL) {
+          terra::frame::lod_detail_key unavailable;
+          unavailable.level = failed.key.level;
+          unavailable.id = {{failed.key.i, failed.key.j, failed.key.k}};
+          unavailable_details.push_back(unavailable);
+        }
+      }
+      cut = terra::frame::select_procedural_cylindrical_lod(
+          context->manifest.radius, context->manifest.patch_dimension,
+          lod_threshold, snapshot, 40U, 65536U, unavailable_details);
     }
-    if (context->camera_set) {
-      camera.set_distance(context->camera.distance);
-      camera.set_tilt_radians(context->camera.tilt_radians);
-      camera.rotate_yaw_radians(context->camera.yaw_radians);
-    }
-    const terra::frame::camera_snapshot snapshot = camera.snapshot();
-    const terra::frame::lod_cut cut =
-        terra::frame::select_procedural_cylindrical_lod(
-            context->manifest.radius, context->manifest.patch_dimension,
-            lod_threshold, snapshot);
     if (!cut.complete) {
       return fail(context, TERRA_STATUS_RESOURCE_LIMIT,
                   "LOD selection exhausted its safety budget");
@@ -753,7 +934,9 @@ terra_status terra_update(terra_context* context, float lod_threshold) {
               ? TERRA_REQUEST_ROOT
               : TERRA_REQUEST_DETAIL;
       request.key = to_key(record.patch);
-      if (find_record(*context, request.kind, request.key) == nullptr) {
+      if (find_record(*context, request.kind, request.key) == nullptr &&
+          find_failed_record(*context, request.kind,
+                             request.key) == nullptr) {
         context->requests.push_back(request);
       }
     }

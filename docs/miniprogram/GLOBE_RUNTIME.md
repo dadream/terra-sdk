@@ -14,18 +14,41 @@ Run these commands from the repository root in WSL:
 ```bash
 bash scripts/verify_miniprogram_wasm.sh
 bash scripts/stage_miniprogram_globe.sh
+bash scripts/start_globe_acceptance_service.sh
 ```
 
 The first command builds and verifies the SDK package. The second stages the
 generated Wasm and manifest under `apps/miniprogram/wasm/`; both staged files
 are ignored by Git. Open `apps/miniprogram/` in WeChat DevTools after staging.
 
-The terrain service and every imagery host in its manifest must use HTTPS and
-be registered as Mini Program request domains. Configure a credential-free
-terrain origin locally, then restart the page:
+The third command starts the persistent local terrain service on port `18082`.
+Keep its `terra_terrain_globe_acceptance` container running throughout manual
+acceptance. Unlike this entry point, `verify_terrain_service_globe.sh` and
+`verify_globe.sh` intentionally stop their temporary service after the gate.
+Before reporting ready, the persistent entry point uses the real Wasm and globe
+repository to verify the Beijing initial frame, four fixed zooms, antimeridian
+texture selection, and sparse-detail parent fallback.
+
+Production and physical-device terrain services must use HTTPS and be
+registered as Mini Program request domains. For local DevTools acceptance
+only, the runtime also accepts HTTP origins on `localhost`, `127.0.0.1`, or
+`[::1]`; disable domain checking in the ignored
+`project.private.config.json`, configure the loopback service, and restart the
+page:
 
 ```js
-wx.setStorageSync('terra.terrainServiceOrigin', 'https://terrain.example')
+wx.setStorageSync('terra.terrainServiceOrigin', 'http://127.0.0.1:18082')
+```
+
+Non-loopback HTTP origins remain invalid. Every imagery host must use HTTPS;
+the local terrain exception does not relax Tianditu request-domain or
+credential requirements.
+
+Before relaunching the page, verify that the manifest is reachable from the
+Windows host used by DevTools:
+
+```text
+http://127.0.0.1:18082/terra/v1/datasets/globe/manifest
 ```
 
 `apps/miniprogram/config/runtime.js` intentionally has no deployment URL or
@@ -70,13 +93,43 @@ request-domain configuration remains a release and device-evidence requirement.
 
 ## Controls And State
 
-- One finger drag: yaw and tilt.
+The checked-in Mini Program configuration starts with Beijing centered at
+`116.4074 E, 39.9042 N`. This is an application default; the generic runtime
+keeps its neutral camera when no `initialTarget` is supplied. `R` returns to
+the configured Beijing target after zoom, tilt, or yaw changes.
+
+- `Move` plus one-finger drag: move the surface target, matching nav3d left drag.
+- `Look` plus one-finger drag: change local heading and pitch, matching nav3d right drag.
 - Two finger pinch: zoom.
+- `BJ`: return to the configured Beijing target at regional inspection distance.
+- `Top`: set top-down pitch without changing target, heading, or distance.
 - `-` / `+`: fixed zoom out/in.
 - `45`: set a -45 degree tilt.
+- `N`: reset local heading to north-up.
 - `R`: reset the exact initial SDK camera state.
 - `Retry`: requeue terrain records or imagery that exhausted the bounded retry policy.
 - `C`: copy the current runtime report for evidence collection.
+
+WeChat DevTools does not map the desktop keyboard to these commands. Use the
+dedicated control band below the WebGL canvas. A mouse drag simulates one
+finger: select `Move` for surface navigation or `Look` for heading/pitch. Use
+the fixed `-`/`+` commands when desktop pinch emulation is inconvenient. The
+status band includes target coordinates, pitch, heading, and active imagery.
+The full deterministic DevTools checklist is in
+[GLOBE_VISUAL_ACCEPTANCE.md](GLOBE_VISUAL_ACCEPTANCE.md).
+Before a Tianditu run, verify local storage without printing the credential,
+then relaunch the page:
+
+```js
+wx.getStorageSync('terra.imageryProfile')
+Boolean(wx.getStorageSync('terra.tiandituToken'))
+wx.reLaunch({ url: '/pages/globe/index' })
+```
+
+The expected values are `tianditu-img-c` and `true`. A successful profile run
+shows `imagery tianditu-img-c` and the Tianditu attribution above the toolbar.
+If status shows `imagery blue-marble`, the page started before the local profile
+was stored or the DevTools storage belongs to a different AppID/project.
 
 The report includes frame counts, camera state, the safe imagery profile ID,
 cache sizes, request activity, budget, renderer counters, diagnostics, and
@@ -85,9 +138,12 @@ context status. It never includes imagery credentials.
 ## Verification Evidence
 
 The automated development gate calls the real Wasm SDK and WebGL renderer in a
-test-only Chromium-compatible browser. It captures initial, zoom, -45 degree
-tilt, 30 degree yaw, reset, and context-restored frames, then checks exact camera
-state, nonblank PNGs, transient terrain retry, and WebGL context recovery:
+test-only Chromium-compatible browser. It captures initial Beijing world view,
+fixture-safe Beijing focus, zoom, -45 degree pitch, 30 degree heading,
+north-up, top-down, reset, and context-restored frames. It checks exact camera
+state, nonblank and distinct PNGs, transient terrain retry, and WebGL context
+recovery. The automated focus uses a bounded synthetic-data distance; the `BJ`
+button keeps the closer regional distance for full-service manual acceptance.
 
 ```bash
 bash scripts/verify_web_sdk.sh

@@ -218,6 +218,7 @@ double projected_area(const oriented_box& box, const vector3& direction) {
 struct node {
   core::grid_diamond diamond;
   bool leaf = true;
+  bool blocked = false;
   std::array<bool, 2> has_fragment{{false, false}};
   oriented_box bounds;
 };
@@ -232,18 +233,21 @@ struct selection_context {
   std::size_t maximum_node_count;
   std::size_t node_count;
   std::vector<level_map> levels;
+  const std::vector<lod_detail_key>& unavailable_details;
 
   selection_context(double radius, std::uint32_t patch_dimension_value,
                     const camera_snapshot& camera_value,
                     std::size_t maximum_level_value,
-                    std::size_t maximum_node_count_value)
+                    std::size_t maximum_node_count_value,
+                    const std::vector<lod_detail_key>& unavailable)
       : transform(core::coordinate_transform::cylindrical(radius)),
         patch_dimension(patch_dimension_value),
         camera(camera_value),
         maximum_level(maximum_level_value),
         maximum_node_count(maximum_node_count_value),
         node_count(0U),
-        levels(1U) {}
+        levels(1U),
+        unavailable_details(unavailable) {}
 };
 
 lod_patch priority(std::size_t level, const node& value,
@@ -277,6 +281,17 @@ lod_patch priority(std::size_t level, const node& value,
   return result;
 }
 
+bool detail_is_unavailable(const selection_context& context,
+                           std::size_t level,
+                           const core::grid_point& id) {
+  return std::any_of(
+      context.unavailable_details.begin(),
+      context.unavailable_details.end(),
+      [level, &id](const lod_detail_key& key) {
+        return key.level == level && key.id == id;
+      });
+}
+
 bool refine(selection_context& context, std::size_t level,
             const core::grid_point& id) {
   if (level >= context.maximum_level || level >= context.levels.size() ||
@@ -285,6 +300,10 @@ bool refine(selection_context& context, std::size_t level,
   }
   level_map::iterator current = context.levels[level].find(id);
   if (current == context.levels[level].end() || !current->second.leaf) {
+    return false;
+  }
+
+  if (detail_is_unavailable(context, level, id)) {
     return false;
   }
 
@@ -340,12 +359,100 @@ bool refine(selection_context& context, std::size_t level,
   return true;
 }
 
+lod_patch fixed_patch(std::size_t level, const node& value) {
+  lod_patch result;
+  result.level = level;
+  result.id = value.diamond.id();
+  result.visible = true;
+  for (std::size_t corner = 0U; corner < result.corners.size(); ++corner) {
+    result.corners[corner] = value.diamond.corner(corner);
+  }
+  for (std::size_t fragment = 0U; fragment < value.has_fragment.size();
+       ++fragment) {
+    if (value.has_fragment[fragment]) {
+      result.fragment_mask |= std::uint8_t(1U) << fragment;
+    }
+  }
+  return result;
+}
+
+bool refine_planar(std::vector<level_map>& levels, std::size_t& node_count,
+                   std::size_t maximum_node_count, std::size_t level,
+                   const core::grid_point& id) {
+  if (level >= levels.size() || node_count + 4U > maximum_node_count) {
+    return false;
+  }
+  level_map::iterator current = levels[level].find(id);
+  if (current == levels[level].end() || !current->second.leaf) {
+    return false;
+  }
+  if (level > 0U) {
+    for (std::size_t fragment = 0U; fragment < 2U; ++fragment) {
+      current = levels[level].find(id);
+      if (!current->second.has_fragment[fragment] &&
+          valid_fragment(current->second.diamond, fragment)) {
+        const core::grid_point parent =
+            current->second.diamond.parent_id(fragment);
+        static_cast<void>(refine_planar(
+            levels, node_count, maximum_node_count, level - 1U, parent));
+      }
+    }
+  }
+  current = levels[level].find(id);
+  for (std::size_t fragment = 0U; fragment < 2U; ++fragment) {
+    if (!current->second.has_fragment[fragment] &&
+        valid_fragment(current->second.diamond, fragment)) {
+      return false;
+    }
+  }
+  if (node_count + 4U > maximum_node_count) {
+    return false;
+  }
+  const core::grid_diamond parent_diamond = current->second.diamond;
+  const std::array<bool, 2> parent_fragments = current->second.has_fragment;
+  current->second.leaf = false;
+  if (levels.size() == level + 1U) {
+    levels.push_back(level_map());
+  }
+  for (std::size_t fragment = 0U; fragment < 2U; ++fragment) {
+    if (!parent_fragments[fragment]) {
+      continue;
+    }
+    for (std::size_t child_index = 0U; child_index < 2U; ++child_index) {
+      const core::grid_diamond child =
+          parent_diamond.planar_child_diamond(fragment, child_index);
+      const core::grid_point child_id = child.id();
+      const std::size_t child_fragment =
+          fragment_from_parent(child, parent_diamond.id());
+      std::pair<level_map::iterator, bool> inserted =
+          levels[level + 1U].emplace(child_id, node());
+      if (inserted.second) {
+        ++node_count;
+        inserted.first->second.diamond = child;
+      }
+      inserted.first->second.has_fragment[child_fragment] = true;
+    }
+  }
+  return true;
+}
+
 }  // namespace
 
 lod_cut select_procedural_cylindrical_lod(
     double radius, std::uint32_t patch_dimension, float threshold,
     const camera_snapshot& camera, std::size_t maximum_level,
     std::size_t maximum_node_count) {
+  static const std::vector<lod_detail_key> no_unavailable_details;
+  return select_procedural_cylindrical_lod(
+      radius, patch_dimension, threshold, camera, maximum_level,
+      maximum_node_count, no_unavailable_details);
+}
+
+lod_cut select_procedural_cylindrical_lod(
+    double radius, std::uint32_t patch_dimension, float threshold,
+    const camera_snapshot& camera, std::size_t maximum_level,
+    std::size_t maximum_node_count,
+    const std::vector<lod_detail_key>& unavailable_details) {
   lod_cut result;
   bool camera_is_finite = true;
   for (double coordinate : camera.position) {
@@ -366,7 +473,8 @@ lod_cut select_procedural_cylindrical_lod(
   const std::size_t compatible_maximum_level =
       std::min<std::size_t>(maximum_level, 40U);
   selection_context context(radius, patch_dimension, camera,
-                            compatible_maximum_level, maximum_node_count);
+                            compatible_maximum_level, maximum_node_count,
+                            unavailable_details);
   const std::array<core::grid_diamond, 8> roots = core::cylindrical_roots();
   for (const core::grid_diamond& root : roots) {
     node root_node;
@@ -383,7 +491,10 @@ lod_cut select_procedural_cylindrical_lod(
     morton_less is_less;
     for (std::size_t level = 0U; level < context.levels.size(); ++level) {
       for (const level_map::value_type& entry : context.levels[level]) {
-        if (!entry.second.leaf) {
+        if (!entry.second.leaf || entry.second.blocked) {
+          continue;
+        }
+        if (detail_is_unavailable(context, level, entry.first)) {
           continue;
         }
         const lod_patch current = priority(level, entry.second, context);
@@ -403,7 +514,15 @@ lod_cut select_procedural_cylindrical_lod(
       break;
     }
     if (!refine(context, candidate.level, candidate.id)) {
-      break;
+      if (context.node_count + 4U > context.maximum_node_count) {
+        break;
+      }
+      level_map::iterator blocked =
+          context.levels[candidate.level].find(candidate.id);
+      if (blocked == context.levels[candidate.level].end()) {
+        break;
+      }
+      blocked->second.blocked = true;
     }
   }
 
@@ -422,6 +541,68 @@ lod_cut select_procedural_cylindrical_lod(
     }
     for (const level_map::value_type& entry : context.levels[level]) {
       const lod_patch patch = priority(level, entry.second, context);
+      if (level == 0U) {
+        lod_record_request root_request;
+        root_request.kind = lod_record_kind::root;
+        root_request.patch = patch;
+        result.record_requests.push_back(root_request);
+      }
+      if (!entry.second.leaf) {
+        lod_record_request detail_request;
+        detail_request.kind = lod_record_kind::detail;
+        detail_request.patch = patch;
+        result.record_requests.push_back(detail_request);
+      }
+    }
+  }
+  return result;
+}
+
+lod_cut select_fixed_planar_lod(
+    std::uint32_t patch_dimension, std::size_t target_level,
+    std::size_t maximum_level, std::size_t maximum_node_count) {
+  lod_cut result;
+  if (patch_dimension == 0U || maximum_level == 0U ||
+      target_level >= maximum_level || maximum_level > 40U ||
+      maximum_node_count == 0U) {
+    return result;
+  }
+
+  std::vector<level_map> levels(1U);
+  std::size_t node_count = 1U;
+  node root_node;
+  root_node.diamond = core::planar_root();
+  root_node.has_fragment = {{true, true}};
+  levels[0U].emplace(root_node.diamond.id(), root_node);
+
+  for (std::size_t level = 0U; level < target_level; ++level) {
+    std::vector<core::grid_point> leaves;
+    for (const level_map::value_type& entry : levels[level]) {
+      if (entry.second.leaf) {
+        leaves.push_back(entry.first);
+      }
+    }
+    for (const core::grid_point& id : leaves) {
+      if (!refine_planar(levels, node_count, maximum_node_count,
+                         level, id)) {
+        return result;
+      }
+    }
+  }
+
+  result.complete = true;
+  result.graph_level_count = levels.size();
+  result.leaf_count_by_level.assign(levels.size(), 0U);
+  for (std::size_t level = 0U; level < levels.size(); ++level) {
+    for (const level_map::value_type& entry : levels[level]) {
+      if (!entry.second.leaf) {
+        continue;
+      }
+      ++result.leaf_count_by_level[level];
+      result.patches.push_back(fixed_patch(level, entry.second));
+    }
+    for (const level_map::value_type& entry : levels[level]) {
+      const lod_patch patch = fixed_patch(level, entry.second);
       if (level == 0U) {
         lod_record_request root_request;
         root_request.kind = lod_record_kind::root;

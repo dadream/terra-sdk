@@ -54,6 +54,19 @@ std::string format_plane(const terra::frame::plane4d& value) {
          format_double(value[2]) + "," + format_double(value[3]);
 }
 
+terra::core::vector3d transform_point(
+    const terra::frame::matrix4d& transform,
+    const terra::core::vector3d& point) {
+  terra::core::vector3d result{{0.0, 0.0, 0.0}};
+  for (std::size_t row = 0; row < 3; ++row) {
+    result[row] = transform[row * 4 + 3];
+    for (std::size_t column = 0; column < 3; ++column) {
+      result[row] += transform[row * 4 + column] * point[column];
+    }
+  }
+  return result;
+}
+
 void expect(const golden_map& golden, const std::string& key,
             const std::string& actual) {
   const golden_map::const_iterator found = golden.find(key);
@@ -177,6 +190,47 @@ int main(int argc, char** argv) {
 
     camera.reset();
     check_state(golden, "reset", camera.snapshot(), radius);
+
+    const double longitude_degrees = 116.4074;
+    const double latitude_degrees = 39.9042;
+    if (!camera.set_target_degrees(longitude_degrees, latitude_degrees)) {
+      throw std::runtime_error("unable to set Beijing camera target");
+    }
+    if (camera.target_longitude_degrees() != longitude_degrees ||
+        camera.target_latitude_degrees() != latitude_degrees) {
+      throw std::runtime_error("globe camera target getters changed");
+    }
+    const terra::frame::camera_snapshot beijing = camera.snapshot();
+    const double longitude = longitude_degrees * pi / 180.0;
+    const double latitude = latitude_degrees * pi / 180.0;
+    const terra::core::vector3d target_unit{{
+        std::sin(longitude) * std::cos(latitude), std::sin(latitude),
+        std::cos(longitude) * std::cos(latitude)}};
+    const terra::core::vector3d target_surface{{
+        radius * target_unit[0], radius * target_unit[1],
+        radius * target_unit[2]}};
+    const terra::core::vector3d target_in_view =
+        transform_point(beijing.view, target_surface);
+    if (std::fabs(target_in_view[0]) > 0.000001 ||
+        std::fabs(target_in_view[1]) > 0.000001 ||
+        std::fabs(target_in_view[2] + beijing.distance - radius) >
+            0.000001) {
+      throw std::runtime_error("Beijing target is not on the view axis");
+    }
+    for (std::size_t axis = 0; axis < 3; ++axis) {
+      if (std::fabs(beijing.position[axis] -
+                    target_unit[axis] * beijing.distance) > 0.000001) {
+        throw std::runtime_error("Beijing camera position changed");
+      }
+    }
+    if (camera.set_target_degrees(181.0, 0.0)) {
+      throw std::runtime_error("invalid globe target was accepted");
+    }
+    camera.reset();
+    if (camera.target_longitude_degrees() != 0.0 ||
+        camera.target_latitude_degrees() != 0.0) {
+      throw std::runtime_error("globe camera reset target changed");
+    }
     std::cout << "Terra::frame camera and culling match the M2 golden.\n";
     return 0;
   } catch (const std::exception& error) {

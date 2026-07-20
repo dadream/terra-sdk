@@ -82,7 +82,30 @@ core::bounds2d fragment_bounds(const lod_patch& patch,
     maximum[0] = std::max(maximum[0], point[0]);
     maximum[1] = std::max(maximum[1], point[1]);
   }
+  if (maximum[0] <= -180.0) {
+    minimum[0] += 360.0;
+    maximum[0] += 360.0;
+  } else if (minimum[0] >= 180.0) {
+    minimum[0] -= 360.0;
+    maximum[0] -= 360.0;
+  }
   return core::bounds2d(minimum, maximum);
+}
+
+core::vector3d planar_uvh_from_grid(const core::grid_point& point,
+                                    const core::bounds2d& bounds) {
+  const double grid_minimum = core::grid_coordinate_min;
+  const double grid_span = static_cast<double>(core::grid_coordinate_max) -
+                           static_cast<double>(core::grid_coordinate_min);
+  const double u_fraction =
+      (static_cast<double>(point[0]) - grid_minimum) / grid_span;
+  const double v_fraction =
+      (static_cast<double>(point[1]) - grid_minimum) / grid_span;
+  return {{bounds.minimum[0] +
+               u_fraction * (bounds.maximum[0] - bounds.minimum[0]),
+           bounds.minimum[1] +
+               v_fraction * (bounds.maximum[1] - bounds.minimum[1]),
+           0.0}};
 }
 
 }  // namespace
@@ -185,6 +208,85 @@ surface_mesh_status make_cylindrical_patch_surface_impl(
   return surface_mesh_status::ok;
 }
 
+surface_mesh_status make_planar_patch_surface_impl(
+    const lod_patch& patch, std::uint8_t fragment,
+    std::uint32_t patch_dimension,
+    const codec::height_fragment* heights, double height_scale,
+    const core::bounds2d& bounds, patch_surface_mesh& output) {
+  output = patch_surface_mesh();
+  const double width = bounds.maximum[0] - bounds.minimum[0];
+  const double height = bounds.maximum[1] - bounds.minimum[1];
+  if (patch_dimension == 0U || patch_dimension > maximum_patch_dimension ||
+      !std::isfinite(bounds.minimum[0]) ||
+      !std::isfinite(bounds.minimum[1]) ||
+      !std::isfinite(bounds.maximum[0]) ||
+      !std::isfinite(bounds.maximum[1]) || width <= 0.0 || height <= 0.0) {
+    return surface_mesh_status::invalid_argument;
+  }
+  if (fragment > 1U || !patch.has_fragment(fragment)) {
+    return surface_mesh_status::invalid_fragment;
+  }
+  const std::size_t vertex_count =
+      (static_cast<std::size_t>(patch_dimension) + 1U) *
+      (static_cast<std::size_t>(patch_dimension) + 2U) / 2U;
+  if (heights &&
+      (heights->dimension != patch_dimension ||
+       heights->values.size() != vertex_count ||
+       !std::isfinite(height_scale) || height_scale <= 0.0)) {
+    return surface_mesh_status::invalid_height;
+  }
+
+#if !defined(TERRA_SDK_NO_EXCEPTIONS)
+  try {
+#endif
+    output.patch = patch;
+    output.fragment = fragment;
+    output.texture_tile = core::wmts_tile_key(0, 0, 0, 0);
+    output.positions_xyz.reserve(vertex_count * 3U);
+    output.texture_uv.reserve(vertex_count * 2U);
+    output.origin = planar_uvh_from_grid(patch.id, bounds);
+
+    const std::size_t first = (1U + 2U * fragment) % 4U;
+    const std::size_t second = (2U + 2U * fragment) % 4U;
+    const std::size_t third = (0U + 2U * fragment) % 4U;
+    const core::grid_point& gp0 = patch.corners[first];
+    const core::grid_point& gp1 = patch.corners[second];
+    const core::grid_point& gp2 = patch.corners[third];
+
+    std::size_t vertex = 0U;
+    for (std::uint32_t y = 0U; y <= patch_dimension; ++y) {
+      for (std::uint32_t x = 0U; x <= patch_dimension - y; ++x) {
+        const core::grid_point grid = interpolated_grid_point(
+            gp0, gp1, gp2, x, y, patch_dimension);
+        core::vector3d uvh = planar_uvh_from_grid(grid, bounds);
+        if (heights) {
+          uvh[2] = height_scale * heights->values[vertex];
+          if (!std::isfinite(uvh[2])) {
+            output = patch_surface_mesh();
+            return surface_mesh_status::invalid_height;
+          }
+        }
+        output.positions_xyz.push_back(
+            static_cast<float>(uvh[0] - output.origin[0]));
+        output.positions_xyz.push_back(
+            static_cast<float>(uvh[1] - output.origin[1]));
+        output.positions_xyz.push_back(static_cast<float>(uvh[2]));
+        output.texture_uv.push_back(static_cast<float>(
+            (uvh[0] - bounds.minimum[0]) / width));
+        output.texture_uv.push_back(static_cast<float>(
+            (bounds.maximum[1] - uvh[1]) / height));
+        ++vertex;
+      }
+    }
+#if !defined(TERRA_SDK_NO_EXCEPTIONS)
+  } catch (const std::bad_alloc&) {
+    output = patch_surface_mesh();
+    return surface_mesh_status::resource_limit;
+  }
+#endif
+  return surface_mesh_status::ok;
+}
+
 }  // namespace
 
 surface_mesh_status make_cylindrical_patch_surface(
@@ -206,6 +308,23 @@ surface_mesh_status make_cylindrical_patch_surface(
   return make_cylindrical_patch_surface_impl(
       patch, fragment, heights.dimension, &heights, height_scale, radius,
       texture_selector, output);
+}
+
+surface_mesh_status make_planar_patch_surface(
+    const lod_patch& patch, std::uint8_t fragment,
+    std::uint32_t patch_dimension, const core::bounds2d& bounds,
+    patch_surface_mesh& output) {
+  return make_planar_patch_surface_impl(
+      patch, fragment, patch_dimension, nullptr, 0.0, bounds, output);
+}
+
+surface_mesh_status make_planar_patch_surface(
+    const lod_patch& patch, std::uint8_t fragment,
+    const codec::height_fragment& heights, double height_scale,
+    const core::bounds2d& bounds, patch_surface_mesh& output) {
+  return make_planar_patch_surface_impl(
+      patch, fragment, heights.dimension, &heights, height_scale,
+      bounds, output);
 }
 
 const char* surface_mesh_status_message(surface_mesh_status status) {

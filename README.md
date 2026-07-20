@@ -69,6 +69,16 @@ Release archives are written under `workspace_old/package/release/`. Manual
 DevTools/Android/iOS acceptance is intentionally the final owner step and does
 not block the automated engineering gate.
 
+Run the deterministic PS 1k planar visual oracle when changing terrain decode,
+frame topology, camera behavior, texture delivery, or WebGL rendering:
+
+```bash
+bash scripts/verify_planar_web.sh
+```
+
+See `docs/miniprogram/PLANAR_VISUAL_VALIDATION.md` for the DevTools fixed-action
+workflow, expected counters, and generated HTML evidence.
+
 A host build is also supported when dependencies are installed:
 
 ```bash

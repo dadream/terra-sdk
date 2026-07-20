@@ -1,5 +1,7 @@
 {
   "pages": [
+    "pages/planar/index",
+    "pages/planar-load/index",
     "pages/globe/index",
     "pages/probe/index"
   ],

@@ -14,6 +14,10 @@ set(_terra_sdk_root3_detail_record
     "${CMAKE_SOURCE_DIR}/testdata/miniprogram/golden/globe_root_3_detail_record.bin")
 set(_terra_sdk_child_detail_record
     "${CMAKE_SOURCE_DIR}/testdata/miniprogram/golden/globe_patch_record.bin")
+set(_terra_sdk_planar_root_record
+    "${CMAKE_SOURCE_DIR}/testdata/miniprogram/golden/planar_root_record.bin")
+set(_terra_sdk_planar_root_detail_record
+    "${CMAKE_SOURCE_DIR}/testdata/miniprogram/golden/planar_root_detail_record.bin")
 
 add_executable(terra_sdk_core_transform_golden
     terra_core_coordinate_transform_golden.cpp)
@@ -131,6 +135,16 @@ endif()
 add_test(NAME terra_sdk_frame_surface_mesh
     COMMAND "$<TARGET_FILE:terra_sdk_frame_surface_mesh>")
 
+add_executable(terra_sdk_frame_planar
+    terra_frame_planar.cpp)
+target_link_libraries(terra_sdk_frame_planar PRIVATE Terra::frame)
+target_compile_features(terra_sdk_frame_planar PRIVATE cxx_std_14)
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(terra_sdk_frame_planar PRIVATE -Wall -Wextra)
+endif()
+add_test(NAME terra_sdk_frame_planar
+    COMMAND "$<TARGET_FILE:terra_sdk_frame_planar>")
+
 add_executable(terra_sdk_frame_lod_golden
     terra_frame_lod_golden.cpp)
 target_link_libraries(terra_sdk_frame_lod_golden PRIVATE Terra::frame)
@@ -176,6 +190,30 @@ add_test(NAME terra_sdk_c_api_parity
         "${_terra_sdk_root3_record}" "${_terra_sdk_root3_detail_record}"
         "${_terra_sdk_child_detail_record}")
 
+add_executable(terra_sdk_c_api_planar
+    terra_c_api_planar.cpp)
+target_link_libraries(terra_sdk_c_api_planar PRIVATE Terra::c_api)
+target_compile_features(terra_sdk_c_api_planar PRIVATE cxx_std_14)
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(terra_sdk_c_api_planar PRIVATE -Wall -Wextra)
+endif()
+add_test(NAME terra_sdk_c_api_planar
+    COMMAND "$<TARGET_FILE:terra_sdk_c_api_planar>"
+        "${_terra_sdk_planar_root_record}"
+        "${_terra_sdk_planar_root_detail_record}")
+
+add_executable(terra_sdk_c_api_sparse_globe
+    terra_c_api_sparse_globe.cpp)
+target_link_libraries(terra_sdk_c_api_sparse_globe PRIVATE Terra::c_api)
+target_compile_features(terra_sdk_c_api_sparse_globe PRIVATE cxx_std_14)
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(terra_sdk_c_api_sparse_globe PRIVATE -Wall -Wextra)
+endif()
+add_test(NAME terra_sdk_c_api_sparse_globe
+    COMMAND "$<TARGET_FILE:terra_sdk_c_api_sparse_globe>"
+        "${_terra_sdk_root0_record}"
+        "${_terra_sdk_root0_detail_record}")
+
 set(_terra_sdk_dependency_fixture_dir
     "${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
 add_test(NAME terra_sdk_core_dependency_guard_include
@@ -210,9 +248,12 @@ add_custom_target(terra_sdk_frame_tests
         terra_sdk_frame_lod_golden
         terra_sdk_frame_mesh
         terra_sdk_frame_surface_mesh
+        terra_sdk_frame_planar
         terra_sdk_frame_packet)
 add_custom_target(terra_sdk_c_api_tests
     DEPENDS
         terra_sdk_c_api_contract
         terra_sdk_c_api_header
-        terra_sdk_c_api_parity)
+        terra_sdk_c_api_parity
+        terra_sdk_c_api_planar
+        terra_sdk_c_api_sparse_globe)

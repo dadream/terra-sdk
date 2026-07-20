@@ -4,10 +4,15 @@ const { TerraWebGlRenderer } = require('./terra_webgl_renderer')
 
 const STATUS_OK = 0
 const STATUS_BUFFER_TOO_SMALL = 6
+const TRANSFORM_PLANAR = 1
 const TRANSFORM_CYLINDRICAL = 2
 const REQUEST_ROOT = 1
 const REQUEST_DETAIL = 2
 const DEFAULT_FOV_RADIANS = 30.0 * (3.14 / 180.0)
+const DEGREES_TO_RADIANS = Math.PI / 180
+const RADIANS_TO_DEGREES = 180 / Math.PI
+const MIN_TILT_RADIANS = -80 * DEGREES_TO_RADIANS
+const MAX_TILT_RADIANS = 0
 
 const ABI_LAYOUT = {
   manifest: 80,
@@ -22,8 +27,10 @@ const ABI_LAYOUT = {
   stats: 56
 }
 
-function statusError(operation, status) {
-  return new Error(`${operation} failed with Terra status ${status}`)
+function statusError(operation, status, detail) {
+  const suffix = detail ? `: ${detail}` : ''
+  return new Error(
+    `${operation} failed with Terra status ${status}${suffix}`)
 }
 
 function requireStatus(status, operation, allowed) {
@@ -103,6 +110,40 @@ function parseJsonResponse(response, operation) {
   return response.data
 }
 
+function manifestForImagerySource(rawManifest, source, expectedKind) {
+  common.invariant(source && typeof source.id === 'string' && source.id.length > 0,
+    'Imagery source ID is required')
+  common.invariant(typeof source.resolveTile === 'function',
+    'Imagery source resolver is required')
+  common.invariant(!source.tileScheme || source.tileScheme === expectedKind,
+    `Imagery tile scheme must be ${expectedKind}`)
+  const textures = Array.isArray(rawManifest.textures)
+    ? rawManifest.textures : []
+  const configuredTexture = source.texture &&
+    source.texture.kind === expectedKind ? source.texture : null
+  const base = configuredTexture || textures.find((texture) => texture &&
+    texture.kind === expectedKind)
+  common.invariant(base, `Manifest has no ${expectedKind} texture descriptor`)
+  const texture = Object.assign({}, base, { id: source.id })
+  if (source.matrixLevelOffset !== undefined) {
+    common.invariant(Number.isInteger(source.matrixLevelOffset) &&
+      source.matrixLevelOffset >= 0 && source.matrixLevelOffset <= 28,
+    'Imagery matrix level offset is invalid')
+    texture.matrix_level_offset = source.matrixLevelOffset
+  }
+  if (source.maximumLevel !== undefined) {
+    common.invariant(Number.isInteger(source.maximumLevel) &&
+      source.maximumLevel >= 0 && source.maximumLevel <= 28,
+    'Imagery maximum level is invalid')
+    texture.maximum_level = source.maximumLevel
+  }
+  if (source.minimumLevel !== undefined) {
+    common.invariant(source.minimumLevel === 0,
+      'Imagery minimum level must be zero in V1')
+  }
+  return Object.assign({}, rawManifest, { textures: [texture] })
+}
+
 class TerraAbi {
   constructor(module) {
     common.invariant(module && module.exports, 'Terra Wasm module is required')
@@ -143,6 +184,41 @@ class TerraAbi {
     this.module.free(pointer)
   }
 
+  lastError() {
+    const countPointer = this.alloc(4)
+    try {
+      let memory = this.module.refreshMemory()
+      memory.dataView.setUint32(countPointer, 0, true)
+      const sizing = this.module.call('terra_get_last_error', this.context,
+        0, 0, countPointer)
+      memory = this.module.refreshMemory()
+      const count = memory.dataView.getUint32(countPointer, true)
+      if (sizing !== STATUS_BUFFER_TOO_SMALL || count <= 1) {
+        return ''
+      }
+      const pointer = this.alloc(count)
+      try {
+        const status = this.module.call('terra_get_last_error', this.context,
+          pointer, count, countPointer)
+        if (status !== STATUS_OK) {
+          return ''
+        }
+        memory = this.module.refreshMemory()
+        let result = ''
+        for (let index = 0; index + 1 < count; ++index) {
+          result += String.fromCharCode(memory.bytes[pointer + index])
+        }
+        return result
+      } finally {
+        this.free(pointer)
+      }
+    } catch (error) {
+      return ''
+    } finally {
+      this.free(countPointer)
+    }
+  }
+
   loadManifest(manifest) {
     const pointer = this.alloc(this.layout.manifest)
     try {
@@ -151,7 +227,8 @@ class TerraAbi {
       view.setUint32(pointer + 4, 1, true)
       view.setUint32(pointer + 8, manifest.formatVersion, true)
       view.setUint32(pointer + 12, manifest.patchDimension, true)
-      view.setUint32(pointer + 16, TRANSFORM_CYLINDRICAL, true)
+      view.setUint32(pointer + 16,
+        manifest.transform === 'planar' ? TRANSFORM_PLANAR : TRANSFORM_CYLINDRICAL, true)
       view.setFloat64(pointer + 24, manifest.heightScale, true)
       view.setFloat64(pointer + 32, manifest.minimumU, true)
       view.setFloat64(pointer + 40, manifest.minimumV, true)
@@ -198,9 +275,26 @@ class TerraAbi {
     }
   }
 
+  setGlobeTarget(longitudeDegrees, latitudeDegrees) {
+    requireStatus(this.module.call('terra_set_globe_target', this.context,
+      longitudeDegrees, latitudeDegrees), 'terra_set_globe_target')
+  }
+
+  setPlanarTarget(x, y) {
+    requireStatus(this.module.call('terra_set_planar_target', this.context,
+      x, y), 'terra_set_planar_target')
+  }
+
+  setPlanarLevel(targetLevel) {
+    requireStatus(this.module.call('terra_set_planar_level', this.context,
+      targetLevel), 'terra_set_planar_level')
+  }
+
   update(lodThreshold) {
-    requireStatus(this.module.call('terra_update', this.context, lodThreshold),
-      'terra_update')
+    const status = this.module.call('terra_update', this.context, lodThreshold)
+    if (status !== STATUS_OK) {
+      throw statusError('terra_update', status, this.lastError())
+    }
     return this.getFrame()
   }
 
@@ -319,6 +413,17 @@ class TerraAbi {
     }
   }
 
+  retryRecord(kind, key) {
+    const pointer = this.alloc(this.layout.key)
+    try {
+      writeKey(this.module.refreshMemory().dataView, pointer, key)
+      requireStatus(this.module.call('terra_retry_record', this.context, kind,
+        pointer), 'terra_retry_record')
+    } finally {
+      this.free(pointer)
+    }
+  }
+
   copyVector(functionName, elementSize) {
     const countPointer = this.alloc(4)
     try {
@@ -366,6 +471,62 @@ function defaultCamera(radius, width, height, fovRadians) {
   }
 }
 
+function geographicCamera(radius, width, height, fovRadians, target) {
+  const camera = defaultCamera(radius, width, height, fovRadians)
+  camera.longitudeDegrees = 0
+  camera.latitudeDegrees = 0
+  if (!target) {
+    return camera
+  }
+  const longitude = common.finiteNumber(target.longitudeDegrees,
+    'Initial target longitude')
+  const latitude = common.finiteNumber(target.latitudeDegrees,
+    'Initial target latitude')
+  common.invariant(longitude >= -180 && longitude <= 180,
+    'Initial target longitude is outside [-180, 180]')
+  common.invariant(latitude >= -90 && latitude <= 90,
+    'Initial target latitude is outside [-90, 90]')
+  camera.longitudeDegrees = longitude
+  camera.latitudeDegrees = latitude
+  return camera
+}
+
+function wrapDegrees(value) {
+  return ((value + 180) % 360 + 360) % 360 - 180
+}
+
+function wrapRadians(value) {
+  const fullTurn = Math.PI * 2
+  return ((value + Math.PI) % fullTurn + fullTurn) % fullTurn - Math.PI
+}
+
+function planarCamera(manifest, width, height, fovRadians, tiltRadians,
+  initialTarget) {
+  const terrainWidth = manifest.maximumU - manifest.minimumU
+  const terrainHeight = manifest.maximumV - manifest.minimumV
+  const aspect = width / height
+  const tangent = Math.tan(fovRadians / 2)
+  const verticalDistance = 0.5 * terrainHeight / tangent
+  const horizontalDistance = 0.5 * terrainWidth / (tangent * aspect)
+  const target = initialTarget || {}
+  const x = target.x === undefined
+    ? 0.5 * (manifest.minimumU + manifest.maximumU)
+    : common.finiteNumber(target.x, 'Initial planar target X')
+  const y = target.y === undefined
+    ? 0.5 * (manifest.minimumV + manifest.maximumV)
+    : common.finiteNumber(target.y, 'Initial planar target Y')
+  common.invariant(x >= manifest.minimumU && x <= manifest.maximumU &&
+    y >= manifest.minimumV && y <= manifest.maximumV,
+  'Initial planar target is outside dataset bounds')
+  return {
+    distance: 1.2 * Math.max(verticalDistance, horizontalDistance),
+    tiltRadians,
+    yawRadians: 0,
+    x,
+    y
+  }
+}
+
 class TerraGlobeRuntime {
   constructor(options) {
     this.options = options || {}
@@ -393,19 +554,22 @@ class TerraGlobeRuntime {
     this.scheduler = new common.RequestScheduler(this.maximumTerrainRequests)
     this.desiredRequests = new Map()
     this.retries = new Map()
-    this.failedRequests = new Set()
+    this.failedRequests = new Map()
     this.diagnosticTimes = new Map()
     this.diagnostics = []
     this.refreshPending = false
     this.refreshing = false
     this.destroyed = false
+    this.paused = false
     this.manifest = null
     this.abi = null
     this.renderer = null
     this.budget = null
     this.camera = null
     this.lastFrame = null
+    this.lastSurface = null
     this.lastError = ''
+    this.cameraAnimation = null
   }
 
   static async create(options) {
@@ -416,19 +580,7 @@ class TerraGlobeRuntime {
 
   async initialize() {
     const rawManifest = this.options.manifest || await this.fetchManifest()
-    const imagery = this.options.imagery || null
-    if (imagery && imagery.texture) {
-      common.invariant(typeof imagery.textureId === 'string' &&
-        imagery.textureId.length > 0, 'Imagery profile texture ID is required')
-      common.invariant(typeof imagery.urlForTile === 'function',
-        'Imagery profile URL resolver is required')
-    }
-    const manifestForValidation = imagery && imagery.texture
-      ? Object.assign({}, rawManifest, { textures: [imagery.texture] })
-      : rawManifest
-    this.manifest = common.validateManifest(manifestForValidation,
-      imagery && imagery.texture ? imagery.textureId : this.options.textureId)
-    this.textureUrlResolver = imagery && imagery.texture && imagery.urlForTile
+    this.manifest = this.validateRuntimeManifest(rawManifest)
     const viewport = this.options.viewport || { width: 1, height: 1, devicePixelRatio: 1 }
     this.budget = common.deriveFrameBudget(viewport, {})
     this.canvas.width = this.budget.physicalWidth
@@ -441,6 +593,8 @@ class TerraGlobeRuntime {
       geometryCacheBytes: this.budget.geometryCacheBytes,
       textureCacheBytes: this.budget.textureCacheBytes,
       uploadBudgetMs: this.budget.uploadBudgetMs,
+      mode: this.renderMode,
+      heightRange: this.options.heightRange,
       maximumTextureRequests: Math.max(1,
         this.budget.maximumConcurrentRequests - 1),
       maximumTextureRetries: this.options.maximumTextureRetries,
@@ -466,18 +620,55 @@ class TerraGlobeRuntime {
         this.options.wasmPath)
       this.abi = new TerraAbi(module)
     }
-    const abiMethods = ['loadManifest', 'setViewport', 'setCamera', 'update',
-      'getRequests', 'getDrawRanges', 'getPositions', 'getTextureUv',
-      'getIndices', 'submitRecord', 'failRecord', 'destroy']
+    const abiMethods = this.requiredAbiMethods()
     abiMethods.forEach((name) => common.invariant(
       this.abi && typeof this.abi[name] === 'function',
       `Terra ABI is missing ${name}`))
     this.abi.loadManifest(this.manifest)
     this.abi.setViewport(this.budget.physicalWidth, this.budget.physicalHeight,
       this.fovRadians)
-    this.camera = defaultCamera(this.manifest.radius, this.budget.physicalWidth,
-      this.budget.physicalHeight, this.fovRadians)
+    this.configureAbi()
+    this.camera = this.createInitialCamera()
     this.refresh()
+  }
+
+  validateRuntimeManifest(rawManifest) {
+    const imagery = this.options.imagery || null
+    if (imagery && typeof imagery.resolveTile === 'function') {
+      this.textureUrlResolver = imagery.resolveTile
+      return common.validateManifest(manifestForImagerySource(
+        rawManifest, imagery, 'global-geodetic'), imagery.id)
+    }
+    if (imagery && imagery.texture) {
+      common.invariant(typeof imagery.textureId === 'string' &&
+        imagery.textureId.length > 0, 'Imagery profile texture ID is required')
+      common.invariant(typeof imagery.urlForTile === 'function',
+        'Imagery profile URL resolver is required')
+    }
+    const manifestForValidation = imagery && imagery.texture
+      ? Object.assign({}, rawManifest, { textures: [imagery.texture] })
+      : rawManifest
+    this.textureUrlResolver = imagery && imagery.texture && imagery.urlForTile
+    return common.validateManifest(manifestForValidation,
+      imagery && imagery.texture ? imagery.textureId : this.options.textureId)
+  }
+
+  requiredAbiMethods() {
+    const methods = ['loadManifest', 'setViewport', 'setCamera', 'update',
+      'getRequests', 'getDrawRanges', 'getPositions', 'getTextureUv',
+      'getIndices', 'submitRecord', 'failRecord', 'retryRecord', 'destroy']
+    if (this.manifest && this.manifest.transform === 'cylindrical') {
+      methods.splice(3, 0, 'setGlobeTarget')
+    }
+    return methods
+  }
+
+  configureAbi() {}
+
+  createInitialCamera() {
+    return geographicCamera(this.manifest.radius,
+      this.budget.physicalWidth, this.budget.physicalHeight, this.fovRadians,
+      this.options.initialTarget)
   }
 
   async fetchManifest() {
@@ -515,22 +706,296 @@ class TerraGlobeRuntime {
     }
   }
 
+  viewMode() {
+    return this.manifest.transform === 'planar' ? 'planar' : 'globe'
+  }
+
+  rangeLimits() {
+    return {
+      minimum: this.manifest.radius * 1.001,
+      maximum: this.manifest.radius * 20
+    }
+  }
+
+  normalizeView(view) {
+    common.invariant(view && typeof view === 'object', 'ViewState is required')
+    common.invariant(!view.schema || view.schema === 'terra.view-state.v1',
+      'ViewState schema is unsupported')
+    const mode = this.viewMode()
+    common.invariant(!view.mode || view.mode === mode,
+      `ViewState mode must be ${mode}`)
+    const target = view.target || {}
+    const longitudeDegrees = common.finiteNumber(
+      target.longitudeDegrees, 'View target longitude')
+    const latitudeDegrees = common.finiteNumber(
+      target.latitudeDegrees, 'View target latitude')
+    common.invariant(longitudeDegrees >= -180 && longitudeDegrees <= 180 &&
+      latitudeDegrees >= -90 && latitudeDegrees <= 90,
+    'View target is outside globe bounds')
+    const limits = this.rangeLimits()
+    const rangeMeters = common.finiteNumber(view.rangeMeters, 'View range')
+    common.invariant(rangeMeters >= limits.minimum &&
+      rangeMeters <= limits.maximum, 'View range is outside runtime limits')
+    const headingDegrees = common.finiteNumber(
+      view.headingDegrees, 'View heading')
+    const tiltDegrees = common.finiteNumber(view.tiltDegrees, 'View tilt')
+    common.invariant(tiltDegrees >= 0 && tiltDegrees <= 80,
+      'View tilt is outside [0, 80]')
+    return {
+      schema: 'terra.view-state.v1',
+      mode,
+      target: {
+        longitudeDegrees,
+        latitudeDegrees,
+        heightMeters: target.heightMeters === undefined ? 0 :
+          common.finiteNumber(target.heightMeters, 'View target height')
+      },
+      rangeMeters,
+      headingDegrees: wrapDegrees(headingDegrees),
+      tiltDegrees
+    }
+  }
+
+  getView() {
+    return {
+      schema: 'terra.view-state.v1',
+      mode: this.viewMode(),
+      target: {
+        longitudeDegrees: this.camera.longitudeDegrees,
+        latitudeDegrees: this.camera.latitudeDegrees,
+        heightMeters: 0
+      },
+      rangeMeters: this.camera.distance,
+      headingDegrees: wrapDegrees(this.camera.yawRadians * RADIANS_TO_DEGREES),
+      tiltDegrees: this.camera.tiltRadians === 0 ? 0 :
+        -this.camera.tiltRadians * RADIANS_TO_DEGREES
+    }
+  }
+
+  assignView(view) {
+    this.camera.longitudeDegrees = view.target.longitudeDegrees
+    this.camera.latitudeDegrees = view.target.latitudeDegrees
+    this.camera.distance = view.rangeMeters
+    this.camera.yawRadians = view.headingDegrees * DEGREES_TO_RADIANS
+    this.camera.tiltRadians = -view.tiltDegrees * DEGREES_TO_RADIANS
+  }
+
+  interpolateView(start, target, t, headingDelta) {
+    return {
+      schema: 'terra.view-state.v1',
+      mode: start.mode,
+      target: {
+        longitudeDegrees: start.target.longitudeDegrees +
+          wrapDegrees(target.target.longitudeDegrees -
+            start.target.longitudeDegrees) * t,
+        latitudeDegrees: start.target.latitudeDegrees +
+          (target.target.latitudeDegrees - start.target.latitudeDegrees) * t,
+        heightMeters: start.target.heightMeters +
+          (target.target.heightMeters - start.target.heightMeters) * t
+      },
+      rangeMeters: start.rangeMeters +
+        (target.rangeMeters - start.rangeMeters) * t,
+      headingDegrees: start.headingDegrees + headingDelta * t,
+      tiltDegrees: start.tiltDegrees +
+        (target.tiltDegrees - start.tiltDegrees) * t
+    }
+  }
+
+  setView(view, options) {
+    const normalized = this.normalizeView(view)
+    const animation = options || {}
+    if (animation.animate) {
+      this.animateView(normalized, animation.durationMs)
+      return normalized
+    }
+    this.cancelAnimation()
+    this.assignView(normalized)
+    this.refresh()
+    return this.getView()
+  }
+
+  animateView(target, durationMs) {
+    this.cancelAnimation()
+    const start = this.getView()
+    const duration = common.clamp(durationMs === undefined ? 250 :
+      common.finiteNumber(durationMs, 'Animation duration'), 0, 3000)
+    if (duration === 0) {
+      this.assignView(target)
+      this.refresh()
+      return
+    }
+    const startedAt = Date.now()
+    const headingDelta = wrapDegrees(
+      target.headingDegrees - start.headingDegrees)
+    const step = () => {
+      if (!this.cameraAnimation) {
+        return
+      }
+      const elapsed = Date.now() - startedAt
+      const linear = common.clamp(elapsed / duration, 0, 1)
+      const t = 1 - Math.pow(1 - linear, 3)
+      const view = this.interpolateView(start, target, t, headingDelta)
+      this.assignView(view)
+      this.refresh()
+      if (linear >= 1) {
+        this.cameraAnimation = null
+        this.cameraEvent('camerasettle', { view: this.getView() })
+      } else {
+        this.cameraAnimation.timer = setTimeout(step, 16)
+      }
+    }
+    this.cameraAnimation = { timer: setTimeout(step, 0) }
+  }
+
+  cancelAnimation() {
+    if (!this.cameraAnimation) {
+      return false
+    }
+    clearTimeout(this.cameraAnimation.timer)
+    this.cameraAnimation = null
+    this.cameraEvent('animationcancel', { view: this.getView() })
+    return true
+  }
+
+  cameraEvent(type, detail) {
+    if (typeof this.options.onCameraEvent === 'function') {
+      this.options.onCameraEvent(type, detail || {})
+    }
+  }
+
+  applyPanPixels(deltaX, deltaY) {
+    const referenceDistance = defaultCamera(this.manifest.radius,
+      this.budget.physicalWidth, this.budget.physicalHeight,
+      this.fovRadians).distance
+    const distanceScale = common.clamp(
+      this.camera.distance / referenceDistance, 0.04, 1)
+    const devicePixelRatio = Math.max(1, this.budget.devicePixelRatio || 1)
+    const viewportSize = Math.max(1, Math.min(
+      this.budget.physicalWidth / devicePixelRatio,
+      this.budget.physicalHeight / devicePixelRatio))
+    const degreesPerPixel = 180 * distanceScale / viewportSize
+    this.camera.longitudeDegrees = wrapDegrees(
+      this.camera.longitudeDegrees - deltaX * degreesPerPixel)
+    this.camera.latitudeDegrees = common.clamp(
+      this.camera.latitudeDegrees + deltaY * degreesPerPixel, -85, 85)
+  }
+
+  applyInteraction(change) {
+    const value = change || {}
+    this.cancelAnimation()
+    const panX = common.finiteNumber(value.xPixels || 0,
+      'Interaction pan X')
+    const panY = common.finiteNumber(value.yPixels || 0,
+      'Interaction pan Y')
+    if (panX || panY) {
+      this.applyPanPixels(panX, panY)
+    }
+    if (value.zoomScale !== undefined && value.zoomScale !== 1) {
+      const scale = common.finiteNumber(value.zoomScale,
+        'Interaction zoom scale')
+      common.invariant(scale > 0, 'Interaction zoom scale must be positive')
+      const previous = this.camera.distance
+      const limits = this.rangeLimits()
+      this.camera.distance = common.clamp(previous * scale,
+        limits.minimum, limits.maximum)
+      if (value.anchor) {
+        const dpr = Math.max(1, this.budget.devicePixelRatio || 1)
+        const width = this.budget.physicalWidth / dpr
+        const height = this.budget.physicalHeight / dpr
+        const effectiveScale = this.camera.distance / previous
+        this.applyPanPixels(
+          -(common.finiteNumber(value.anchor.x, 'Zoom anchor X') - width / 2) *
+            (1 - effectiveScale),
+          -(common.finiteNumber(value.anchor.y, 'Zoom anchor Y') - height / 2) *
+            (1 - effectiveScale))
+      }
+    }
+    this.camera.yawRadians = wrapRadians(this.camera.yawRadians +
+      common.finiteNumber(value.headingDegrees || 0, 'Heading delta') *
+        DEGREES_TO_RADIANS)
+    this.camera.tiltRadians = common.clamp(this.camera.tiltRadians -
+      common.finiteNumber(value.tiltDegrees || 0, 'Tilt delta') *
+        DEGREES_TO_RADIANS, MIN_TILT_RADIANS, MAX_TILT_RADIANS)
+    this.refresh()
+  }
+
+  panBy(change) {
+    const value = change || {}
+    this.cancelAnimation()
+    this.applyPanPixels(common.finiteNumber(value.xPixels, 'Pan X'),
+      common.finiteNumber(value.yPixels, 'Pan Y'))
+    this.refresh()
+  }
+
+  zoomBy(scale, options) {
+    const value = common.finiteNumber(scale, 'Zoom scale')
+    common.invariant(value > 0, 'Zoom scale must be positive')
+    this.cancelAnimation()
+    const previous = this.camera.distance
+    const limits = this.rangeLimits()
+    this.camera.distance = common.clamp(previous * value,
+      limits.minimum, limits.maximum)
+    const anchor = options && options.anchor
+    if (anchor) {
+      const dpr = Math.max(1, this.budget.devicePixelRatio || 1)
+      const width = this.budget.physicalWidth / dpr
+      const height = this.budget.physicalHeight / dpr
+      const effectiveScale = this.camera.distance / previous
+      this.applyPanPixels(
+        -(common.finiteNumber(anchor.x, 'Zoom anchor X') - width / 2) *
+          (1 - effectiveScale),
+        -(common.finiteNumber(anchor.y, 'Zoom anchor Y') - height / 2) *
+          (1 - effectiveScale))
+    }
+    this.refresh()
+  }
+
+  orbitBy(change) {
+    const value = change || {}
+    this.cancelAnimation()
+    this.camera.yawRadians = wrapRadians(this.camera.yawRadians +
+      common.finiteNumber(value.headingDegrees || 0, 'Heading delta') *
+        DEGREES_TO_RADIANS)
+    this.camera.tiltRadians = common.clamp(this.camera.tiltRadians -
+      common.finiteNumber(value.tiltDegrees || 0, 'Tilt delta') *
+        DEGREES_TO_RADIANS, MIN_TILT_RADIANS, MAX_TILT_RADIANS)
+    this.refresh()
+  }
+
+  setTilt(tiltDegrees) {
+    const view = this.getView()
+    view.tiltDegrees = common.finiteNumber(tiltDegrees, 'Tilt')
+    this.setView(view)
+  }
+
   reset() {
-    this.camera = defaultCamera(this.manifest.radius, this.budget.physicalWidth,
-      this.budget.physicalHeight, this.fovRadians)
+    this.cancelAnimation()
+    this.camera = geographicCamera(this.manifest.radius,
+      this.budget.physicalWidth, this.budget.physicalHeight, this.fovRadians,
+      this.options.initialTarget)
     this.refresh()
   }
 
   retryFailed() {
     common.invariant(!this.destroyed, 'Terra globe runtime is destroyed')
-    const terrainRetry = this.failedRequests.size || this.retries.size
+    const terrainFailures = Array.from(this.failedRequests.entries())
+    const terrainRetry = terrainFailures.length || this.retries.size
     const textureRetry = this.renderer &&
       typeof this.renderer.retryTextures === 'function' &&
       this.renderer.retryTextures()
     if (!terrainRetry && !textureRetry) {
       return false
     }
-    this.failedRequests.clear()
+    terrainFailures.forEach(([key, request]) => {
+      try {
+        this.abi.retryRecord(request.kind, request.key)
+        this.failedRequests.delete(key)
+      } catch (error) {
+        this.diagnostic('terrain_retry_record_failed', {
+          key, message: error.message || String(error)
+        })
+      }
+    })
     this.retries.clear()
     this.lastError = ''
     if (terrainRetry) {
@@ -543,10 +1008,24 @@ class TerraGlobeRuntime {
   }
 
   zoom(scale) {
-    common.finiteNumber(scale, 'Zoom scale')
-    this.camera.distance = common.clamp(this.camera.distance * scale,
-      this.manifest.radius * 1.001, this.manifest.radius * 20)
+    this.zoomBy(scale)
+  }
+
+  setTargetDegrees(longitudeDegrees, latitudeDegrees) {
+    const longitude = common.finiteNumber(longitudeDegrees,
+      'Target longitude')
+    const latitude = common.finiteNumber(latitudeDegrees, 'Target latitude')
+    common.invariant(longitude >= -180 && longitude <= 180,
+      'Target longitude is outside [-180, 180]')
+    common.invariant(latitude >= -90 && latitude <= 90,
+      'Target latitude is outside [-90, 90]')
+    this.camera.longitudeDegrees = longitude
+    this.camera.latitudeDegrees = latitude
     this.refresh()
+  }
+
+  moveSurfacePixels(deltaX, deltaY) {
+    this.panBy({ xPixels: deltaX, yPixels: deltaY })
   }
 
   applyCamera(change) {
@@ -557,21 +1036,20 @@ class TerraGlobeRuntime {
         this.manifest.radius * 1.001, this.manifest.radius * 20)
     }
     if (value.tiltDelta !== undefined) {
-      this.camera.tiltRadians = common.clamp(this.camera.tiltRadians +
-        common.finiteNumber(value.tiltDelta, 'Tilt delta'), -1.45, 1.45)
+      this.camera.tiltRadians = common.clamp(
+        this.camera.tiltRadians +
+          common.finiteNumber(value.tiltDelta, 'Tilt delta'),
+        MIN_TILT_RADIANS, MAX_TILT_RADIANS)
     }
     if (value.yawDelta !== undefined) {
-      const fullTurn = Math.PI * 2
-      this.camera.yawRadians = (this.camera.yawRadians +
-        common.finiteNumber(value.yawDelta, 'Yaw delta')) % fullTurn
+      this.camera.yawRadians = wrapRadians(this.camera.yawRadians +
+        common.finiteNumber(value.yawDelta, 'Yaw delta'))
     }
     this.refresh()
   }
 
   setTiltRadians(value) {
-    this.camera.tiltRadians = common.clamp(common.finiteNumber(value, 'Tilt'),
-      -1.45, 1.45)
-    this.refresh()
+    this.setTilt(-common.finiteNumber(value, 'Tilt') * RADIANS_TO_DEGREES)
   }
 
   tilt45() {
@@ -579,14 +1057,47 @@ class TerraGlobeRuntime {
   }
 
   rotateYaw(delta) {
-    const fullTurn = Math.PI * 2
-    this.camera.yawRadians = (this.camera.yawRadians +
-      common.finiteNumber(delta, 'Yaw')) % fullTurn
+    this.camera.yawRadians = wrapRadians(this.camera.yawRadians +
+      common.finiteNumber(delta, 'Yaw'))
+    this.refresh()
+  }
+
+  topDown() {
+    this.camera.tiltRadians = 0
+    this.refresh()
+  }
+
+  northUp() {
+    this.camera.yawRadians = 0
+    this.refresh()
+  }
+
+  focusInitialTarget(distanceScale) {
+    const scale = distanceScale === undefined
+      ? 1.45
+      : common.finiteNumber(distanceScale, 'Focus distance scale')
+    common.invariant(scale >= 1.001 && scale <= 20,
+      'Focus distance scale is outside [1.001, 20]')
+    const target = this.options.initialTarget || {
+      longitudeDegrees: 0,
+      latitudeDegrees: 0
+    }
+    this.camera.longitudeDegrees = common.finiteNumber(
+      target.longitudeDegrees, 'Initial target longitude')
+    this.camera.latitudeDegrees = common.finiteNumber(
+      target.latitudeDegrees, 'Initial target latitude')
+    this.camera.distance = this.manifest.radius * scale
+    this.camera.tiltRadians = 0
+    this.camera.yawRadians = 0
     this.refresh()
   }
 
   refresh() {
     if (this.destroyed) {
+      return
+    }
+    if (this.paused) {
+      this.refreshPending = true
       return
     }
     if (this.refreshing) {
@@ -595,6 +1106,12 @@ class TerraGlobeRuntime {
     }
     this.refreshing = true
     try {
+      if (this.manifest.transform === 'cylindrical') {
+        this.abi.setGlobeTarget(this.camera.longitudeDegrees,
+          this.camera.latitudeDegrees)
+      } else {
+        this.abi.setPlanarTarget(this.camera.x, this.camera.y)
+      }
       this.abi.setCamera(this.camera)
       const frame = this.abi.update(this.budget.lodThreshold)
       const requests = this.abi.getRequests()
@@ -603,6 +1120,7 @@ class TerraGlobeRuntime {
       const textureUv = this.abi.getTextureUv()
       const indices = this.abi.getIndices()
       this.lastFrame = frame
+      this.lastSurface = { draws, positions, textureUv, indices }
       this.renderer.setFrame(frame, draws, positions, textureUv, indices)
       this.syncTerrainRequests(requests)
       this.lastError = ''
@@ -622,12 +1140,19 @@ class TerraGlobeRuntime {
   }
 
   scheduleRefresh() {
-    if (this.destroyed || this.refreshPending) {
+    if (this.destroyed) {
+      return
+    }
+    if (this.paused) {
+      this.refreshPending = true
+      return
+    }
+    if (this.refreshPending) {
       return
     }
     this.refreshPending = true
     Promise.resolve().then(() => {
-      if (!this.destroyed) {
+      if (!this.destroyed && !this.paused) {
         this.refreshPending = false
         this.refresh()
       }
@@ -635,7 +1160,7 @@ class TerraGlobeRuntime {
   }
 
   scheduleRender() {
-    if (this.destroyed || !this.renderer) {
+    if (this.destroyed || this.paused || !this.renderer) {
       return
     }
     if (this.renderScheduled) {
@@ -644,7 +1169,7 @@ class TerraGlobeRuntime {
     this.renderScheduled = true
     const render = () => {
       this.renderScheduled = false
-      if (!this.destroyed) {
+      if (!this.destroyed && !this.paused) {
         this.renderer.render()
         this.publishState()
       }
@@ -709,8 +1234,12 @@ class TerraGlobeRuntime {
       if (!this.desiredRequests.has(key) || this.destroyed) {
         return
       }
-      common.invariant(response.statusCode >= 200 && response.statusCode < 300,
-        `Terrain record returned HTTP ${response.statusCode}`)
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        const error = new Error(
+          `Terrain record returned HTTP ${response.statusCode}`)
+        error.statusCode = response.statusCode
+        throw error
+      }
       const bytes = common.validateRecordPayload(response.data, response.header)
       this.recordCache.set(key, bytes.slice(), bytes.byteLength)
       this.abi.submitRecord(request.kind, request.key, bytes)
@@ -727,7 +1256,8 @@ class TerraGlobeRuntime {
     }
     const attempt = (this.retries.get(key) || 0) + 1
     this.retries.set(key, attempt)
-    if (attempt <= this.maximumTerrainRetries) {
+    const unavailable = error && error.statusCode === 404
+    if (!unavailable && attempt <= this.maximumTerrainRetries) {
       const delay = attempt * this.terrainRetryDelayMs
       setTimeout(() => {
         if (!this.destroyed && this.desiredRequests.has(key)) {
@@ -738,7 +1268,7 @@ class TerraGlobeRuntime {
         message: error && error.message ? error.message : String(error) })
       return
     }
-    this.failedRequests.add(key)
+    this.failedRequests.set(key, request)
     try {
       this.abi.failRecord(request.kind, request.key)
     } catch (failure) {
@@ -803,12 +1333,14 @@ class TerraGlobeRuntime {
         vertexCount: this.lastFrame.vertexCount
       },
       camera: this.camera && Object.assign({}, this.camera),
+      view: this.camera && this.getView(),
       budget: this.budget,
       terrain: Object.assign(this.recordCache.stats(), this.scheduler.stats(), {
         failedRequestCount: this.failedRequests.size
       }),
       renderer,
       contextLost: this.renderer ? this.renderer.contextLost : false,
+      paused: this.paused,
       error: this.lastError,
       diagnostics: this.diagnostics.slice(-8)
     }
@@ -820,7 +1352,29 @@ class TerraGlobeRuntime {
     }
   }
 
+  pause() {
+    if (this.destroyed || this.paused) {
+      return
+    }
+    this.paused = true
+    this.cancelAnimation()
+  }
+
+  resume() {
+    if (this.destroyed || !this.paused) {
+      return
+    }
+    this.paused = false
+    if (this.refreshPending) {
+      this.refreshPending = false
+      this.refresh()
+    } else {
+      this.scheduleRender()
+    }
+  }
+
   destroy() {
+    this.cancelAnimation()
     this.destroyed = true
     this.scheduler.clear()
     this.recordCache.clear()
@@ -833,6 +1387,203 @@ class TerraGlobeRuntime {
   }
 }
 
+class TerraPlanarRuntime extends TerraGlobeRuntime {
+  constructor(options) {
+    super(options)
+    this.planarLevel = Number.isInteger(this.options.planarLevel)
+      ? common.clamp(this.options.planarLevel, 0, 2)
+      : 1
+    this.defaultTiltRadians = this.options.initialTiltRadians === undefined
+      ? -Math.PI / 4
+      : common.finiteNumber(this.options.initialTiltRadians,
+        'Initial planar tilt')
+    this.renderMode = this.options.renderMode === 'height' ? 'height' : 'texture'
+  }
+
+  static async create(options) {
+    const runtime = new TerraPlanarRuntime(options)
+    await runtime.initialize()
+    return runtime
+  }
+
+  validateRuntimeManifest(rawManifest) {
+    const imagery = this.options.imagery || null
+    if (imagery && typeof imagery.resolveTile === 'function') {
+      this.textureUrlResolver = imagery.resolveTile
+      return common.validatePlanarManifest(manifestForImagerySource(
+        rawManifest, imagery, 'planar-single'), imagery.id)
+    }
+    this.textureUrlResolver = null
+    return common.validatePlanarManifest(rawManifest, this.options.textureId)
+  }
+
+  requiredAbiMethods() {
+    return super.requiredAbiMethods().concat(['setPlanarTarget',
+      'setPlanarLevel'])
+  }
+
+  configureAbi() {
+    this.abi.setPlanarLevel(this.planarLevel)
+  }
+
+  createInitialCamera() {
+    return planarCamera(this.manifest, this.budget.physicalWidth,
+      this.budget.physicalHeight, this.fovRadians, this.defaultTiltRadians,
+      this.options.initialTarget)
+  }
+
+  rangeLimits() {
+    const width = this.manifest.maximumU - this.manifest.minimumU
+    const height = this.manifest.maximumV - this.manifest.minimumV
+    const diagonal = Math.sqrt(width * width + height * height)
+    return { minimum: diagonal * 0.25, maximum: diagonal * 20 }
+  }
+
+  normalizeView(view) {
+    common.invariant(view && typeof view === 'object', 'ViewState is required')
+    common.invariant(!view.schema || view.schema === 'terra.view-state.v1',
+      'ViewState schema is unsupported')
+    common.invariant(!view.mode || view.mode === 'planar',
+      'ViewState mode must be planar')
+    const target = view.target || {}
+    const x = common.finiteNumber(target.x, 'View target X')
+    const y = common.finiteNumber(target.y, 'View target Y')
+    common.invariant(x >= this.manifest.minimumU &&
+      x <= this.manifest.maximumU && y >= this.manifest.minimumV &&
+      y <= this.manifest.maximumV,
+    'View target is outside planar bounds')
+    const limits = this.rangeLimits()
+    const rangeMeters = common.finiteNumber(view.rangeMeters, 'View range')
+    common.invariant(rangeMeters >= limits.minimum &&
+      rangeMeters <= limits.maximum, 'View range is outside runtime limits')
+    const tiltDegrees = common.finiteNumber(view.tiltDegrees, 'View tilt')
+    common.invariant(tiltDegrees >= 0 && tiltDegrees <= 80,
+      'View tilt is outside [0, 80]')
+    return {
+      schema: 'terra.view-state.v1',
+      mode: 'planar',
+      target: {
+        x,
+        y,
+        height: target.height === undefined ? 0 :
+          common.finiteNumber(target.height, 'View target height')
+      },
+      rangeMeters,
+      headingDegrees: wrapDegrees(common.finiteNumber(
+        view.headingDegrees, 'View heading')),
+      tiltDegrees
+    }
+  }
+
+  getView() {
+    return {
+      schema: 'terra.view-state.v1',
+      mode: 'planar',
+      target: { x: this.camera.x, y: this.camera.y, height: 0 },
+      rangeMeters: this.camera.distance,
+      headingDegrees: wrapDegrees(this.camera.yawRadians * RADIANS_TO_DEGREES),
+      tiltDegrees: this.camera.tiltRadians === 0 ? 0 :
+        -this.camera.tiltRadians * RADIANS_TO_DEGREES
+    }
+  }
+
+  assignView(view) {
+    this.camera.x = view.target.x
+    this.camera.y = view.target.y
+    this.camera.distance = view.rangeMeters
+    this.camera.yawRadians = view.headingDegrees * DEGREES_TO_RADIANS
+    this.camera.tiltRadians = -view.tiltDegrees * DEGREES_TO_RADIANS
+  }
+
+  interpolateView(start, target, t, headingDelta) {
+    return {
+      schema: 'terra.view-state.v1',
+      mode: 'planar',
+      target: {
+        x: start.target.x + (target.target.x - start.target.x) * t,
+        y: start.target.y + (target.target.y - start.target.y) * t,
+        height: start.target.height +
+          (target.target.height - start.target.height) * t
+      },
+      rangeMeters: start.rangeMeters +
+        (target.rangeMeters - start.rangeMeters) * t,
+      headingDegrees: start.headingDegrees + headingDelta * t,
+      tiltDegrees: start.tiltDegrees +
+        (target.tiltDegrees - start.tiltDegrees) * t
+    }
+  }
+
+  applyPanPixels(deltaX, deltaY) {
+    const dpr = Math.max(1, this.budget.devicePixelRatio || 1)
+    const cssHeight = Math.max(1, this.budget.physicalHeight / dpr)
+    const unitsPerPixel = 2 * this.camera.distance *
+      Math.tan(this.fovRadians / 2) / cssHeight
+    const yaw = this.camera.yawRadians
+    const localX = -deltaX * unitsPerPixel
+    const localY = deltaY * unitsPerPixel
+    const worldX = localX * Math.cos(yaw) - localY * Math.sin(yaw)
+    const worldY = localX * Math.sin(yaw) + localY * Math.cos(yaw)
+    this.camera.x = common.clamp(this.camera.x + worldX,
+      this.manifest.minimumU, this.manifest.maximumU)
+    this.camera.y = common.clamp(this.camera.y + worldY,
+      this.manifest.minimumV, this.manifest.maximumV)
+  }
+
+  reset() {
+    this.cancelAnimation()
+    this.camera = this.createInitialCamera()
+    this.refresh()
+  }
+
+  birdView() {
+    this.camera.tiltRadians = 0
+    this.camera.yawRadians = 0
+    this.refresh()
+  }
+
+  tilt45() {
+    this.camera.tiltRadians = -Math.PI / 4
+    this.camera.yawRadians = 0
+    this.refresh()
+  }
+
+  zoom(scale) {
+    this.zoomBy(scale)
+  }
+
+  setRenderMode(mode) {
+    common.invariant(mode === 'texture' || mode === 'height',
+      'Planar render mode is unsupported')
+    this.renderMode = mode
+    if (this.renderer && typeof this.renderer.setMode === 'function') {
+      this.renderer.setMode(mode)
+    }
+    this.scheduleRender()
+    this.publishState()
+  }
+
+  textureUrl(tile) {
+    if (this.textureUrlResolver) {
+      const resolved = this.textureUrlResolver(tile)
+      common.invariant(typeof resolved === 'string' && resolved.length > 0,
+        'Planar texture URL resolver returned an empty URL')
+      return resolved
+    }
+    const endpoint = this.manifest.texture.url_template
+    return /^https:\/\//.test(endpoint)
+      ? endpoint
+      : common.joinServiceUrl(this.serviceOrigin, endpoint)
+  }
+
+  state() {
+    const result = super.state()
+    result.schema = 'terra.miniprogram.planar-runtime.v1'
+    result.planarLevel = this.planarLevel
+    result.renderMode = this.renderMode
+    return result
+  }
+}
+
 module.exports = {
   ABI_LAYOUT,
   REQUEST_DETAIL,
@@ -841,7 +1592,10 @@ module.exports = {
   STATUS_OK,
   TerraAbi,
   TerraGlobeRuntime,
+  TerraPlanarRuntime,
   defaultCamera,
+  geographicCamera,
+  planarCamera,
   parseJsonResponse,
   requestWithWx
 }

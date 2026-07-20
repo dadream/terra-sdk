@@ -1,0 +1,33 @@
+<view class="planar">
+  <view class="planar__status planar__status--{{statusKind}}">
+    <text class="planar__status-line">{{status}}</text>
+    <text class="planar__metrics">{{metrics}}</text>
+  </view>
+  <canvas class="planar__canvas" type="webgl" id="planar"
+    disable-scroll="true" catchtouchstart="onTouchStart"
+    catchtouchmove="onTouchMove" catchtouchend="onTouchEnd"
+    catchtouchcancel="onTouchCancel"></canvas>
+  <view class="planar__toolbar">
+    <button class="planar__tool" aria-label="Bird view" bindtap="birdView"
+      disabled="{{controlsDisabled}}">Top</button>
+    <button class="planar__tool" aria-label="Zoom out" bindtap="zoomOut"
+      disabled="{{controlsDisabled}}">-</button>
+    <button class="planar__tool" aria-label="Zoom in" bindtap="zoomIn"
+      disabled="{{controlsDisabled}}">+</button>
+    <button class="planar__tool" aria-label="Set 45 degree tilt" bindtap="tilt45"
+      disabled="{{controlsDisabled}}">45</button>
+    <button class="planar__tool planar__tool--{{renderMode === 'texture' ? 'active' : ''}}"
+      aria-label="Show texture" bindtap="showTexture"
+      disabled="{{controlsDisabled}}">T</button>
+    <button class="planar__tool planar__tool--{{renderMode === 'height' ? 'active' : ''}}"
+      aria-label="Show height colors" bindtap="showHeight"
+      disabled="{{controlsDisabled}}">H</button>
+    <button class="planar__tool" aria-label="Reset planar camera"
+      bindtap="resetCamera" disabled="{{controlsDisabled}}">R</button>
+    <button class="planar__tool" aria-label="Copy planar report"
+      bindtap="copyReport" disabled="{{!reportReady}}">C</button>
+    <button class="planar__tool planar__tool--retry" wx:if="{{retryVisible}}"
+      aria-label="Retry failed planar resources" bindtap="retryFailed"
+      disabled="{{controlsDisabled}}">Retry</button>
+  </view>
+</view>

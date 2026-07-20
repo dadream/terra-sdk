@@ -1,4 +1,6 @@
 const assert = require('assert')
+const fs = require('fs')
+const path = require('path')
 
 let pageDefinition = null
 let copiedReport = null
@@ -9,6 +11,9 @@ global.Page = (definition) => {
 }
 global.getApp = () => app
 global.wx = {
+  getWindowInfo() {
+    return { windowWidth: 390, windowHeight: 844, pixelRatio: 3, statusBarHeight: 44 }
+  },
   setClipboardData(options) {
     copiedReport = options.data
   }
@@ -41,6 +46,13 @@ function state() {
       textures: { failed: 0 }
     },
     budget: { devicePixelRatio: 1.5 },
+    camera: {
+      longitudeDegrees: 116.4074,
+      latitudeDegrees: 39.9042,
+      tiltRadians: -Math.PI / 4,
+      yawRadians: Math.PI / 6
+    },
+    imageryId: 'tianditu-img-c',
     contextLost: false,
     error: ''
   }
@@ -50,9 +62,32 @@ function wait(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds))
 }
 
+function verifySeparatedControlsMarkup() {
+  const markup = fs.readFileSync(path.join(__dirname,
+    '../../apps/miniprogram/pages/globe/index.wxml'), 'utf8')
+  const canvasStart = markup.indexOf('<canvas ')
+  const status = markup.indexOf('<view class="globe__status ')
+  const toolbar = markup.indexOf('<view class="globe__toolbar">')
+  const attribution = markup.indexOf('class="globe__attribution"')
+  const canvasEnd = markup.indexOf('</canvas>')
+  assert(status >= 0 && status < canvasStart && canvasEnd > canvasStart)
+  assert(toolbar > canvasEnd && attribution > canvasEnd)
+  assert(!markup.includes('<cover-view'))
+  ;['selectMove', 'selectLook', 'focusBeijing', 'topDown', 'zoomOut',
+    'zoomIn', 'tilt45', 'northUp', 'resetCamera', 'copyReport']
+    .forEach((handler) => {
+      assert(markup.includes(`bindtap="${handler}"`))
+    })
+}
+
 async function main() {
   assert(pageDefinition)
+  verifySeparatedControlsMarkup()
   const page = createPage()
+  page.onLoad()
+  assert.strictEqual(page.data.statusHeight, 132)
+  page.setDataCalls = 0
+  assert.strictEqual(page.data.statusPaddingTop, 52)
   const initial = state()
   page.updateState(initial)
   assert.strictEqual(page.setDataCalls, 1)
@@ -68,6 +103,11 @@ async function main() {
   await wait(270)
   assert.strictEqual(page.setDataCalls, 2)
   assert.strictEqual(page.data.metrics.indexOf('patches 3') >= 0, true)
+  assert.strictEqual(page.data.metrics.indexOf(
+    'imagery tianditu-img-c') >= 0, true)
+  assert.strictEqual(page.data.metrics.indexOf(
+    'target 116.41, 39.90') >= 0, true)
+  assert.strictEqual(page.data.metrics.indexOf('pitch -45') >= 0, true)
 
   const failed = state()
   failed.terrain.failedRequestCount = 1
@@ -87,28 +127,77 @@ async function main() {
   assert.strictEqual(page.setDataCalls, callsAfterFailure)
   assert.strictEqual(page.data.status, 'fatal')
 
-  const gestures = []
+  const forwarded = []
+  const commands = []
   let destroyed = false
+  let interactionDestroyed = false
   page.unloaded = false
   page.runtime = {
-    applyCamera(change) {
-      gestures.push(change)
+    zoom(scale) {
+      commands.push(['zoom', scale])
+    },
+    tilt45() {
+      commands.push(['tilt45'])
+    },
+    focusInitialTarget() {
+      commands.push(['focus'])
+    },
+    topDown() {
+      commands.push(['top'])
+    },
+    northUp() {
+      commands.push(['north'])
+    },
+    reset() {
+      commands.push(['reset'])
+    },
+    retryFailed() {
+      commands.push(['retry'])
     },
     destroy() {
       destroyed = true
     }
   }
-  page.onTouchStart({ touches: [{ clientX: 10, clientY: 10 }] })
-  page.onTouchMove({ touches: [{ clientX: 30, clientY: 5 }] })
-  await wait(20)
-  assert.strictEqual(gestures.length, 1)
-  assert(gestures[0].yawDelta < 0)
-  assert(gestures[0].tiltDelta > 0)
+  page.interaction = {
+    begin(event) { forwarded.push(['begin', event]) },
+    update(event) { forwarded.push(['update', event]) },
+    end(event) { forwarded.push(['end', event]) },
+    cancel() { forwarded.push(['cancel']) },
+    setOptions(options) { forwarded.push(['options', options]) },
+    destroy() { interactionDestroyed = true }
+  }
+  page.zoomIn()
+  page.zoomOut()
+  page.tilt45()
+  page.focusBeijing()
+  page.topDown()
+  page.northUp()
+  page.resetCamera()
+  page.retryFailed()
+  assert.deepStrictEqual(commands, [
+    ['zoom', 0.82], ['zoom', 1.22], ['tilt45'], ['focus'], ['top'],
+    ['north'], ['reset'], ['retry']
+  ])
+  const startEvent = { touches: [{ identifier: 1, clientX: 10, clientY: 10 }] }
+  const moveEvent = { touches: [{ identifier: 1, clientX: 30, clientY: 5 }] }
+  page.onTouchStart(startEvent)
+  page.onTouchMove(moveEvent)
+  page.onTouchEnd({ touches: [] })
+  page.onTouchCancel()
+  assert.strictEqual(forwarded[0][0], 'begin')
+  assert.strictEqual(forwarded[1][0], 'update')
+  assert.strictEqual(forwarded[2][0], 'end')
+  assert.strictEqual(forwarded[3][0], 'cancel')
+
+  page.selectLook()
+  assert.strictEqual(page.data.gestureMode, 'look')
+  assert.deepStrictEqual(forwarded[4], ['options', { mode: 'look' }])
 
   const callsBeforeUnload = page.setDataCalls
   page.onUnload()
   assert.strictEqual(page.runtime, null)
   assert.strictEqual(destroyed, true)
+  assert.strictEqual(interactionDestroyed, true)
   page.updateState(state())
   assert.strictEqual(page.setDataCalls, callsBeforeUnload)
   console.log('Mini Program globe page tests passed.')

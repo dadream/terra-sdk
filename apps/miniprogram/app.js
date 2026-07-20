@@ -1,6 +1,8 @@
 App({
   globalData: {
     capabilityReport: null,
-    globeReport: null
+    globeReport: null,
+    planarReport: null,
+    planarLoadReport: null
   }
 })

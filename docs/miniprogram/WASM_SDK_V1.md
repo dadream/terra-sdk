@@ -60,11 +60,11 @@ Typical call order:
 ```text
 terra_create
 terra_load_manifest
-terra_set_viewport / terra_set_camera
+terra_set_viewport / terra_set_globe_target / terra_set_camera
 terra_update
 terra_get_requests / terra_get_frame / terra_get_frame_patches
 terra_get_index_buffer / terra_get_draw_ranges
-terra_submit_record / terra_fail_record
+terra_submit_record / terra_fail_record / terra_retry_record
 terra_get_stats / terra_get_last_error
 terra_destroy
 ```
@@ -74,9 +74,19 @@ with a null/zero-capacity buffer. `terra_alloc` and `terra_free` are provided fo
 copying typed data through Wasm memory. Structure-size query functions let host
 code reject an incompatible layout before writing fields.
 
+`terra_set_globe_target` sets the cylindrical surface point under the camera in
+longitude/latitude degrees. It is separate from `terra_set_camera`: target
+coordinates move across the globe, while camera yaw and tilt change local
+heading and pitch around that point. The default target is `(0, 0)`, preserving
+the original ABI v1 camera behavior for hosts that do not call the new function.
+
 `terra_submit_record` accepts exact terrain-service record bytes with an
 explicit root/detail kind and validates the current frame key before decoding.
-`terra_fail_record` records failure while leaving retry policy outside C++.
+`terra_fail_record` marks an unavailable detail as a dataset leaf. Subsequent
+updates retain its parent patch for visual coverage and stop requesting that
+detail. The host still owns bounded transport retries; an explicit user retry
+calls `terra_retry_record`, which clears the unavailable state so the next
+update requests the record again.
 The older `terra_submit_patch` and `terra_fail_patch` wrappers remain for
 source compatibility; new hosts use the explicit record calls.
 

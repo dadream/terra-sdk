@@ -65,8 +65,10 @@ class FakeAbi {
     this.loadedManifest = null
     this.viewports = []
     this.cameras = []
+    this.targets = []
     this.submissions = []
     this.failures = []
+    this.retryRecords = []
     this.updateCount = 0
     this.destroyed = false
   }
@@ -81,6 +83,10 @@ class FakeAbi {
 
   setCamera(value) {
     this.cameras.push(Object.assign({}, value))
+  }
+
+  setGlobeTarget(longitudeDegrees, latitudeDegrees) {
+    this.targets.push({ longitudeDegrees, latitudeDegrees })
   }
 
   update() {
@@ -124,6 +130,10 @@ class FakeAbi {
 
   failRecord(kind, key) {
     this.failures.push({ kind, key })
+  }
+
+  retryRecord(kind, key) {
+    this.retryRecords.push({ kind, key })
   }
 
   destroy() {
@@ -208,12 +218,33 @@ async function createRuntime(options) {
   return { runtime, renderer }
 }
 
+function testGeographicCamera() {
+  const target = {
+    longitudeDegrees: 116.4074,
+    latitudeDegrees: 39.9042
+  }
+  const camera = runtimeModule.geographicCamera(
+    6378000, 1280, 720, 30 * Math.PI / 180, target)
+  assert.strictEqual(camera.yawRadians, 0)
+  assert.strictEqual(camera.tiltRadians, 0)
+  assert.strictEqual(camera.longitudeDegrees, target.longitudeDegrees)
+  assert.strictEqual(camera.latitudeDegrees, target.latitudeDegrees)
+  assert.throws(() => runtimeModule.geographicCamera(
+    6378000, 1280, 720, 0.5, { longitudeDegrees: 181, latitudeDegrees: 0 }),
+  /longitude/)
+}
+
 async function testSuccessfulLoadAndControls() {
   const abi = new FakeAbi()
   const requests = []
   const bytes = payload()
+  const initialTarget = {
+    longitudeDegrees: 116.4074,
+    latitudeDegrees: 39.9042
+  }
   const result = await createRuntime({
     abi,
+    initialTarget,
     request(options) {
       requests.push(options)
       return { promise: Promise.resolve(response(bytes)), abort() {} }
@@ -232,12 +263,72 @@ async function testSuccessfulLoadAndControls() {
     'https://tiles.example/3/5/4.jpg')
 
   const initialCamera = Object.assign({}, result.runtime.camera)
+  assert.deepStrictEqual(abi.targets[0], initialTarget)
+  assert.strictEqual(initialCamera.tiltRadians, 0)
+  assert.strictEqual(initialCamera.yawRadians, 0)
+  assert.strictEqual(initialCamera.longitudeDegrees, 116.4074)
+  assert.strictEqual(initialCamera.latitudeDegrees, 39.9042)
+  assert.deepStrictEqual(result.runtime.getView(), {
+    schema: 'terra.view-state.v1',
+    mode: 'globe',
+    target: {
+      longitudeDegrees: 116.4074,
+      latitudeDegrees: 39.9042,
+      heightMeters: 0
+    },
+    rangeMeters: initialCamera.distance,
+    headingDegrees: 0,
+    tiltDegrees: 0
+  })
+  const atomicUpdates = abi.updateCount
+  result.runtime.setView({
+    schema: 'terra.view-state.v1',
+    mode: 'globe',
+    target: {
+      longitudeDegrees: 120,
+      latitudeDegrees: 30,
+      heightMeters: 0
+    },
+    rangeMeters: initialCamera.distance * 0.9,
+    headingDegrees: 20,
+    tiltDegrees: 35
+  })
+  assert.strictEqual(abi.updateCount, atomicUpdates + 1)
+  assert.strictEqual(result.runtime.getView().tiltDegrees, 35)
+  assert.throws(() => result.runtime.setView({
+    schema: 'terra.view-state.v1',
+    mode: 'globe',
+    target: { longitudeDegrees: 200, latitudeDegrees: 30 },
+    rangeMeters: initialCamera.distance,
+    headingDegrees: 0,
+    tiltDegrees: 0
+  }), /outside globe bounds/)
+  assert.strictEqual(result.runtime.camera.longitudeDegrees, 120)
+  result.runtime.reset()
+  result.runtime.applyCamera({ tiltDelta: -0.25, yawDelta: 0.5 })
+  assert.strictEqual(result.runtime.camera.tiltRadians, -0.25)
+  assert.strictEqual(result.runtime.camera.yawRadians, 0.5)
+  result.runtime.reset()
+  result.runtime.moveSurfacePixels(100, -50)
+  assert(result.runtime.camera.longitudeDegrees < initialCamera.longitudeDegrees)
+  assert(result.runtime.camera.latitudeDegrees < initialCamera.latitudeDegrees)
+  result.runtime.setTargetDegrees(120, 30)
+  assert.strictEqual(result.runtime.camera.longitudeDegrees, 120)
+  assert.strictEqual(result.runtime.camera.latitudeDegrees, 30)
+  result.runtime.focusInitialTarget()
+  assert.strictEqual(result.runtime.camera.distance, 6378000 * 1.45)
+  assert.strictEqual(result.runtime.camera.longitudeDegrees, 116.4074)
+  assert.strictEqual(result.runtime.camera.latitudeDegrees, 39.9042)
   result.runtime.zoom(0.8)
-  assert(result.runtime.camera.distance < initialCamera.distance)
+  assert(result.runtime.camera.distance < 6378000 * 1.45)
   result.runtime.tilt45()
   assert.strictEqual(result.runtime.camera.tiltRadians, -Math.PI / 4)
   result.runtime.rotateYaw(0.5)
   assert.strictEqual(result.runtime.camera.yawRadians, 0.5)
+  result.runtime.topDown()
+  assert.strictEqual(result.runtime.camera.tiltRadians, 0)
+  result.runtime.northUp()
+  assert.strictEqual(result.runtime.camera.yawRadians, 0)
   result.runtime.reset()
   assert.deepStrictEqual(result.runtime.camera, initialCamera)
   result.runtime.resize({ width: 1600, height: 900, devicePixelRatio: 2 })
@@ -272,8 +363,39 @@ async function testFailureRecovery() {
   online = true
   assert.strictEqual(result.runtime.retryFailed(), true)
   await settle(4)
+  assert.strictEqual(abi.retryRecords.length, 1)
+  assert.deepStrictEqual(abi.retryRecords[0], recordRequest)
   assert.strictEqual(abi.submissions.length, 1)
   assert.strictEqual(result.runtime.state().terrain.failedRequestCount, 0)
+  result.runtime.destroy()
+}
+
+async function testSparseNotFoundIsNotRetried() {
+  const abi = new FakeAbi()
+  let requests = 0
+  const result = await createRuntime({
+    abi,
+    maximumTerrainRetries: 2,
+    terrainRetryDelayMs: 0,
+    request() {
+      requests += 1
+      return {
+        promise: Promise.resolve({
+          statusCode: 404,
+          data: new ArrayBuffer(0),
+          header: {}
+        }),
+        abort() {}
+      }
+    }
+  })
+  await settle(6)
+  assert.strictEqual(requests, 1)
+  assert.strictEqual(abi.failures.length, 1)
+  assert.strictEqual(result.runtime.state().terrain.failedRequestCount, 1)
+  assert(result.runtime.state().diagnostics.some((entry) =>
+    entry.kind === 'terrain_request_failed' &&
+    /HTTP 404/.test(entry.detail.message)))
   result.runtime.destroy()
 }
 
@@ -306,6 +428,52 @@ async function testTiandituProfile() {
   result.runtime.destroy()
 }
 
+async function testPublicImageryAndLifecycle() {
+  const invalidMinimumRuntime = new runtimeModule.TerraGlobeRuntime({
+    canvas: canvas(),
+    imagery: {
+      id: 'unsupported-minimum',
+      tileScheme: 'global-geodetic',
+      minimumLevel: 1,
+      maximumLevel: 6,
+      resolveTile: () => 'https://public.example/tile.png'
+    }
+  })
+  assert.throws(() => invalidMinimumRuntime.validateRuntimeManifest(manifest()),
+    /minimum level must be zero/)
+
+  const abi = new FakeAbi()
+  const result = await createRuntime({
+    abi,
+    imagery: {
+      id: 'public-source',
+      tileScheme: 'global-geodetic',
+      minimumLevel: 0,
+      maximumLevel: 6,
+      resolveTile: (tile) =>
+        `https://public.example/${tile.matrix}/${tile.column}/${tile.row}.png`
+    },
+    request() {
+      return { promise: Promise.resolve(response(payload())), abort() {} }
+    }
+  })
+  await settle(4)
+  assert.strictEqual(abi.loadedManifest.texture.id, 'public-source')
+  assert.strictEqual(abi.loadedManifest.texture.maximum_level, 6)
+  assert.strictEqual(result.runtime.textureUrl({
+    level: 1, matrix: 2, row: 3, column: 4
+  }), 'https://public.example/2/4/3.png')
+  const updateCount = abi.updateCount
+  result.runtime.pause()
+  result.runtime.panBy({ xPixels: 10, yPixels: 5 })
+  assert.strictEqual(abi.updateCount, updateCount)
+  assert.strictEqual(result.runtime.state().paused, true)
+  result.runtime.resume()
+  assert.strictEqual(abi.updateCount, updateCount + 1)
+  assert.strictEqual(result.runtime.state().paused, false)
+  result.runtime.destroy()
+}
+
 async function testWxCancellation() {
   let aborts = 0
   global.wx = {
@@ -328,9 +496,12 @@ async function testWxCancellation() {
 }
 
 async function main() {
+  testGeographicCamera()
   await testSuccessfulLoadAndControls()
   await testFailureRecovery()
+  await testSparseNotFoundIsNotRetried()
   await testTiandituProfile()
+  await testPublicImageryAndLifecycle()
   await testWxCancellation()
   console.log('Mini Program globe runtime tests passed.')
 }

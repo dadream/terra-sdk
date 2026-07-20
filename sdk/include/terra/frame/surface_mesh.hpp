@@ -43,6 +43,16 @@ surface_mesh_status make_cylindrical_patch_surface(
     const core::global_geodetic_wmts_selector& texture_selector,
     patch_surface_mesh& output);
 
+surface_mesh_status make_planar_patch_surface(
+    const lod_patch& patch, std::uint8_t fragment,
+    std::uint32_t patch_dimension, const core::bounds2d& bounds,
+    patch_surface_mesh& output);
+
+surface_mesh_status make_planar_patch_surface(
+    const lod_patch& patch, std::uint8_t fragment,
+    const codec::height_fragment& heights, double height_scale,
+    const core::bounds2d& bounds, patch_surface_mesh& output);
+
 const char* surface_mesh_status_message(surface_mesh_status status);
 
 }  // namespace frame

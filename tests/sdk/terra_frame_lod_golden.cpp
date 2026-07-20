@@ -1,6 +1,7 @@
 #include <terra/frame/camera.hpp>
 #include <terra/frame/lod.hpp>
 
+#include <algorithm>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -104,8 +105,31 @@ int main(int argc, char** argv) {
   const terra::frame::lod_cut invalid =
       terra::frame::select_procedural_cylindrical_lod(
           std::numeric_limits<double>::quiet_NaN(), 64U, 0.01F, snapshot);
+  terra::frame::lod_detail_key unavailable;
+  unavailable.level = 0U;
+  unavailable.id = {{0, 134217728, -134217728}};
+  const std::vector<terra::frame::lod_detail_key> unavailable_details{
+      unavailable};
+  const terra::frame::lod_cut sparse =
+      terra::frame::select_procedural_cylindrical_lod(
+          6378000.0, 64U, 0.0025F, snapshot, 40U, 65536U,
+          unavailable_details);
+  const bool retained_parent = std::any_of(
+      sparse.patches.begin(), sparse.patches.end(),
+      [&unavailable](const terra::frame::lod_patch& patch) {
+        return patch.level == unavailable.level &&
+               patch.id == unavailable.id;
+      });
+  const bool requested_unavailable = std::any_of(
+      sparse.record_requests.begin(), sparse.record_requests.end(),
+      [&unavailable](const terra::frame::lod_record_request& request) {
+        return request.kind == terra::frame::lod_record_kind::detail &&
+               request.patch.level == unavailable.level &&
+               request.patch.id == unavailable.id;
+      });
   if (bounded.complete || bounded.patches.size() != 8U ||
-      invalid.complete || !invalid.patches.empty()) {
+      invalid.complete || !invalid.patches.empty() || !sparse.complete ||
+      !retained_parent || requested_unavailable) {
     std::cerr << "LOD safety contract failed\n";
     return 1;
   }

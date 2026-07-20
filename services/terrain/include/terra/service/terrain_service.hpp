@@ -34,6 +34,7 @@ struct texture_descriptor {
   std::string id;
   std::string kind;
   std::string url_template;
+  std::string local_file_path;
   int matrix_level_offset = 0;
   int maximum_level = 0;
 };

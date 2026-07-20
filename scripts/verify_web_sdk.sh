@@ -8,6 +8,7 @@ SITE_DIR="${OUTPUT_DIR}/site"
 WASM_IMAGE=${TERRA_SDK_WASM_IMAGE:-terra-sdk-wasm:emscripten-3.1.5}
 PORT=${WEB_SDK_PORT:-18765}
 VIRTUAL_TIME_BUDGET_MS=${WEB_SDK_VIRTUAL_TIME_BUDGET_MS:-30000}
+BROWSER_TIMEOUT_SECONDS=${WEB_SDK_BROWSER_TIMEOUT_SECONDS:-45}
 BROWSER_BIN=${WEB_SDK_BROWSER_BIN:-}
 SERVER_PID=
 BROWSER_PROFILE=
@@ -25,7 +26,7 @@ cleanup() {
     kill "${SERVER_PID}" >/dev/null 2>&1 || true
   fi
   if [ -n "${BROWSER_PROFILE}" ] && [ -d "${BROWSER_PROFILE}" ]; then
-    rm -rf "${BROWSER_PROFILE}"
+    rm -rf "${BROWSER_PROFILE}" >/dev/null 2>&1 || true
   fi
 }
 trap cleanup EXIT
@@ -102,31 +103,54 @@ else
 fi
 
 set +e
-"${BROWSER_BIN}" \
-  --headless=new \
-  --no-sandbox \
-  --no-first-run \
-  --disable-extensions \
-  --disable-background-networking \
-  --disable-component-update \
-  --enable-webgl \
-  --enable-unsafe-swiftshader \
-  --ignore-gpu-blocklist \
-  --use-angle=swiftshader \
-  --run-all-compositor-stages-before-draw \
-  --virtual-time-budget="${VIRTUAL_TIME_BUDGET_MS}" \
-  --window-size=1280,1000 \
-  --user-data-dir="${PROFILE_ARGUMENT}" \
-  --dump-dom \
-  "http://127.0.0.1:${PORT}/" \
-  > "${OUTPUT_DIR}/browser_dom.html" \
-  2> "${OUTPUT_DIR}/browser.log"
+if [[ "${BROWSER_BIN}" == *.exe ]]; then
+  WINDOWS_NODE_BIN=${WEB_SDK_WINDOWS_NODE_BIN:-$(command -v node.exe || true)}
+  if [ -z "${WINDOWS_NODE_BIN}" ]; then
+    echo "Windows Node.js is required for Edge evidence; set WEB_SDK_WINDOWS_NODE_BIN" >&2
+    exit 2
+  fi
+  "${WINDOWS_NODE_BIN}" \
+    "$(wslpath -w "${ROOT_DIR}/scripts/run_chromium_evidence.js")" \
+    --browser "$(wslpath -w "${BROWSER_BIN}")" \
+    --profile "${PROFILE_ARGUMENT}" \
+    --url "http://127.0.0.1:${PORT}/" \
+    --dom-output "$(wslpath -w "${OUTPUT_DIR}/browser_dom.html")" \
+    --log-output "$(wslpath -w "${OUTPUT_DIR}/browser.log")" \
+    --timeout "${BROWSER_TIMEOUT_SECONDS}"
+else
+  timeout --foreground --kill-after=5s "${BROWSER_TIMEOUT_SECONDS}s" \
+    "${BROWSER_BIN}" \
+    --headless=new \
+    --no-sandbox \
+    --no-first-run \
+    --disable-extensions \
+    --disable-background-networking \
+    --disable-component-update \
+    --enable-webgl \
+    --enable-unsafe-swiftshader \
+    --ignore-gpu-blocklist \
+    --use-angle=swiftshader \
+    --run-all-compositor-stages-before-draw \
+    --virtual-time-budget="${VIRTUAL_TIME_BUDGET_MS}" \
+    --window-size=1280,1000 \
+    --user-data-dir="${PROFILE_ARGUMENT}" \
+    --dump-dom \
+    "http://127.0.0.1:${PORT}/" \
+    > "${OUTPUT_DIR}/browser_dom.html" \
+    2> "${OUTPUT_DIR}/browser.log"
+fi
 BROWSER_STATUS=$?
 set -e
 
 if [ "${BROWSER_STATUS}" -ne 0 ]; then
-  cat "${OUTPUT_DIR}/browser.log" >&2
-  exit "${BROWSER_STATUS}"
+  if { [ "${BROWSER_STATUS}" -eq 124 ] || [ "${BROWSER_STATUS}" -eq 137 ]; } && \
+     grep -Eq '<html[^>]*data-terra-status="passed"' \
+       "${OUTPUT_DIR}/browser_dom.html"; then
+    echo "Browser evidence completed before browser shutdown timeout."
+  else
+    cat "${OUTPUT_DIR}/browser.log" >&2
+    exit "${BROWSER_STATUS}"
+  fi
 fi
 
 python3 "${ROOT_DIR}/scripts/check_web_sdk_evidence.py" \

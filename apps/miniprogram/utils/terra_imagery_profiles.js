@@ -70,8 +70,15 @@ function resolveImageryProfile(profileName, credential, fallbackTextureId) {
     return {
       id: TIANDITU_IMG_C_PROFILE,
       textureId: TIANDITU_IMG_C_PROFILE,
+      tileScheme: 'global-geodetic',
+      minimumLevel: 0,
+      maximumLevel: 17,
+      matrixLevelOffset: 1,
       attribution: TIANDITU_ATTRIBUTION,
       texture: Object.assign({}, TIANDITU_TEXTURE),
+      resolveTile(tile) {
+        return tiandituUrlForTile(tile, token)
+      },
       urlForTile(tile) {
         return tiandituUrlForTile(tile, token)
       }

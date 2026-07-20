@@ -13,12 +13,7 @@ assert.strictEqual(summary, 'WebGL pass | Wasm pass | Network skipped')
 
 assert.strictEqual(probe.errorMessage(new Error('expected')), 'expected')
 
-let legacyCalls = 0
 global.wx = {
-  getSystemInfoSync() {
-    legacyCalls += 1
-    return { platform: 'legacy', pixelRatio: 1 }
-  },
   getDeviceInfo() {
     return { platform: 'devtools', model: 'simulator' }
   },
@@ -32,17 +27,12 @@ global.wx = {
 const modernInfo = probe.collectSystemInfo()
 assert.strictEqual(modernInfo.platform, 'devtools')
 assert.strictEqual(modernInfo.pixelRatio, 2)
-assert.strictEqual(legacyCalls, 0)
 
-global.wx = {
-  getSystemInfoSync() {
-    legacyCalls += 1
-    return { platform: 'legacy', pixelRatio: 1 }
-  }
-}
-const legacyInfo = probe.collectSystemInfo()
-assert.strictEqual(legacyInfo.platform, 'legacy')
-assert.strictEqual(legacyCalls, 1)
+global.wx = {}
+const defaultInfo = probe.collectSystemInfo()
+assert.strictEqual(defaultInfo.platform, '')
+assert.strictEqual(defaultInfo.SDKVersion, '')
+assert.strictEqual(defaultInfo.pixelRatio, 1)
 delete global.wx
 
 console.log('Mini Program capability probe host tests passed.')

@@ -11,6 +11,9 @@ class FakeGl {
     this.DEPTH_TEST = 0x0b71
     this.LEQUAL = 0x0203
     this.CULL_FACE = 0x0b44
+    this.BLEND = 0x0be2
+    this.SRC_ALPHA = 0x0302
+    this.ONE_MINUS_SRC_ALPHA = 0x0303
     this.MAX_TEXTURE_SIZE = 0x0d33
     this.MAX_VERTEX_ATTRIBS = 0x8869
     this.VERSION = 0x1f02
@@ -23,6 +26,8 @@ class FakeGl {
     this.TEXTURE0 = 0x84c0
     this.TEXTURE_2D = 0x0de1
     this.TRIANGLE_STRIP = 0x0005
+    this.POINTS = 0x0000
+    this.LINE_STRIP = 0x0003
     this.UNSIGNED_SHORT = 0x1403
     this.NO_ERROR = 0
     this.RGBA = 0x1908
@@ -67,6 +72,7 @@ class FakeGl {
   enable() { this.record('enable', arguments) }
   depthFunc() { this.record('depthFunc', arguments) }
   disable() { this.record('disable', arguments) }
+  blendFunc() { this.record('blendFunc', arguments) }
   clearColor() { this.record('clearColor', arguments) }
   getParameter(parameter) {
     if (parameter === this.MAX_TEXTURE_SIZE) {
@@ -93,10 +99,15 @@ class FakeGl {
   useProgram() { this.record('useProgram', arguments) }
   uniformMatrix4fv() { this.record('uniformMatrix4fv', arguments) }
   uniform1i() { this.record('uniform1i', arguments) }
+  uniform1f() { this.record('uniform1f', arguments) }
+  uniform2f() { this.record('uniform2f', arguments) }
   activeTexture() { this.record('activeTexture', arguments) }
   enableVertexAttribArray() { this.record('enableVertexAttribArray', arguments) }
   vertexAttribPointer() { this.record('vertexAttribPointer', arguments) }
   uniform3f() { this.record('uniform3f', arguments) }
+  uniform4f() { this.record('uniform4f', arguments) }
+  lineWidth() { this.record('lineWidth', arguments) }
+  drawArrays() { this.record('drawArrays', arguments) }
   drawElements() { this.record('drawElements', arguments) }
   getError() { return this.NO_ERROR }
   deleteBuffer() { this.record('deleteBuffer', arguments) }
@@ -184,6 +195,20 @@ async function main() {
   assert.strictEqual(rendererModule.isPowerOfTwo(255), false)
   assert.strictEqual(rendererModule.geometryHash(new Float32Array([1, 2])),
     rendererModule.geometryHash(new Float32Array([1, 2])))
+  assert.deepStrictEqual(rendererModule.ancestorTextureTiles({
+    level: 3, matrix: 4, row: 5, column: 11
+  }), [
+    { level: 2, matrix: 3, row: 2, column: 5 },
+    { level: 1, matrix: 2, row: 1, column: 2 },
+    { level: 0, matrix: 1, row: 0, column: 1 }
+  ])
+  assert.deepStrictEqual(rendererModule.ancestorUvTransform(
+    { level: 3, matrix: 3, row: 7, column: 11 },
+    { level: 2, matrix: 2, row: 3, column: 5 }), {
+    scale: 0.5,
+    offsetX: 0.5,
+    offsetY: 0.5
+  })
 
   const gl = new FakeGl()
   const canvas = new FakeCanvas(gl)
@@ -216,26 +241,72 @@ async function main() {
   assert.strictEqual(canvas.images.length, 1)
   renderer.setFrame(frame(), [draw(5)], positions, textureUv, indices)
   assert.deepStrictEqual(canvas.images[0].sources,
-    ['https://tiles.example/2/4/3.jpg', ''])
+    ['https://tiles.example/2/4/3.jpg'])
   await settle()
   await settle()
   assert.strictEqual(canvas.images.length, 2)
   canvas.images[1].onload()
   await settle()
 
+  const descendant = draw(11)
+  descendant.texture = { level: 3, matrix: 3, row: 7, column: 11 }
+  renderer.setFrame(frame(), [descendant], positions, textureUv, indices)
+  await settle()
+  assert.strictEqual(canvas.images.length, 3)
+  renderer.render()
+  const uvScaleCalls = gl.calls.filter((call) => call.name === 'uniform2f' &&
+    call.args[0].name === 'u_uv_scale')
+  const uvOffsetCalls = gl.calls.filter((call) => call.name === 'uniform2f' &&
+    call.args[0].name === 'u_uv_offset')
+  assert.deepStrictEqual(uvScaleCalls[uvScaleCalls.length - 1].args.slice(1),
+    [0.5, 0.5])
+  assert.deepStrictEqual(uvOffsetCalls[uvOffsetCalls.length - 1].args.slice(1),
+    [0.5, 0.5])
+  assert.strictEqual(renderer.stats().textures.fallbackRatio, 1)
+  assert.strictEqual(renderer.stats().textures.missingRatio, 0)
+  canvas.images[2].onload()
+  await settle()
+  renderer.render()
+  assert.strictEqual(renderer.stats().textures.fallbackRatio, 0)
+  renderer.setOverlays({
+    points: [{ id: 'beijing', world: [1, 2, 3], priority: 1 }],
+    route: {
+      worlds: [[0, 0, 0], [1, 1, 1]],
+      color: '#2f7de1',
+      opacity: 0.75,
+      widthPixels: 3
+    }
+  })
+  renderer.render()
+  assert.strictEqual(renderer.stats().overlays.points, 1)
+  assert.strictEqual(renderer.stats().overlays.routeVertices, 2)
+  assert(gl.calls.some((call) => call.name === 'drawArrays' &&
+    call.args[0] === gl.POINTS))
+  assert(gl.calls.some((call) => call.name === 'drawArrays' &&
+    call.args[0] === gl.LINE_STRIP))
+  assert(gl.calls.some((call) => call.name === 'blendFunc' &&
+    call.args[0] === gl.SRC_ALPHA &&
+    call.args[1] === gl.ONE_MINUS_SRC_ALPHA))
+
   const stats = renderer.render()
-  assert.deepStrictEqual(stats, { submitted: 1, queued: 0 })
-  assert.strictEqual(gl.calls.filter((call) => call.name === 'drawElements').length,
-    1)
+  assert.deepStrictEqual(stats, { submitted: 3, queued: 0 })
+  assert(gl.calls.filter((call) => call.name === 'drawElements').length >= 3)
   assert(gl.calls.some((call) => call.name === 'pixelStorei' &&
     call.args[1] === false))
   assert(gl.calls.some((call) => call.name === 'generateMipmap'))
   assert(renderRequests.length > 0)
+  renderer.setMode('height')
+  renderer.render()
+  assert.strictEqual(renderer.stats().mode, 'height')
+  assert(gl.calls.some((call) => call.name === 'uniform1f' &&
+    call.args[1] === 1))
+  assert(gl.calls.some((call) => call.name === 'uniform1f' &&
+    call.args[0].name === 'u_height_origin' && call.args[1] === 300))
 
   renderer.setFrame(frame(), [draw(6)], positions, textureUv, indices)
   await settle()
-  assert.strictEqual(canvas.images.length, 3)
-  canvas.images[2].onerror(new Error('https://tiles.example/?tk=secret-token'))
+  assert.strictEqual(canvas.images.length, 4)
+  canvas.images[3].onerror(new Error('https://tiles.example/?tk=secret-token'))
   await settle()
   assert.strictEqual(renderer.stats().textures.failed, 1)
   assert.strictEqual(diagnostics[diagnostics.length - 1].kind,
@@ -245,10 +316,24 @@ async function main() {
   assert.strictEqual(renderer.retryTextures(), true)
   await settle()
   await settle()
-  assert.strictEqual(canvas.images.length, 4)
-  canvas.images[3].onload()
+  assert.strictEqual(canvas.images.length, 5)
+  canvas.images[4].onload()
   await settle()
   assert.strictEqual(renderer.stats().textures.failed, 0)
+
+  const sourceSwitchDraw = draw(7)
+  renderer.setFrame(frame(), [sourceSwitchDraw], positions, textureUv, indices)
+  await settle()
+  assert.strictEqual(canvas.images.length, 6)
+  canvas.images[5].onload()
+  renderer.textures.clear()
+  renderer.setFrame(frame(), [sourceSwitchDraw], positions, textureUv, indices)
+  await settle()
+  assert.strictEqual(canvas.images.length, 7)
+  assert.strictEqual(renderer.textures.cache.has('2/2/3/7'), false)
+  canvas.images[6].onload()
+  await settle()
+  assert.strictEqual(renderer.textures.cache.has('2/2/3/7'), true)
 
   let prevented = false
   canvas.emit('webglcontextlost', {

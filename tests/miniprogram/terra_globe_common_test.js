@@ -90,8 +90,25 @@ async function main() {
     j: 2,
     k: 3
   }), '/-1/2/3')
+  assert.strictEqual(common.joinServiceUrl(
+    'http://localhost:18082', '/manifest'),
+    'http://localhost:18082/manifest')
+  assert.strictEqual(common.joinServiceUrl(
+    'http://127.0.0.1:18082/', '/manifest'),
+    'http://127.0.0.1:18082/manifest')
+  assert.strictEqual(common.joinServiceUrl(
+    'http://[::1]:18082', '/manifest'),
+    'http://[::1]:18082/manifest')
   assert.throws(() => common.joinServiceUrl('http://terrain.example', '/manifest'),
-    /HTTPS/)
+    /HTTPS or a loopback HTTP address/)
+  assert.throws(() => common.joinServiceUrl(
+    'http://localhost.example:18082', '/manifest'), /loopback/)
+  assert.throws(() => common.joinServiceUrl(
+    'http://192.168.1.10:18082', '/manifest'), /loopback/)
+  assert.throws(() => common.joinServiceUrl(
+    'http://127.0.0.1:18082/path', '/manifest'), /loopback/)
+  assert.throws(() => common.joinServiceUrl(
+    'http://127.0.0.1:65536', '/manifest'), /loopback/)
 
   const disposed = []
   const cache = new common.LruCache({

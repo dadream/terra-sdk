@@ -3,6 +3,8 @@
 #include <vic/vfs/repository.hpp>
 
 #include <cstdint>
+#include <fstream>
+#include <iterator>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -29,6 +31,13 @@ terra::service::http_response request(
 
 std::string text(const terra::service::http_response& response) {
   return std::string(response.body.begin(), response.body.end());
+}
+
+std::vector<std::uint8_t> file_payload(const std::string& path) {
+  std::ifstream input(path.c_str(), std::ios::in | std::ios::binary);
+  require(static_cast<bool>(input), "texture fixture failed to open");
+  return std::vector<std::uint8_t>(std::istreambuf_iterator<char>(input),
+                                   std::istreambuf_iterator<char>());
 }
 
 std::vector<std::uint8_t> current_repository_payload(
@@ -70,20 +79,29 @@ void require_payload_contract(
 
 int main(int argc, char** argv) {
   try {
-    require(argc == 2, "expected terrain base path argument");
+    require(argc == 3, "expected terrain base path and texture arguments");
     const std::string terrain_base = argv[1];
+    const std::string texture_path = argv[2];
 
     terra::service::terrain_dataset_config config;
     config.dataset_id = "ps-1k";
     config.terrain_base_path = terrain_base;
     config.minimum_level = 0;
     config.maximum_level = 30;
-    terra::service::texture_descriptor texture;
-    texture.id = "blue-marble";
-    texture.kind = "global-geodetic";
-    texture.url_template =
+    terra::service::texture_descriptor external_texture;
+    external_texture.id = "blue-marble";
+    external_texture.kind = "global-geodetic";
+    external_texture.url_template =
         "https://example.invalid/blue-marble/{z}/{x}/{y}.jpg";
-    texture.maximum_level = 8;
+    external_texture.maximum_level = 8;
+    config.textures.push_back(external_texture);
+
+    terra::service::texture_descriptor texture;
+    texture.id = "ps-1k";
+    texture.kind = "planar-single";
+    texture.url_template = "/terra/v1/datasets/ps-1k/textures/ps-1k";
+    texture.local_file_path = texture_path;
+    texture.maximum_level = 0;
     config.textures.push_back(texture);
 
     terra::service::terrain_service closed_service;
@@ -117,8 +135,10 @@ int main(int argc, char** argv) {
                 manifest_text.find("/patches/{i}/{j}/{k}") !=
                     std::string::npos,
             "manifest endpoint templates are missing");
-    require(manifest_text.find("blue-marble") != std::string::npos,
+    require(manifest_text.find("planar-single") != std::string::npos,
             "manifest texture descriptor is missing");
+    require(manifest_text.find("blue-marble") != std::string::npos,
+            "manifest external texture descriptor is missing");
     require(manifest_text.find(terrain_base) == std::string::npos,
             "manifest leaked a repository path");
     require(terra::service::validate_payload(
@@ -132,6 +152,33 @@ int main(int argc, char** argv) {
     require(manifest_not_modified.status == 304 &&
                 manifest_not_modified.body.empty(),
             "conditional manifest request did not return 304");
+
+    const std::vector<std::uint8_t> expected_texture =
+        file_payload(texture_path);
+    const auto texture_response = request(
+        service, "GET", "/terra/v1/datasets/ps-1k/textures/ps-1k");
+    require(texture_response.status == 200 &&
+                texture_response.content_type == "image/png" &&
+                texture_response.body == expected_texture,
+            "planar texture response changed");
+    require(terra::service::validate_payload(
+                texture_response.body,
+                texture_response.header("Content-Length"),
+                texture_response.header("X-Terra-Checksum")) ==
+                terra::service::payload_validation_status::ok,
+            "planar texture integrity contract failed");
+    const auto texture_head = request(
+        service, "HEAD", "/terra/v1/datasets/ps-1k/textures/ps-1k");
+    require(texture_head.status == 200 && texture_head.body.empty() &&
+                texture_head.header("Content-Length") ==
+                    std::to_string(expected_texture.size()),
+            "planar texture HEAD contract changed");
+    const auto texture_not_modified = request(
+        service, "GET", "/terra/v1/datasets/ps-1k/textures/ps-1k",
+        {{"If-None-Match", texture_response.header("ETag")}});
+    require(texture_not_modified.status == 304 &&
+                texture_not_modified.body.empty(),
+            "conditional texture request did not return 304");
 
     const std::vector<std::uint8_t> root_payload =
         current_repository_payload(terrain_base + ".root", 0, 0,

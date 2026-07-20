@@ -143,6 +143,38 @@ int main() {
   expect(surface_count == 16U, "root surface fragment count changed");
   verify_height_surface(root_cut.patches.front(), selector);
 
+  terra::frame::globe_camera beijing_camera(
+      static_cast<float>(radius), 780, 1186,
+      static_cast<float>(30.0 * (3.14 / 180.0)));
+  expect(beijing_camera.set_target_degrees(116.4074, 39.9042),
+         "unable to set Beijing surface test target");
+  beijing_camera.set_distance(beijing_camera.distance() * 0.82);
+  const terra::frame::lod_cut beijing_zoom_cut =
+      terra::frame::select_procedural_cylindrical_lod(
+          radius, patch_dimension, 0.004487179487179487F,
+          beijing_camera.snapshot());
+  const terra::core::global_geodetic_wmts_selector tianditu_selector(1, 17);
+  std::size_t beijing_surface_count = 0U;
+  for (const terra::frame::lod_patch& patch : beijing_zoom_cut.patches) {
+    if (!patch.visible) {
+      continue;
+    }
+    for (std::uint8_t fragment = 0U; fragment < 2U; ++fragment) {
+      if (!patch.has_fragment(fragment)) {
+        continue;
+      }
+      terra::frame::patch_surface_mesh mesh;
+      expect(terra::frame::make_cylindrical_patch_surface(
+                 patch, fragment, patch_dimension, radius,
+                 tianditu_selector, mesh) ==
+                 terra::frame::surface_mesh_status::ok,
+             "Beijing zoom surface lost antimeridian texture coverage");
+      ++beijing_surface_count;
+    }
+  }
+  expect(beijing_surface_count > 0U,
+         "Beijing zoom surface test selected no fragments");
+
   const terra::frame::lod_cut refined_cut =
       terra::frame::select_procedural_cylindrical_lod(
           radius, patch_dimension, 0.005F, camera);

@@ -162,6 +162,13 @@ terra_status terra_set_viewport(terra_context* context,
                                 const terra_viewport_v1* viewport);
 terra_status terra_set_camera(terra_context* context,
                               const terra_camera_v1* camera);
+terra_status terra_set_globe_target(terra_context* context,
+                                    double longitude_degrees,
+                                    double latitude_degrees);
+terra_status terra_set_planar_target(terra_context* context,
+                                     double x, double y);
+terra_status terra_set_planar_level(terra_context* context,
+                                    uint32_t target_level);
 terra_status terra_submit_record(terra_context* context,
                                  uint32_t kind,
                                  const terra_patch_key_v1* key,
@@ -176,6 +183,9 @@ terra_status terra_fail_record(terra_context* context,
                                const terra_patch_key_v1* key);
 terra_status terra_fail_patch(terra_context* context,
                               const terra_patch_key_v1* key);
+terra_status terra_retry_record(terra_context* context,
+                                uint32_t kind,
+                                const terra_patch_key_v1* key);
 terra_status terra_update(terra_context* context, float lod_threshold);
 
 terra_status terra_get_requests(const terra_context* context,

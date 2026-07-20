@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Terra Planar Web Evidence</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: "Segoe UI", Arial, sans-serif;
+      background: #101418;
+      color: #e8edf2;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-width: 960px; background: #101418; }
+    header {
+      align-items: center;
+      background: #182027;
+      border-bottom: 1px solid #35404a;
+      display: flex;
+      justify-content: space-between;
+      min-height: 64px;
+      padding: 0 28px;
+    }
+    h1 { font-size: 20px; font-weight: 650; letter-spacing: 0; margin: 0; }
+    #status { color: #f0c36a; font-size: 14px; }
+    main { padding: 24px 28px 32px; }
+    #live-canvas { left: -10000px; position: fixed; top: 0; }
+    #captures {
+      display: grid;
+      gap: 16px;
+      grid-template-columns: repeat(3, minmax(280px, 1fr));
+    }
+    figure {
+      background: #182027;
+      border: 1px solid #35404a;
+      border-radius: 6px;
+      margin: 0;
+      overflow: hidden;
+    }
+    figure img {
+      aspect-ratio: 16 / 9;
+      display: block;
+      object-fit: contain;
+      width: 100%;
+    }
+    figcaption {
+      color: #bac6d0;
+      display: flex;
+      font-size: 13px;
+      justify-content: space-between;
+      padding: 10px 12px;
+    }
+    #summary {
+      border-top: 1px solid #35404a;
+      color: #bac6d0;
+      font: 12px/1.55 Consolas, monospace;
+      margin: 20px 0 0;
+      overflow-wrap: anywhere;
+      padding: 16px;
+      white-space: pre-wrap;
+    }
+    html[data-terra-status="passed"] #status { color: #72d49b; }
+    html[data-terra-status="failed"] #status { color: #ff8c8c; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Terra Planar Web Evidence</h1>
+    <div id="status">Loading real PS 1k records</div>
+  </header>
+  <main>
+    <canvas id="live-canvas" width="640" height="360"></canvas>
+    <section id="captures" aria-label="Planar fixed-view captures"></section>
+    <pre id="summary">Waiting for SDK output...</pre>
+    <pre id="automation-result" hidden></pre>
+  </main>
+  <script src="generated/terra_browser_bundle.js"></script>
+  <script src="harness.js"></script>
+</body>
+</html>

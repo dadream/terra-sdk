@@ -45,7 +45,8 @@ if(TERRA_SDK_ENABLE_TERRAIN_SERVICE)
         add_test(
             NAME terra_terrain_service_contract
             COMMAND terra_terrain_service_contract
-                "${TERRA_SDK_SOURCE_ROOT}/testdata/datasets/ps_1k/reference/terrain")
+                "${TERRA_SDK_SOURCE_ROOT}/testdata/datasets/ps_1k/reference/terrain"
+                "${TERRA_SDK_SOURCE_ROOT}/testdata/datasets/ps_1k/source/ps_texture_1k.png")
     endif()
 
     message(STATUS

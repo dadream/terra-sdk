@@ -5,20 +5,52 @@ const VERTEX_SHADER = [
   'attribute vec2 a_uv;',
   'uniform mat4 u_projection_view;',
   'uniform vec3 u_origin;',
+  'uniform float u_height_origin;',
+  'uniform vec2 u_uv_scale;',
+  'uniform vec2 u_uv_offset;',
   'varying mediump vec2 v_uv;',
+  'varying mediump float v_height;',
   'void main() {',
   '  gl_Position = u_projection_view * vec4(a_position + u_origin, 1.0);',
-  '  v_uv = a_uv;',
+  '  v_uv = a_uv * u_uv_scale + u_uv_offset;',
+  '  v_height = a_position.z + u_height_origin;',
   '}'
 ].join('\n')
 
 const FRAGMENT_SHADER = [
   'precision mediump float;',
   'uniform sampler2D u_texture;',
+  'uniform float u_render_mode;',
+  'uniform vec2 u_height_range;',
   'varying mediump vec2 v_uv;',
+  'varying mediump float v_height;',
   'void main() {',
-  '  gl_FragColor = texture2D(u_texture, v_uv);',
+  '  if (u_render_mode > 0.5) {',
+  '    float value = clamp((v_height - u_height_range.x) /',
+  '      max(0.001, u_height_range.y - u_height_range.x), 0.0, 1.0);',
+  '    vec3 low = vec3(0.08, 0.28, 0.42);',
+  '    vec3 middle = vec3(0.35, 0.62, 0.30);',
+  '    vec3 high = vec3(0.94, 0.91, 0.78);',
+  '    gl_FragColor = vec4(value < 0.5 ? mix(low, middle, value * 2.0) :',
+  '      mix(middle, high, (value - 0.5) * 2.0), 1.0);',
+  '  } else { gl_FragColor = texture2D(u_texture, v_uv); }',
   '}'
+].join('\n')
+
+const OVERLAY_VERTEX_SHADER = [
+  'attribute vec3 a_position;',
+  'uniform mat4 u_projection_view;',
+  'uniform float u_point_size;',
+  'void main() {',
+  '  gl_Position = u_projection_view * vec4(a_position, 1.0);',
+  '  gl_PointSize = u_point_size;',
+  '}'
+].join('\n')
+
+const OVERLAY_FRAGMENT_SHADER = [
+  'precision mediump float;',
+  'uniform vec4 u_color;',
+  'void main() { gl_FragColor = u_color; }'
 ].join('\n')
 
 function createShader(gl, type, source) {
@@ -50,6 +82,36 @@ function createProgram(gl) {
   return program
 }
 
+function createOverlayProgram(gl) {
+  const vertex = createShader(gl, gl.VERTEX_SHADER, OVERLAY_VERTEX_SHADER)
+  const fragment = createShader(gl, gl.FRAGMENT_SHADER,
+    OVERLAY_FRAGMENT_SHADER)
+  const program = gl.createProgram()
+  gl.attachShader(program, vertex)
+  gl.attachShader(program, fragment)
+  gl.linkProgram(program)
+  gl.deleteShader(vertex)
+  gl.deleteShader(fragment)
+  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+    const message = gl.getProgramInfoLog(program) ||
+      'WebGL overlay program link failed'
+    gl.deleteProgram(program)
+    throw new Error(message)
+  }
+  return program
+}
+
+function colorComponents(value, opacity) {
+  const match = /^#([0-9a-f]{6})$/i.exec(value || '')
+  const color = match ? parseInt(match[1], 16) : 0x2f7de1
+  return [
+    ((color >> 16) & 255) / 255,
+    ((color >> 8) & 255) / 255,
+    (color & 255) / 255,
+    opacity === undefined ? 1 : common.clamp(opacity, 0, 1)
+  ]
+}
+
 function isPowerOfTwo(value) {
   return value > 0 && (value & (value - 1)) === 0
 }
@@ -68,6 +130,38 @@ function geometryHash(values) {
 function geometryKey(draw, positions, textureUv) {
   return `${common.patchKeyString('geometry', draw.key)}:${draw.fragment}:` +
     `${geometryHash(positions)}:${geometryHash(textureUv)}`
+}
+
+function parentTextureTile(tile) {
+  if (!tile || tile.level <= 0 || tile.matrix <= 0) {
+    return null
+  }
+  return {
+    level: tile.level - 1,
+    matrix: tile.matrix - 1,
+    row: Math.floor(tile.row / 2),
+    column: Math.floor(tile.column / 2)
+  }
+}
+
+function ancestorTextureTiles(tile) {
+  const result = []
+  let current = parentTextureTile(tile)
+  while (current) {
+    result.push(current)
+    current = parentTextureTile(current)
+  }
+  return result
+}
+
+function ancestorUvTransform(tile, ancestor) {
+  const delta = tile.level - ancestor.level
+  const divisor = Math.pow(2, delta)
+  return {
+    scale: 1 / divisor,
+    offsetX: (tile.column - ancestor.column * divisor) / divisor,
+    offsetY: (tile.row - ancestor.row * divisor) / divisor
+  }
 }
 
 function imageTask(canvas, url) {
@@ -134,9 +228,18 @@ class TextureStore {
     this.retries = new Map()
     this.failed = new Map()
     this.retryTimers = new Map()
+    this.retainedUntil = new Map()
+    this.staleRequestGraceMs = options.staleRequestGraceMs === undefined
+      ? 250
+      : Math.max(0, common.finiteNumber(options.staleRequestGraceMs,
+        'Texture request grace'))
+    this.retainedTimer = null
+    this.frameUsage = { exact: 0, fallback: 0, missing: 0 }
+    this.generation = 0
   }
 
   sync(draws) {
+    const previous = new Map(this.desired)
     const desired = new Set()
     this.desired.clear()
     for (let index = 0; index < draws.length; ++index) {
@@ -148,11 +251,53 @@ class TextureStore {
         this.schedule(key, tile)
       }
     }
-    this.scheduler.cancelExcept(desired)
-    this.cancelStaleRetries(desired)
+    const now = Date.now()
+    previous.forEach((tile, key) => {
+      if (!desired.has(key) && this.staleRequestGraceMs > 0) {
+        this.retainedUntil.set(key, now + this.staleRequestGraceMs)
+      }
+    })
+    desired.forEach((key) => this.retainedUntil.delete(key))
+    const wanted = this.wantedKeys(now)
+    this.scheduler.cancelExcept(wanted)
+    this.cancelStaleRetries(wanted)
+    this.scheduleRetainedPrune()
+  }
+
+  wantedKeys(now) {
+    const wanted = new Set(this.desired.keys())
+    this.retainedUntil.forEach((expiresAt, key) => {
+      if (expiresAt > now) {
+        wanted.add(key)
+      } else {
+        this.retainedUntil.delete(key)
+      }
+    })
+    return wanted
+  }
+
+  isWanted(key) {
+    return this.desired.has(key) ||
+      (this.retainedUntil.get(key) || 0) > Date.now()
+  }
+
+  scheduleRetainedPrune() {
+    if (this.retainedTimer || !this.retainedUntil.size) {
+      return
+    }
+    let next = Number.POSITIVE_INFINITY
+    this.retainedUntil.forEach((expiresAt) => { next = Math.min(next, expiresAt) })
+    this.retainedTimer = setTimeout(() => {
+      this.retainedTimer = null
+      const wanted = this.wantedKeys(Date.now())
+      this.scheduler.cancelExcept(wanted)
+      this.cancelStaleRetries(wanted)
+      this.scheduleRetainedPrune()
+    }, Math.max(1, next - Date.now()))
   }
 
   schedule(key, tile) {
+    const generation = this.generation
     this.scheduler.enqueue(key, () => {
       let url
       let task
@@ -169,6 +314,9 @@ class TextureStore {
         return { promise: Promise.resolve(), abort() {} }
       }
       task.promise.then((image) => {
+        if (generation !== this.generation) {
+          return
+        }
         const asset = {
           image,
           texture: null,
@@ -181,8 +329,11 @@ class TextureStore {
         this.cache.set(key, asset, asset.width * asset.height * 4)
         this.renderer.requestRender()
       }).catch((error) => {
+        if (generation !== this.generation) {
+          return
+        }
         const message = error.message || String(error)
-        if (/cancelled/.test(message) || !this.desired.has(key)) {
+        if (/cancelled/.test(message) || !this.isWanted(key)) {
           return
         }
         const attempt = (this.retries.get(key) || 0) + 1
@@ -207,7 +358,7 @@ class TextureStore {
     }
     const timer = setTimeout(() => {
       this.retryTimers.delete(key)
-      if (this.desired.has(key) && !this.cache.has(key) &&
+      if (this.isWanted(key) && !this.cache.has(key) &&
         !this.failed.has(key)) {
         this.schedule(key, tile)
       }
@@ -250,16 +401,51 @@ class TextureStore {
     return true
   }
 
-  get(tile) {
-    const asset = this.cache.get(common.textureKeyString(tile))
-    if (!asset) {
-      return this.renderer.fallbackTexture
-    }
+  uploadedTexture(asset) {
     if (!asset.texture && !this.renderer.contextLost) {
       asset.texture = this.renderer.uploadTexture(asset.image,
         asset.width, asset.height)
     }
     return asset.texture || this.renderer.fallbackTexture
+  }
+
+  beginFrame() {
+    this.frameUsage = { exact: 0, fallback: 0, missing: 0 }
+  }
+
+  get(tile) {
+    const exact = this.cache.get(common.textureKeyString(tile))
+    if (exact) {
+      this.frameUsage.exact += 1
+      return {
+        texture: this.uploadedTexture(exact),
+        scale: 1,
+        offsetX: 0,
+        offsetY: 0,
+        exact: true
+      }
+    }
+    const ancestors = ancestorTextureTiles(tile)
+    for (let index = 0; index < ancestors.length; ++index) {
+      const ancestor = ancestors[index]
+      const asset = this.cache.get(common.textureKeyString(ancestor))
+      if (asset) {
+        const transform = ancestorUvTransform(tile, ancestor)
+        this.frameUsage.fallback += 1
+        return Object.assign({
+          texture: this.uploadedTexture(asset),
+          exact: false
+        }, transform)
+      }
+    }
+    this.frameUsage.missing += 1
+    return {
+      texture: this.renderer.fallbackTexture,
+      scale: 1,
+      offsetX: 0,
+      offsetY: 0,
+      exact: false
+    }
   }
 
   restoreContext() {
@@ -275,18 +461,33 @@ class TextureStore {
   }
 
   clear() {
-    this.scheduler.clear()
+    const maximumConcurrent = this.scheduler.maximumConcurrent
+    const previousScheduler = this.scheduler
+    this.generation += 1
+    this.scheduler = new common.RequestScheduler(maximumConcurrent)
+    previousScheduler.clear()
+    if (this.retainedTimer) {
+      clearTimeout(this.retainedTimer)
+      this.retainedTimer = null
+    }
     this.retryTimers.forEach((timer) => clearTimeout(timer))
     this.retryTimers.clear()
     this.desired.clear()
     this.retries.clear()
     this.failed.clear()
+    this.retainedUntil.clear()
     this.cache.clear()
   }
 
   stats() {
-    return Object.assign(this.cache.stats(), this.scheduler.stats(), {
-      failed: this.failed.size
+    const used = this.frameUsage.exact + this.frameUsage.fallback +
+      this.frameUsage.missing
+    const scheduler = this.scheduler.stats()
+    return Object.assign(this.cache.stats(), scheduler, {
+      failed: this.failed.size,
+      fallbackRatio: used ? this.frameUsage.fallback / used : 0,
+      missingRatio: used ? this.frameUsage.missing / used : 0,
+      idle: scheduler.active === 0 && scheduler.queued === 0
     })
   }
 }
@@ -295,6 +496,10 @@ class TerraWebGlRenderer {
   constructor(canvas, options) {
     this.canvas = canvas
     this.options = options || {}
+    this.mode = this.options.mode === 'height' ? 'height' : 'texture'
+    this.heightRange = Array.isArray(this.options.heightRange)
+      ? this.options.heightRange.slice(0, 2)
+      : [-50, 350]
     this.onDiagnostic = this.options.onDiagnostic || (() => {})
     this.onContextChange = this.options.onContextChange || (() => {})
     this.requestRenderCallback = this.options.requestRender || (() => {})
@@ -304,6 +509,11 @@ class TerraWebGlRenderer {
     this.attributes = null
     this.uniforms = null
     this.indexBuffer = null
+    this.overlayProgram = null
+    this.overlayBuffer = null
+    this.overlayAttributes = null
+    this.overlayUniforms = null
+    this.overlays = { points: [], route: null }
     this.fallbackTexture = null
     this.uploadQueue = []
     this.current = null
@@ -320,7 +530,8 @@ class TerraWebGlRenderer {
       maximumEntries: this.options.maximumTextureEntries || 128,
       maximumBytes: this.options.textureCacheBytes || 32 * 1024 * 1024,
       maximumRetries: this.options.maximumTextureRetries,
-      retryDelayMs: this.options.textureRetryDelayMs
+      retryDelayMs: this.options.textureRetryDelayMs,
+      staleRequestGraceMs: this.options.textureRequestGraceMs
     })
     this.handleContextLost = (event) => this.contextWasLost(event)
     this.handleContextRestored = () => this.contextWasRestored()
@@ -343,6 +554,7 @@ class TerraWebGlRenderer {
     }
     this.gl = gl
     this.program = createProgram(gl)
+    this.overlayProgram = createOverlayProgram(gl)
     this.attributes = {
       position: gl.getAttribLocation(this.program, 'a_position'),
       uv: gl.getAttribLocation(this.program, 'a_uv')
@@ -350,12 +562,30 @@ class TerraWebGlRenderer {
     this.uniforms = {
       projectionView: gl.getUniformLocation(this.program, 'u_projection_view'),
       origin: gl.getUniformLocation(this.program, 'u_origin'),
-      texture: gl.getUniformLocation(this.program, 'u_texture')
+      heightOrigin: gl.getUniformLocation(this.program, 'u_height_origin'),
+      uvScale: gl.getUniformLocation(this.program, 'u_uv_scale'),
+      uvOffset: gl.getUniformLocation(this.program, 'u_uv_offset'),
+      texture: gl.getUniformLocation(this.program, 'u_texture'),
+      renderMode: gl.getUniformLocation(this.program, 'u_render_mode'),
+      heightRange: gl.getUniformLocation(this.program, 'u_height_range')
+    }
+    this.overlayAttributes = {
+      position: gl.getAttribLocation(this.overlayProgram, 'a_position')
+    }
+    this.overlayUniforms = {
+      projectionView: gl.getUniformLocation(this.overlayProgram,
+        'u_projection_view'),
+      pointSize: gl.getUniformLocation(this.overlayProgram, 'u_point_size'),
+      color: gl.getUniformLocation(this.overlayProgram, 'u_color')
     }
     common.invariant(this.attributes.position >= 0 && this.attributes.uv >= 0 &&
-      this.uniforms.projectionView && this.uniforms.origin && this.uniforms.texture,
+      this.uniforms.projectionView && this.uniforms.origin &&
+      this.uniforms.heightOrigin && this.uniforms.uvScale &&
+      this.uniforms.uvOffset && this.uniforms.texture &&
+      this.uniforms.renderMode && this.uniforms.heightRange,
     'WebGL terrain shader locations are incomplete')
     this.indexBuffer = gl.createBuffer()
+    this.overlayBuffer = gl.createBuffer()
     this.fallbackTexture = this.createFallbackTexture()
     gl.enable(gl.DEPTH_TEST)
     gl.depthFunc(gl.LEQUAL)
@@ -406,6 +636,13 @@ class TerraWebGlRenderer {
     return this.textures.retryFailed()
   }
 
+  setMode(mode) {
+    common.invariant(mode === 'texture' || mode === 'height',
+      'Renderer mode is unsupported')
+    this.mode = mode
+    this.requestRender()
+  }
+
   setFrame(frame, draws, positions, textureUv, indices) {
     common.invariant(frame && draws && positions && textureUv && indices,
       'Renderer frame data is incomplete')
@@ -413,6 +650,15 @@ class TerraWebGlRenderer {
     this.uploadIndexBuffer(indices)
     this.enqueueGeometry(draws, positions, textureUv)
     this.textures.sync(draws)
+    this.requestRender()
+  }
+
+  setOverlays(overlays) {
+    const value = overlays || {}
+    this.overlays = {
+      points: Array.isArray(value.points) ? value.points.slice() : [],
+      route: value.route || null
+    }
     this.requestRender()
   }
 
@@ -434,8 +680,12 @@ class TerraWebGlRenderer {
     gl.useProgram(this.program)
     gl.uniformMatrix4fv(this.uniforms.projectionView, false, relative)
     gl.uniform1i(this.uniforms.texture, 0)
+    gl.uniform1f(this.uniforms.renderMode, this.mode === 'height' ? 1 : 0)
+    gl.uniform2f(this.uniforms.heightRange,
+      this.heightRange[0], this.heightRange[1])
     gl.activeTexture(gl.TEXTURE0)
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer)
+    this.textures.beginFrame()
     let submitted = 0
     for (let index = 0; index < current.draws.length; ++index) {
       const draw = current.draws[index]
@@ -453,17 +703,74 @@ class TerraWebGlRenderer {
         draw.origin[0] - current.frame.cameraPosition[0],
         draw.origin[1] - current.frame.cameraPosition[1],
         draw.origin[2] - current.frame.cameraPosition[2])
-      gl.bindTexture(gl.TEXTURE_2D, this.textures.get(draw.texture))
+      gl.uniform1f(this.uniforms.heightOrigin, draw.origin[2])
+      const binding = this.textures.get(draw.texture)
+      gl.uniform2f(this.uniforms.uvScale, binding.scale, binding.scale)
+      gl.uniform2f(this.uniforms.uvOffset,
+        binding.offsetX, binding.offsetY)
+      gl.bindTexture(gl.TEXTURE_2D, binding.texture)
       gl.drawElements(gl.TRIANGLE_STRIP, draw.indexCount, gl.UNSIGNED_SHORT,
         draw.firstIndex * 2)
       submitted += 1
     }
+    submitted += this.renderOverlays(relative, current.frame.cameraPosition)
     const error = gl.getError()
     if (error !== gl.NO_ERROR) {
       this.onDiagnostic('webgl_error', { error })
     }
     this.drawStats = { submitted, queued: this.uploadQueue.length }
     return this.drawStats
+  }
+
+  renderOverlays(projectionView, cameraPosition) {
+    const gl = this.gl
+    if (!this.overlays || (!this.overlays.points.length &&
+      !(this.overlays.route && this.overlays.route.worlds.length))) {
+      return 0
+    }
+    gl.useProgram(this.overlayProgram)
+    gl.enable(gl.BLEND)
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
+    gl.uniformMatrix4fv(this.overlayUniforms.projectionView, false,
+      projectionView)
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.overlayBuffer)
+    gl.enableVertexAttribArray(this.overlayAttributes.position)
+    gl.vertexAttribPointer(this.overlayAttributes.position, 3, gl.FLOAT,
+      false, 0, 0)
+    let submitted = 0
+    const relativeValues = (worlds) => {
+      const values = new Float32Array(worlds.length * 3)
+      worlds.forEach((world, index) => {
+        values[index * 3] = world[0] - cameraPosition[0]
+        values[index * 3 + 1] = world[1] - cameraPosition[1]
+        values[index * 3 + 2] = world[2] - cameraPosition[2]
+      })
+      return values
+    }
+    const route = this.overlays.route
+    if (route && route.worlds.length >= 2) {
+      const values = relativeValues(route.worlds)
+      const color = colorComponents(route.color, route.opacity)
+      gl.bufferData(gl.ARRAY_BUFFER, values, gl.STATIC_DRAW)
+      gl.uniform1f(this.overlayUniforms.pointSize, 1)
+      gl.uniform4f(this.overlayUniforms.color,
+        color[0], color[1], color[2], color[3])
+      gl.lineWidth(common.clamp(route.widthPixels || 1, 1, 8))
+      gl.drawArrays(gl.LINE_STRIP, 0, route.worlds.length)
+      submitted += 1
+    }
+    if (this.overlays.points.length) {
+      const values = relativeValues(this.overlays.points.map(
+        (point) => point.world))
+      gl.bufferData(gl.ARRAY_BUFFER, values, gl.STATIC_DRAW)
+      gl.uniform1f(this.overlayUniforms.pointSize, 12)
+      gl.uniform4f(this.overlayUniforms.color, 0.1, 0.85, 0.95, 1)
+      gl.drawArrays(gl.POINTS, 0, this.overlays.points.length)
+      submitted += 1
+    }
+    gl.disable(gl.BLEND)
+    gl.useProgram(this.program)
+    return submitted
   }
 
   enqueueGeometry(draws, positions, textureUv) {
@@ -604,11 +911,17 @@ class TerraWebGlRenderer {
       if (this.indexBuffer) {
         this.gl.deleteBuffer(this.indexBuffer)
       }
+      if (this.overlayBuffer) {
+        this.gl.deleteBuffer(this.overlayBuffer)
+      }
       if (this.fallbackTexture) {
         this.gl.deleteTexture(this.fallbackTexture)
       }
       if (this.program) {
         this.gl.deleteProgram(this.program)
+      }
+      if (this.overlayProgram) {
+        this.gl.deleteProgram(this.overlayProgram)
       }
     }
     this.gl = null
@@ -618,12 +931,20 @@ class TerraWebGlRenderer {
     return {
       geometry: this.geometry.stats(),
       textures: this.textures.stats(),
-      draws: this.drawStats
+      draws: this.drawStats,
+      overlays: {
+        points: this.overlays.points.length,
+        routeVertices: this.overlays.route ?
+          this.overlays.route.worlds.length : 0
+      },
+      mode: this.mode
     }
   }
 }
 
 module.exports = {
+  ancestorTextureTiles,
+  ancestorUvTransform,
   TerraWebGlRenderer,
   geometryHash,
   geometryKey,

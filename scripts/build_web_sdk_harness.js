@@ -37,7 +37,10 @@ const modules = [
   ['./terra_wasm', 'apps/miniprogram/utils/terra_wasm.js'],
   ['./terra_globe_common', 'apps/miniprogram/utils/terra_globe_common.js'],
   ['./terra_webgl_renderer', 'apps/miniprogram/utils/terra_webgl_renderer.js'],
-  ['./terra_globe_runtime', 'apps/miniprogram/utils/terra_globe_runtime.js']
+  ['./terra_globe_runtime', 'apps/miniprogram/utils/terra_globe_runtime.js'],
+  ['./terra_interaction_controller',
+    'apps/miniprogram/utils/terra_interaction_controller.js'],
+  ['./terra_viewer', 'apps/miniprogram/utils/terra_viewer.js']
 ]
 
 const wrapped = modules.map(([id, relativePath]) => {
@@ -66,6 +69,7 @@ ${wrapped}
   global.TerraWebSdk = {
     common: localRequire('./terra_globe_common'),
     runtime: localRequire('./terra_globe_runtime'),
+    viewer: localRequire('./terra_viewer'),
     wasm: localRequire('./terra_wasm'),
     webgl: localRequire('./terra_webgl_renderer')
   }

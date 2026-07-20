@@ -134,7 +134,7 @@ grid_point grid_diamond::child_id(std::size_t parent_index,
                   corners_[(corner_index + 1) % 4]);
 }
 
-grid_diamond grid_diamond::cylindrical_child_diamond(
+grid_diamond grid_diamond::planar_child_diamond(
     std::size_t parent_index, std::size_t child_index) const {
   const grid_point center = id();
   const grid_point child_center = child_id(parent_index, child_index);
@@ -151,7 +151,12 @@ grid_diamond grid_diamond::cylindrical_child_diamond(
   } else {
     child = grid_diamond(corners_[3], other_corner, corners_[0], center);
   }
+  return child;
+}
 
+grid_diamond grid_diamond::cylindrical_child_diamond(
+    std::size_t parent_index, std::size_t child_index) const {
+  const grid_diamond child = planar_child_diamond(parent_index, child_index);
   const grid_value minimum = grid_coordinate_min / 2;
   const grid_value maximum = grid_coordinate_max / 2;
   std::array<grid_point, 2> external{{child.corner(1), child.corner(3)}};

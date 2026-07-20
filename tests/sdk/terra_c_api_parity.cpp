@@ -91,6 +91,8 @@ int main(int argc, char** argv) {
     manifest.texture_maximum_level = 8U;
     require_ok(terra_load_manifest(context.get(), &manifest),
                "terra_load_manifest");
+    require_ok(terra_set_globe_target(context.get(), 0.0, 0.0),
+               "terra_set_globe_target");
 
     terra_viewport_v1 viewport{};
     viewport.struct_size = sizeof(viewport);

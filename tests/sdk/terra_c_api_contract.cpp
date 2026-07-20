@@ -96,6 +96,10 @@ int main(int argc, char** argv) {
     terra_context* context = terra_create();
     require(context != nullptr, "terra_create failed");
 
+    require_status(terra_set_globe_target(context, 0.0, 0.0),
+                   TERRA_STATUS_INVALID_STATE,
+                   "globe target before manifest");
+
     require_status(terra_update(context, 0.0025F),
                    TERRA_STATUS_INVALID_STATE,
                    "update before configuration");
@@ -374,6 +378,10 @@ int main(int argc, char** argv) {
     camera.distance = 20000000.0;
     camera.tilt_radians = 0.7853981633974483;
     camera.yaw_radians = 0.5235987755982988;
+    require_status(terra_set_globe_target(context, 181.0, 0.0),
+                   TERRA_STATUS_INVALID_ARGUMENT, "invalid globe target");
+    require_status(terra_set_globe_target(context, 116.4074, 39.9042),
+                   TERRA_STATUS_OK, "set globe target");
     require_status(terra_set_camera(context, &camera), TERRA_STATUS_OK,
                    "set camera");
     require_status(terra_update(context, 0.005F), TERRA_STATUS_OK,

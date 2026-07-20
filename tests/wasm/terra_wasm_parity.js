@@ -3,6 +3,7 @@ const fs = require('fs')
 const path = require('path')
 
 const STATUS_OK = 0
+const STATUS_INVALID_ARGUMENT = 1
 const STATUS_BUFFER_TOO_SMALL = 6
 const API_VERSION = 1
 const INITIAL_MEMORY_BYTES = 16 * 1024 * 1024
@@ -219,6 +220,20 @@ async function main() {
       exports.terra_load_manifest(context, manifestPointer),
       STATUS_OK,
       'terra_load_manifest'
+    )
+    requireCondition(
+      typeof exports.terra_set_globe_target === 'function',
+      'terra_set_globe_target export is missing'
+    )
+    requireStatus(
+      exports.terra_set_globe_target(context, 181, 0),
+      STATUS_INVALID_ARGUMENT,
+      'terra_set_globe_target invalid'
+    )
+    requireStatus(
+      exports.terra_set_globe_target(context, 0, 0),
+      STATUS_OK,
+      'terra_set_globe_target'
     )
     const viewportPointer = alloc(layout.viewport)
     writeViewport(access, viewportPointer, layout.viewport)

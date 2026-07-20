@@ -12,10 +12,17 @@
 - `SDK_MINIPROGRAM_ROADMAP.md`: staged SDK and mini-program delivery plan.
 - `SDK_RELEASE.md`: package surfaces, compatibility policy, release gate, and
   final manual acceptance handoff.
+- `SDK_PRODUCTIZATION_PLAN.md`: lightweight SDK scope, budgets, camera
+  interaction, ancestor imagery fallback, basic POI/single-route support, and
+  Mini Program business UI boundaries.
 - `miniprogram/WASM_SDK_V1.md`: C ABI, Emscripten package, memory, and parity contract.
+- `miniprogram/SDK_PRODUCT_API.md`: TerraViewer V1 API, lifecycle, POI,
+  route, surface status, interaction, and application UI boundary.
 - `miniprogram/TERRAIN_SERVICE_V1.md`: versioned terrain HTTP delivery contract.
 - `miniprogram/GLOBE_RUNTIME.md`: Mini Program globe runtime and operator flow.
 - `miniprogram/WEB_SDK_EVIDENCE.md`: automated real-Wasm/WebGL browser evidence.
+- `miniprogram/VALIDATION_GUIDE.md`: end-to-end terrain data checks, local
+  service startup, and Mini Program planar/globe visual acceptance workflow.
 - `miniprogram/CAPABILITY_PROBE.md`: final Mini Program environment acceptance.
 - `GLOBE_VERIFICATION.md`: spherical terrain and Tianditu WMTS verification.
 

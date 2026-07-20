@@ -88,23 +88,15 @@ function framebufferStats(pixels) {
 }
 
 function collectSystemInfo() {
-  const hasModernInfo =
-    typeof wx.getDeviceInfo === 'function' &&
-    typeof wx.getAppBaseInfo === 'function' &&
-    typeof wx.getWindowInfo === 'function'
-  const fallback = !hasModernInfo &&
-    typeof wx.getSystemInfoSync === 'function'
-    ? wx.getSystemInfoSync()
-    : {}
   const device = typeof wx.getDeviceInfo === 'function'
     ? wx.getDeviceInfo()
-    : fallback
+    : {}
   const app = typeof wx.getAppBaseInfo === 'function'
     ? wx.getAppBaseInfo()
-    : fallback
+    : {}
   const windowInfo = typeof wx.getWindowInfo === 'function'
     ? wx.getWindowInfo()
-    : fallback
+    : {}
 
   return {
     platform: device.platform || '',

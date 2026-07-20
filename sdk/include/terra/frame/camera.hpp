@@ -43,10 +43,13 @@ class globe_camera {
   double initial_distance() const;
   double distance() const;
   double tilt_radians() const;
+  double target_longitude_degrees() const;
+  double target_latitude_degrees() const;
 
   void set_distance(double distance);
   void set_tilt_radians(double tilt_radians);
   void rotate_yaw_radians(double yaw_radians);
+  bool set_target_degrees(double longitude_degrees, double latitude_degrees);
   void reset();
 
   camera_snapshot snapshot() const;
@@ -57,6 +60,44 @@ class globe_camera {
   int viewport_height_;
   float aspect_ratio_;
   float vertical_fov_radians_;
+  double initial_distance_;
+  double distance_;
+  double tilt_radians_;
+  double yaw_radians_;
+  double target_longitude_degrees_;
+  double target_latitude_degrees_;
+};
+
+class planar_camera {
+ public:
+  planar_camera(const core::bounds2d& bounds, int viewport_width,
+                int viewport_height, float vertical_fov_radians);
+
+  bool is_valid() const;
+  float aspect_ratio() const;
+  float vertical_fov_radians() const;
+  double initial_distance() const;
+  double distance() const;
+  double tilt_radians() const;
+  double target_x() const;
+  double target_y() const;
+
+  void set_distance(double distance);
+  void set_tilt_radians(double tilt_radians);
+  void rotate_yaw_radians(double yaw_radians);
+  bool set_target(double x, double y);
+  void reset();
+
+  camera_snapshot snapshot() const;
+
+ private:
+  core::bounds2d bounds_;
+  core::vector3d center_;
+  int viewport_width_;
+  int viewport_height_;
+  float aspect_ratio_;
+  float vertical_fov_radians_;
+  double diagonal_;
   double initial_distance_;
   double distance_;
   double tilt_radians_;

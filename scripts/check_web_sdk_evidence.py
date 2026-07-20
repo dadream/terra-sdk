@@ -13,11 +13,14 @@ from verify_miniprogram_device_evidence import decode_png, image_difference
 
 
 EXPECTED_CAPTURES = [
-    "initial",
-    "zoom",
-    "tilt_45",
-    "yaw_30",
-    "reset",
+    "initial_world",
+    "beijing_top",
+    "beijing_zoom",
+    "beijing_tilt_45",
+    "beijing_heading_30",
+    "beijing_north_45",
+    "beijing_top_north",
+    "reset_world",
     "context_restored",
 ]
 
@@ -160,17 +163,32 @@ def main():
             "sha256": hashlib.sha256(payload).hexdigest(),
         })
 
-    initial = camera(capture_by_name, "initial")
-    zoom = camera(capture_by_name, "zoom")
-    tilt = camera(capture_by_name, "tilt_45")
-    yaw = camera(capture_by_name, "yaw_30")
-    reset = camera(capture_by_name, "reset")
-    if not zoom["distance"] < initial["distance"]:
+    initial = camera(capture_by_name, "initial_world")
+    focus = camera(capture_by_name, "beijing_top")
+    zoom = camera(capture_by_name, "beijing_zoom")
+    tilt = camera(capture_by_name, "beijing_tilt_45")
+    yaw = camera(capture_by_name, "beijing_heading_30")
+    north = camera(capture_by_name, "beijing_north_45")
+    top = camera(capture_by_name, "beijing_top_north")
+    reset = camera(capture_by_name, "reset_world")
+    for item in (initial, focus, zoom, tilt, yaw, north, top, reset):
+        if not (
+            close(item["longitudeDegrees"], 116.4074, 1e-12)
+            and close(item["latitudeDegrees"], 39.9042, 1e-12)
+        ):
+            raise SystemExit("A globe capture does not target Beijing")
+    if not focus["distance"] < initial["distance"]:
+        raise SystemExit("Beijing focus did not reduce camera distance")
+    if not zoom["distance"] < focus["distance"]:
         raise SystemExit("Zoom capture did not reduce camera distance")
     if not close(tilt["tiltRadians"], -3.141592653589793 / 4, 1e-12):
         raise SystemExit("Tilt capture is not -45 degrees")
     if not close(yaw["yawRadians"], 3.141592653589793 / 6, 1e-12):
-        raise SystemExit("Yaw capture is not 30 degrees")
+        raise SystemExit("Heading capture is not 30 degrees")
+    if not close(north["yawRadians"], 0, 1e-12):
+        raise SystemExit("North-up capture has a nonzero heading")
+    if not close(top["tiltRadians"], 0, 1e-12):
+        raise SystemExit("Top-down capture has a nonzero pitch")
     if not (
         close(reset["distance"], initial["distance"], 1e-9)
         and close(reset["tiltRadians"], initial["tiltRadians"], 1e-12)
@@ -180,15 +198,21 @@ def main():
     if not report.get("retry", {}).get("recovered"):
         raise SystemExit("Transient terrain retry did not recover")
 
-    for first, second in (("initial", "zoom"), ("zoom", "tilt_45"),
-                          ("tilt_45", "yaw_30")):
+    for first, second in (
+        ("initial_world", "beijing_top"),
+        ("beijing_top", "beijing_zoom"),
+        ("beijing_zoom", "beijing_tilt_45"),
+        ("beijing_tilt_45", "beijing_heading_30"),
+        ("beijing_heading_30", "beijing_north_45"),
+        ("beijing_north_45", "beijing_top_north"),
+    ):
         if image_difference(decoded_images[first], decoded_images[second]) <= 0.1:
             raise SystemExit("{} and {} PNGs are unexpectedly similar".format(
                 first, second
             ))
-    if image_difference(decoded_images["initial"], decoded_images["reset"]) > 0.1:
+    if image_difference(decoded_images["initial_world"], decoded_images["reset_world"]) > 0.1:
         raise SystemExit("Reset PNG does not match the initial view")
-    if image_difference(decoded_images["reset"],
+    if image_difference(decoded_images["reset_world"],
                         decoded_images["context_restored"]) > 0.1:
         raise SystemExit("Context-restored PNG does not match reset")
 

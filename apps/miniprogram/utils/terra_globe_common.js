@@ -117,14 +117,29 @@ function replaceTemplate(template, values) {
   })
 }
 
+function isAllowedServiceOrigin(origin) {
+  if (typeof origin !== 'string') {
+    return false
+  }
+  if (/^https:\/\//.test(origin)) {
+    return true
+  }
+  const loopbackHost = '(localhost|127\\.0\\.0\\.1|\\[::1\\])'
+  const loopback = new RegExp(`^http://${loopbackHost}(?::(\\d{1,5}))?/?$`).exec(origin)
+  if (!loopback) {
+    return false
+  }
+  return !loopback[2] || Number(loopback[2]) <= 65535
+}
+
 function joinServiceUrl(origin, endpoint) {
   invariant(typeof endpoint === 'string' && endpoint.length > 0,
     'Endpoint is required')
   if (/^https:\/\//.test(endpoint)) {
     return endpoint
   }
-  invariant(typeof origin === 'string' && /^https:\/\//.test(origin),
-    'Terrain service origin must use HTTPS')
+  invariant(isAllowedServiceOrigin(origin),
+    'Terrain service origin must use HTTPS or a loopback HTTP address')
   return `${origin.replace(/\/$/, '')}/${endpoint.replace(/^\//, '')}`
 }
 
@@ -146,7 +161,7 @@ function selectTextureDescriptor(manifest, textureId) {
   return texture
 }
 
-function validateManifest(manifest, textureId) {
+function validateManifestBase(manifest) {
   invariant(manifest && typeof manifest === 'object', 'Manifest is required')
   invariant(manifest.schema === 'terra.dataset-manifest' &&
     manifest.schema_version === 1, 'Manifest schema is unsupported')
@@ -159,8 +174,8 @@ function validateManifest(manifest, textureId) {
   finiteNumber(manifest.height_scale, 'Manifest height scale')
   invariant(manifest.height_scale > 0, 'Manifest height scale must be positive')
   const transform = manifest.transform
-  invariant(transform && transform.kind === 'cylindrical',
-    'Mini Program renderer requires a cylindrical terrain manifest')
+  invariant(transform && typeof transform === 'object',
+    'Manifest terrain transform is missing')
   invariant(Array.isArray(transform.bounds) && transform.bounds.length === 2 &&
     Array.isArray(transform.bounds[0]) && transform.bounds[0].length === 2 &&
     Array.isArray(transform.bounds[1]) && transform.bounds[1].length === 2,
@@ -173,12 +188,9 @@ function validateManifest(manifest, textureId) {
   finiteNumber(maximum[1], 'Manifest maximum latitude')
   invariant(minimum[0] < maximum[0] && minimum[1] < maximum[1],
     'Manifest terrain bounds are empty')
-  finiteNumber(transform.radius, 'Manifest terrain radius')
-  invariant(transform.radius > 0, 'Manifest terrain radius must be positive')
   invariant(manifest.endpoints && typeof manifest.endpoints.root === 'string' &&
     typeof manifest.endpoints.detail === 'string',
   'Manifest terrain endpoints are missing')
-  const texture = selectTextureDescriptor(manifest, textureId)
   return {
     datasetId: manifest.dataset_id,
     formatVersion: manifest.format_version,
@@ -188,11 +200,52 @@ function validateManifest(manifest, textureId) {
     minimumV: minimum[1],
     maximumU: maximum[0],
     maximumV: maximum[1],
-    radius: transform.radius,
     rootEndpoint: manifest.endpoints.root,
-    detailEndpoint: manifest.endpoints.detail,
-    texture
+    detailEndpoint: manifest.endpoints.detail
   }
+}
+
+function selectPlanarTextureDescriptor(manifest, textureId) {
+  const textures = Array.isArray(manifest.textures) ? manifest.textures : []
+  const candidates = textureId
+    ? textures.filter((texture) => texture.id === textureId)
+    : textures
+  const texture = candidates.find((candidate) =>
+    candidate && candidate.kind === 'planar-single')
+  invariant(texture, 'Manifest has no planar-single texture descriptor')
+  invariant(typeof texture.url_template === 'string' &&
+    (/^\//.test(texture.url_template) || /^https:\/\//.test(texture.url_template)),
+  'Planar texture URL must be relative to the service or use HTTPS')
+  invariant(texture.matrix_level_offset === 0 && texture.maximum_level === 0,
+    'Planar single texture level descriptor is invalid')
+  return texture
+}
+
+function validateManifest(manifest, textureId) {
+  const result = validateManifestBase(manifest)
+  const transform = manifest.transform
+  invariant(transform && transform.kind === 'cylindrical',
+    'Mini Program renderer requires a cylindrical terrain manifest')
+  finiteNumber(transform.radius, 'Manifest terrain radius')
+  invariant(transform.radius > 0, 'Manifest terrain radius must be positive')
+  result.transform = 'cylindrical'
+  result.radius = transform.radius
+  result.texture = selectTextureDescriptor(manifest, textureId)
+  return result
+}
+
+function validatePlanarManifest(manifest, textureId) {
+  const result = validateManifestBase(manifest)
+  const transform = manifest.transform
+  invariant(transform && transform.kind === 'planar',
+    'Planar renderer requires a planar terrain manifest')
+  finiteNumber(transform.radius, 'Manifest terrain radius')
+  invariant(transform.radius === 0,
+    'Planar terrain radius must be zero')
+  result.transform = 'planar'
+  result.radius = 0
+  result.texture = selectPlanarTextureDescriptor(manifest, textureId)
+  return result
 }
 
 class LruCache {
@@ -406,15 +459,18 @@ module.exports = {
   fnv1a64,
   getHeader,
   invariant,
+  isAllowedServiceOrigin,
   joinServiceUrl,
   patchKeyString,
   relativeProjectionView,
   redactSensitiveText,
   replaceTemplate,
   rowMajorToWebGlMatrix,
+  selectPlanarTextureDescriptor,
   selectTextureDescriptor,
   sanitizeDiagnosticDetail,
   textureKeyString,
   validateManifest,
+  validatePlanarManifest,
   validateRecordPayload
 }

@@ -10,16 +10,20 @@
   const startedAt = performance.now()
 
   const expectedCaptures = [
-    'initial',
-    'zoom',
-    'tilt_45',
-    'yaw_30',
-    'reset',
+    'initial_world',
+    'beijing_top',
+    'beijing_zoom',
+    'beijing_tilt_45',
+    'beijing_heading_30',
+    'beijing_north_45',
+    'beijing_top_north',
+    'reset_world',
     'context_restored'
   ]
   const checks = []
   const captures = []
   const requestAttempts = new Map()
+  let viewer = null
   let runtime = null
   let simulatedRetryRecovered = false
 
@@ -140,7 +144,12 @@
 
   function terrainRequest(options) {
     const path = new URL(options.url).pathname
-    const fixture = fixtureForPath[path]
+    const fixture = fixtureForPath[path] ||
+      (path.includes('/root/')
+        ? 'fixtures/globe_root_0_record.bin'
+        : path.includes('/detail/')
+          ? 'fixtures/globe_patch_record.bin'
+          : '')
     const attempt = (requestAttempts.get(path) || 0) + 1
     requestAttempts.set(path, attempt)
 
@@ -353,15 +362,17 @@
   }
 
   async function run() {
-    check('sdk_bundle', Boolean(sdk && sdk.runtime && sdk.webgl && sdk.wasm),
+    check('sdk_bundle', Boolean(sdk && sdk.runtime && sdk.viewer &&
+      sdk.webgl && sdk.wasm),
       'Terra browser bundle loaded')
     check('webassembly_available', typeof WebAssembly === 'object',
       'WebAssembly global is available')
     installBrowserCanvasAdapter()
     const wasm = await instantiateWasm()
-    runtime = await sdk.runtime.TerraGlobeRuntime.create({
+    viewer = await sdk.viewer.TerraViewer.create({
+      mode: 'globe',
       canvas,
-      manifest,
+      dataset: manifest,
       serviceOrigin: 'https://terrain.example',
       terraModule: wasm.module,
       request: terrainRequest,
@@ -369,58 +380,137 @@
       maximumTerrainRequests: 4,
       maximumTerrainRetries: 1,
       terrainRetryDelayMs: 10,
-      maximumTextureRetries: 0
+      maximumTextureRetries: 0,
+      initialTarget: {
+        longitudeDegrees: 116.4074,
+        latitudeDegrees: 39.9042
+      }
     })
+    runtime = viewer.runtime
 
     await waitForRenderedFrame(undefined, 4)
     check('terrain_retry_recovered', simulatedRetryRecovered,
       'Transient root record failure recovered')
-    const initial = await capture('initial')
+    const initial = await capture('initial_world')
+    check('initial_target',
+      approximatelyEqual(initial.state.camera.longitudeDegrees, 116.4074, 1e-12) &&
+      approximatelyEqual(initial.state.camera.latitudeDegrees, 39.9042, 1e-12) &&
+      approximatelyEqual(initial.state.camera.tiltRadians, 0, 1e-12) &&
+      approximatelyEqual(initial.state.camera.yawRadians, 0, 1e-12),
+    'Initial world view targets Beijing with top-down north-up orientation')
 
-    runtime.zoom(0.82)
-    check('zoom_sequence', runtime.state().frame.sequence > initial.state.frame.sequence,
+    const focusView = viewer.camera.getView()
+    focusView.rangeMeters = manifest.transform.radius * 3.6
+    viewer.camera.setView(focusView)
+    await waitForRenderedFrame(initial.state.frame.sequence, 1)
+    const focus = await capture('beijing_top')
+    check('focus_sequence', focus.state.frame.sequence > initial.state.frame.sequence,
       'SDK frame sequence advanced')
-    const zoom = await capture('zoom')
-    check('zoom_state', zoom.state.camera.distance < initial.state.camera.distance,
-      `${initial.state.camera.distance} -> ${zoom.state.camera.distance}`)
+    check('focus_state', approximatelyEqual(focus.state.camera.distance,
+      manifest.transform.radius * 3.6, 1e-9), String(focus.state.camera.distance))
 
-    runtime.tilt45()
+    viewer.setPois([{
+      id: 'beijing-evidence',
+      coordinate: [116.4074, 39.9042, 1000],
+      priority: 10
+    }])
+    const projectedPoi = viewer.project([116.4074, 39.9042, 1000])
+    const pickedPoi = viewer.pickPoi(projectedPoi)
+    check('viewer_poi_projection', projectedPoi.visible,
+      `${projectedPoi.x},${projectedPoi.y}`)
+    check('viewer_poi_pick', pickedPoi &&
+      pickedPoi.featureId === 'beijing-evidence',
+    pickedPoi ? pickedPoi.featureId : 'none')
+    viewer.setRoute({
+      id: 'beijing-route-evidence',
+      coordinates: [[116.2, 39.8, 1000], [116.6, 40.0, 1000]],
+      color: '#2f7de1',
+      widthPixels: 3
+    })
+    runtime.renderer.render()
+    check('viewer_route_overlay',
+      runtime.renderer.stats().overlays.routeVertices >= 2,
+      `${runtime.renderer.stats().overlays.routeVertices} vertices`)
+    check('viewer_route_view',
+      viewer.getRouteView().schema === 'terra.view-state.v1',
+      'Route view uses the public ViewState schema')
+    viewer.clearRoute()
+    viewer.clearPois()
+
+    viewer.camera.zoomBy(0.92)
+    await waitForRenderedFrame(focus.state.frame.sequence, 1)
+    check('zoom_sequence', runtime.state().frame.sequence > focus.state.frame.sequence,
+      'SDK frame sequence advanced')
+    const zoom = await capture('beijing_zoom')
+    check('zoom_state', zoom.state.camera.distance < focus.state.camera.distance,
+      `${focus.state.camera.distance} -> ${zoom.state.camera.distance}`)
+
+    viewer.camera.setTilt(45)
+    await waitForRenderedFrame(zoom.state.frame.sequence, 1)
     check('tilt_sequence', runtime.state().frame.sequence > zoom.state.frame.sequence,
       'SDK frame sequence advanced')
-    const tilt = await capture('tilt_45')
+    const tilt = await capture('beijing_tilt_45')
     check('tilt_state', approximatelyEqual(tilt.state.camera.tiltRadians,
       -Math.PI / 4, 1e-12), String(tilt.state.camera.tiltRadians))
 
-    runtime.rotateYaw(Math.PI / 6)
+    viewer.camera.orbitBy({ headingDegrees: 30 })
+    await waitForRenderedFrame(tilt.state.frame.sequence, 1)
     check('yaw_sequence', runtime.state().frame.sequence > tilt.state.frame.sequence,
       'SDK frame sequence advanced')
-    const yaw = await capture('yaw_30')
+    const yaw = await capture('beijing_heading_30')
     check('yaw_state', approximatelyEqual(yaw.state.camera.yawRadians,
       Math.PI / 6, 1e-12), String(yaw.state.camera.yawRadians))
 
-    runtime.reset()
-    check('reset_sequence', runtime.state().frame.sequence > yaw.state.frame.sequence,
+    viewer.camera.northUp()
+    await waitForRenderedFrame(yaw.state.frame.sequence, 1)
+    const north = await capture('beijing_north_45')
+    check('north_state',
+      approximatelyEqual(north.state.camera.yawRadians, 0, 1e-12) &&
+      approximatelyEqual(north.state.camera.tiltRadians, -Math.PI / 4, 1e-12),
+    'North-up preserves the oblique pitch')
+
+    viewer.camera.topDown()
+    await waitForRenderedFrame(north.state.frame.sequence, 1)
+    const top = await capture('beijing_top_north')
+    check('top_state',
+      approximatelyEqual(top.state.camera.yawRadians, 0, 1e-12) &&
+      approximatelyEqual(top.state.camera.tiltRadians, 0, 1e-12),
+    'Top-down preserves north-up heading')
+
+    viewer.camera.reset()
+    await waitForRenderedFrame(top.state.frame.sequence, 1)
+    check('reset_sequence', runtime.state().frame.sequence > top.state.frame.sequence,
       'SDK frame sequence advanced')
-    const reset = await capture('reset')
+    const reset = await capture('reset_world')
     check('reset_state',
       approximatelyEqual(reset.state.camera.distance, initial.state.camera.distance, 1e-9) &&
       approximatelyEqual(reset.state.camera.tiltRadians,
         initial.state.camera.tiltRadians, 1e-12) &&
       approximatelyEqual(reset.state.camera.yawRadians,
-        initial.state.camera.yawRadians, 1e-12),
+        initial.state.camera.yawRadians, 1e-12) &&
+      approximatelyEqual(reset.state.camera.longitudeDegrees,
+        initial.state.camera.longitudeDegrees, 1e-12) &&
+      approximatelyEqual(reset.state.camera.latitudeDegrees,
+        initial.state.camera.latitudeDegrees, 1e-12),
       'Reset camera matches initial camera')
     check('reset_image', reset.framebuffer.fnv1a32 === initial.framebuffer.fnv1a32,
       `${initial.framebuffer.fnv1a32} -> ${reset.framebuffer.fnv1a32}`)
 
-    check('zoom_image_changed',
-      zoom.framebuffer.fnv1a32 !== initial.framebuffer.fnv1a32,
-      `${initial.framebuffer.fnv1a32} -> ${zoom.framebuffer.fnv1a32}`)
+    check('focus_image_changed',
+      focus.framebuffer.fnv1a32 !== initial.framebuffer.fnv1a32,
+      `${initial.framebuffer.fnv1a32} -> ${focus.framebuffer.fnv1a32}`)
+    check('zoom_image_changed', zoom.framebuffer.fnv1a32 !== focus.framebuffer.fnv1a32,
+      `${focus.framebuffer.fnv1a32} -> ${zoom.framebuffer.fnv1a32}`)
     check('tilt_image_changed',
       tilt.framebuffer.fnv1a32 !== zoom.framebuffer.fnv1a32,
       `${zoom.framebuffer.fnv1a32} -> ${tilt.framebuffer.fnv1a32}`)
     check('yaw_image_changed',
       yaw.framebuffer.fnv1a32 !== tilt.framebuffer.fnv1a32,
       `${tilt.framebuffer.fnv1a32} -> ${yaw.framebuffer.fnv1a32}`)
+    check('north_image_changed', north.framebuffer.fnv1a32 !== yaw.framebuffer.fnv1a32,
+      `${yaw.framebuffer.fnv1a32} -> ${north.framebuffer.fnv1a32}`)
+    check('top_image_changed', top.framebuffer.fnv1a32 !== north.framebuffer.fnv1a32,
+      `${north.framebuffer.fnv1a32} -> ${top.framebuffer.fnv1a32}`)
 
     const extension = runtime.renderer.gl.getExtension('WEBGL_lose_context')
     check('context_extension', Boolean(extension), 'WEBGL_lose_context is available')
@@ -443,7 +533,7 @@
     captures.map((item) => item.name).join(','))
     const report = publicReport(wasm.byteLength, true)
     finish(report)
-    runtime.destroy()
+    viewer.destroy()
   }
 
   run().catch((error) => {
@@ -465,7 +555,9 @@
         framebuffer: item.framebuffer
       }))
     })
-    if (runtime) {
+    if (viewer) {
+      viewer.destroy()
+    } else if (runtime) {
       runtime.destroy()
     }
   })

@@ -1,28 +1,44 @@
 <view class="globe">
+  <view class="globe__status globe__status--{{statusKind}}"
+    style="height: {{statusHeight}}px; padding-top: {{statusPaddingTop}}px;">
+    <text class="globe__status-line">{{status}}</text>
+    <text class="globe__metrics">{{metrics}}</text>
+  </view>
   <canvas class="globe__canvas" type="webgl" id="globe"
     disable-scroll="true" catchtouchstart="onTouchStart"
     catchtouchmove="onTouchMove" catchtouchend="onTouchEnd"
-    catchtouchcancel="onTouchEnd"></canvas>
-  <view class="globe__status globe__status--{{statusKind}}">
-    <text>{{status}}</text>
-    <text class="globe__metrics">{{metrics}}</text>
-  </view>
-  <view wx:if="{{imageryAttribution}}" class="globe__attribution">
-    <text>{{imageryAttribution}}</text>
-  </view>
-  <view class="globe__toolbar">
-    <button class="globe__tool" aria-label="Zoom out" bindtap="zoomOut"
-      disabled="{{controlsDisabled}}">-</button>
-    <button class="globe__tool" aria-label="Zoom in" bindtap="zoomIn"
-      disabled="{{controlsDisabled}}">+</button>
-    <button class="globe__tool" aria-label="Set 45 degree tilt" bindtap="tilt45"
-      disabled="{{controlsDisabled}}">45</button>
-    <button class="globe__tool" aria-label="Reset camera" bindtap="resetCamera"
-      disabled="{{controlsDisabled}}">R</button>
-    <button class="globe__tool globe__tool--retry" wx:if="{{retryVisible}}"
-      aria-label="Retry failed globe resources" bindtap="retryFailed"
-      disabled="{{controlsDisabled}}">Retry</button>
-    <button class="globe__tool" aria-label="Copy globe report" bindtap="copyReport"
-      disabled="{{!reportReady}}">C</button>
+    catchtouchcancel="onTouchCancel"></canvas>
+  <view class="globe__footer">
+    <text class="globe__attribution">{{imageryAttribution}}</text>
+    <view class="globe__modebar">
+      <button class="globe__mode {{gestureMode === 'move' ? 'globe__mode--active' : ''}}"
+        aria-label="Move surface mode" bindtap="selectMove"
+        disabled="{{controlsDisabled}}">Move</button>
+      <button class="globe__mode {{gestureMode === 'look' ? 'globe__mode--active' : ''}}"
+        aria-label="Look around mode" bindtap="selectLook"
+        disabled="{{controlsDisabled}}">Look</button>
+      <view class="globe__mode-spacer"></view>
+      <button class="globe__mode globe__mode--retry" wx:if="{{retryVisible}}"
+        aria-label="Retry failed globe resources" bindtap="retryFailed"
+        disabled="{{controlsDisabled}}">Retry</button>
+      <button class="globe__mode globe__mode--icon" aria-label="Copy globe report"
+        bindtap="copyReport" disabled="{{!reportReady}}">C</button>
+    </view>
+    <view class="globe__toolbar">
+      <button class="globe__tool" aria-label="Focus Beijing" bindtap="focusBeijing"
+        disabled="{{controlsDisabled}}">BJ</button>
+      <button class="globe__tool globe__tool--text" aria-label="Top down view"
+        bindtap="topDown" disabled="{{controlsDisabled}}">Top</button>
+      <button class="globe__tool" aria-label="Zoom out" bindtap="zoomOut"
+        disabled="{{controlsDisabled}}">-</button>
+      <button class="globe__tool" aria-label="Zoom in" bindtap="zoomIn"
+        disabled="{{controlsDisabled}}">+</button>
+      <button class="globe__tool" aria-label="Set 45 degree tilt" bindtap="tilt45"
+        disabled="{{controlsDisabled}}">45</button>
+      <button class="globe__tool" aria-label="North up" bindtap="northUp"
+        disabled="{{controlsDisabled}}">N</button>
+      <button class="globe__tool" aria-label="Reset camera" bindtap="resetCamera"
+        disabled="{{controlsDisabled}}">R</button>
+    </view>
   </view>
 </view>

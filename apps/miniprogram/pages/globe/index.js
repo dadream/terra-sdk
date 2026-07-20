@@ -1,20 +1,23 @@
 const runtimeConfig = require('../../config/runtime')
-const { TerraGlobeRuntime } = require('../../utils/terra_globe_runtime')
+const { TerraViewer } = require('../../utils/terra_viewer')
 const imageryProfiles = require('../../utils/terra_imagery_profiles')
+const { TerraMiniProgramInteractionAdapter } = require(
+  '../../utils/terra_miniprogram_interaction')
 
-function touchDistance(touches) {
-  if (!touches || touches.length < 2) {
-    return 0
+function windowInfo() {
+  if (typeof wx.getWindowInfo === 'function') {
+    return wx.getWindowInfo()
   }
-  const dx = touches[0].clientX - touches[1].clientX
-  const dy = touches[0].clientY - touches[1].clientY
-  return Math.sqrt(dx * dx + dy * dy)
+  return {
+    windowWidth: 1,
+    windowHeight: 1,
+    pixelRatio: 1,
+    statusBarHeight: 0
+  }
 }
 
 function viewport(width, height) {
-  const info = typeof wx.getWindowInfo === 'function'
-    ? wx.getWindowInfo()
-    : wx.getSystemInfoSync()
+  const info = windowInfo()
   return {
     width: Math.max(1, Math.round(width || info.windowWidth || 1)),
     height: Math.max(1, Math.round(height || info.windowHeight || 1)),
@@ -30,7 +33,19 @@ Page({
     reportReady: false,
     controlsDisabled: true,
     retryVisible: false,
-    imageryAttribution: ''
+    imageryAttribution: '',
+    gestureMode: 'move',
+    statusHeight: 88,
+    statusPaddingTop: 8
+  },
+
+  onLoad() {
+    const info = windowInfo()
+    const statusBarHeight = Math.max(0, Number(info.statusBarHeight) || 0)
+    this.setData({
+      statusHeight: 88 + statusBarHeight,
+      statusPaddingTop: 8 + statusBarHeight
+    })
   },
 
   onReady() {
@@ -38,18 +53,31 @@ Page({
     this.start()
   },
 
+  onHide() {
+    if (this.interaction) this.interaction.cancel()
+    if (this.viewer) this.viewer.pause()
+  },
+
+  onShow() {
+    if (this.viewer) this.viewer.resume()
+  },
+
   onUnload() {
     this.unloaded = true
     this.startToken = (this.startToken || 0) + 1
-    if (this.gestureTimer) {
-      clearTimeout(this.gestureTimer)
-      this.gestureTimer = null
+    if (this.interaction) {
+      this.interaction.destroy()
+      this.interaction = null
     }
     this.clearStateTimer()
     if (this.resizeHandler && typeof wx.offWindowResize === 'function') {
       wx.offWindowResize(this.resizeHandler)
     }
-    if (this.runtime) {
+    if (this.viewer) {
+      this.viewer.destroy()
+      this.viewer = null
+      this.runtime = null
+    } else if (this.runtime) {
       this.runtime.destroy()
       this.runtime = null
     }
@@ -89,11 +117,13 @@ Page({
           runtimeConfig.imageryProfile,
         wx.getStorageSync(imageryProfiles.TIANDITU_TOKEN_STORAGE_KEY),
         runtimeConfig.textureId)
-      const runtime = await TerraGlobeRuntime.create({
+      const viewer = await TerraViewer.create({
+        mode: 'globe',
         canvas,
         serviceOrigin,
         manifestPath: runtimeConfig.terrainManifestPath,
         textureId: runtimeConfig.textureId,
+        initialTarget: runtimeConfig.initialTarget,
         imagery,
         viewport: viewport(width, height),
         onState: (state) => this.updateState(state),
@@ -107,10 +137,22 @@ Page({
         }
       })
       if (this.unloaded || token !== this.startToken) {
-        runtime.destroy()
+        viewer.destroy()
         return
       }
+      const runtime = viewer.runtime
+      this.viewer = viewer
       this.runtime = runtime
+      this.interaction = new TerraMiniProgramInteractionAdapter(
+        viewer.interaction, {
+        canvas,
+        mode: this.data.gestureMode,
+        onEvent: (type) => {
+          if (type === 'camerachange' && !this.unloaded) {
+            this.latestView = runtime.getView()
+          }
+        }
+        })
       this.setData({
         controlsDisabled: false,
         imageryAttribution: imagery.attribution
@@ -132,6 +174,9 @@ Page({
         return
       }
       try {
+        if (this.interaction) {
+          this.interaction.cancel()
+        }
         this.runtime.resize(viewport(event.size.windowWidth, event.size.windowHeight))
       } catch (error) {
         this.fail(error)
@@ -160,12 +205,20 @@ Page({
         : resourceFailures
           ? `Globe ${resourceFailures} resource requests failed`
           : `Globe ${frame.loadedRecordCount || 0} records ${draws ? draws.submitted : 0} draws`
+    const camera = state.camera || {}
+    const longitude = Number.isFinite(camera.longitudeDegrees)
+      ? camera.longitudeDegrees.toFixed(2) : '0.00'
+    const latitude = Number.isFinite(camera.latitudeDegrees)
+      ? camera.latitudeDegrees.toFixed(2) : '0.00'
+    const tiltDegrees = Number.isFinite(camera.tiltRadians)
+      ? (camera.tiltRadians * 180 / Math.PI).toFixed(0) : '0'
+    const yawDegrees = Number.isFinite(camera.yawRadians)
+      ? (camera.yawRadians * 180 / Math.PI).toFixed(0) : '0'
     const metrics = [
-      `patches ${frame.patchCount || 0}`,
-      `requests ${frame.requestCount || 0}`,
-      `draws ${draws ? draws.submitted : 0}`,
-      `DPR ${state.budget ? state.budget.devicePixelRatio.toFixed(2) : '0'}`
-    ].concat(resourceFailures ? [`failed ${resourceFailures}`] : []).join(' | ')
+      `patches ${frame.patchCount || 0} | requests ${frame.requestCount || 0} | draws ${draws ? draws.submitted : 0}`,
+      `target ${longitude}, ${latitude} | pitch ${tiltDegrees} | heading ${yawDegrees}`,
+      `imagery ${state.imageryId || 'pending'} | DPR ${state.budget ? state.budget.devicePixelRatio.toFixed(2) : '0'}`
+    ].concat(resourceFailures ? [`failed ${resourceFailures}`] : []).join('\n')
     const nextData = {
       status,
       statusKind: state.error ? 'failed' :
@@ -232,64 +285,43 @@ Page({
   },
 
   onTouchStart(event) {
-    this.lastTouches = event.touches || []
+    if (this.interaction) {
+      this.interaction.begin(event)
+    }
   },
 
   onTouchMove(event) {
-    if (!this.runtime) {
-      return
-    }
-    const touches = event.touches || []
-    if (!this.lastTouches || !touches.length) {
-      this.lastTouches = touches
-      return
-    }
-    let change = null
-    if (touches.length >= 2 && this.lastTouches.length >= 2) {
-      const previous = touchDistance(this.lastTouches)
-      const current = touchDistance(touches)
-      if (previous > 0 && current > 0) {
-        change = { zoomScale: Math.max(0.86, Math.min(1.16, previous / current)) }
-      }
-    } else if (touches.length === 1 && this.lastTouches.length === 1) {
-      const dx = touches[0].clientX - this.lastTouches[0].clientX
-      const dy = touches[0].clientY - this.lastTouches[0].clientY
-      change = { yawDelta: -dx * 0.006, tiltDelta: -dy * 0.004 }
-    }
-    this.lastTouches = touches
-    if (change) {
-      this.queueGesture(change)
+    if (this.interaction) {
+      this.interaction.update(event)
     }
   },
 
-  onTouchEnd() {
-    this.lastTouches = null
+  onTouchEnd(event) {
+    if (this.interaction) {
+      this.interaction.end(event)
+    }
   },
 
-  queueGesture(change) {
-    this.pendingGesture = this.pendingGesture || {
-      zoomScale: 1,
-      yawDelta: 0,
-      tiltDelta: 0
+  onTouchCancel() {
+    if (this.interaction) {
+      this.interaction.cancel()
     }
-    this.pendingGesture.zoomScale *= change.zoomScale || 1
-    this.pendingGesture.yawDelta += change.yawDelta || 0
-    this.pendingGesture.tiltDelta += change.tiltDelta || 0
-    if (this.gestureTimer) {
-      return
+  },
+
+  selectMove() {
+    this.setData({ gestureMode: 'move' })
+    if (this.interaction) this.interaction.setOptions({ mode: 'move' })
+  },
+
+  selectLook() {
+    this.setData({ gestureMode: 'look' })
+    if (this.interaction) this.interaction.setOptions({ mode: 'look' })
+  },
+
+  focusBeijing() {
+    if (this.runtime) {
+      this.runtime.focusInitialTarget()
     }
-    this.gestureTimer = setTimeout(() => {
-      this.gestureTimer = null
-      const pending = this.pendingGesture
-      this.pendingGesture = null
-      if (this.runtime) {
-        try {
-          this.runtime.applyCamera(pending)
-        } catch (error) {
-          this.fail(error)
-        }
-      }
-    }, 16)
   },
 
   zoomIn() {
@@ -307,6 +339,18 @@ Page({
   tilt45() {
     if (this.runtime) {
       this.runtime.tilt45()
+    }
+  },
+
+  topDown() {
+    if (this.runtime) {
+      this.runtime.topDown()
+    }
+  },
+
+  northUp() {
+    if (this.runtime) {
+      this.runtime.northUp()
     }
   },
 

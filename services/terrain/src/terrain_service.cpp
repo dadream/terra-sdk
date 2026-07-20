@@ -23,6 +23,7 @@ namespace {
 const char* manifest_media_type =
     "application/vnd.terra.dataset+json;version=1";
 const char* patch_media_type = "application/octet-stream";
+const char* png_media_type = "image/png";
 const char* problem_media_type = "application/problem+json";
 const char* checksum_prefix = "fnv1a64:";
 
@@ -210,6 +211,40 @@ http_response problem(int status, const std::string& code,
   return response;
 }
 
+bool read_file(const std::string& path, std::vector<std::uint8_t>& payload,
+               std::string& error) {
+  std::ifstream input(path.c_str(), std::ios::in | std::ios::binary);
+  if (!input) {
+    error = "unable to open texture file";
+    return false;
+  }
+  input.seekg(0, std::ios::end);
+  const std::streamoff length = input.tellg();
+  if (length <= 0 ||
+      static_cast<std::uintmax_t>(length) >
+          static_cast<std::uintmax_t>(
+              std::numeric_limits<std::size_t>::max())) {
+    error = "texture file is empty or too large";
+    return false;
+  }
+  input.seekg(0, std::ios::beg);
+  payload.resize(static_cast<std::size_t>(length));
+  input.read(reinterpret_cast<char*>(payload.data()), length);
+  if (!input) {
+    error = "unable to read texture file";
+    payload.clear();
+    return false;
+  }
+  if (payload.size() < 8U || payload[0] != 0x89U || payload[1] != 0x50U ||
+      payload[2] != 0x4eU || payload[3] != 0x47U || payload[4] != 0x0dU ||
+      payload[5] != 0x0aU || payload[6] != 0x1aU || payload[7] != 0x0aU) {
+    error = "texture file is not a PNG image";
+    payload.clear();
+    return false;
+  }
+  return true;
+}
+
 bool read_metadata(const std::string& path, core::dataset_metadata& metadata,
                    std::size_t& root_count, std::string& error) {
   std::ifstream input(path.c_str(), std::ios::in);
@@ -389,11 +424,18 @@ std::string manifest_json(const terrain_dataset_config& config,
 
 class terrain_service::implementation {
  public:
+  struct texture_asset {
+    std::string id;
+    std::string content_type;
+    std::vector<std::uint8_t> payload;
+  };
+
   terrain_dataset_config config;
   core::dataset_metadata metadata;
   std::size_t root_count = 0U;
   vic::vfs::repository root_repository;
   vic::vfs::repository detail_repository;
+  std::vector<texture_asset> texture_assets;
   bool opened = false;
 
   http_response record_response(bool root, const core::grid_point& key,
@@ -434,6 +476,38 @@ class terrain_service::implementation {
     }
     if (!head) {
       response.body = payload;
+    }
+    return response;
+  }
+
+  http_response texture_response(const std::string& id, bool head,
+                                 const std::string& if_none_match) const {
+    const auto asset = std::find_if(
+        texture_assets.begin(), texture_assets.end(),
+        [&id](const texture_asset& candidate) { return candidate.id == id; });
+    if (asset == texture_assets.end()) {
+      return problem(404, "texture_not_found", "texture was not found");
+    }
+
+    http_response response;
+    response.status = 200;
+    response.content_type = asset->content_type;
+    const std::string response_etag = etag(asset->payload);
+    set_header(response, "Content-Length",
+               std::to_string(asset->payload.size()));
+    set_header(response, "X-Terra-Format-Version", "1");
+    set_header(response, "X-Terra-Checksum", checksum(asset->payload));
+    set_header(response, "ETag", response_etag);
+    set_header(response, "Cache-Control",
+               "public, max-age=31536000, immutable");
+    set_header(response, "X-Content-Type-Options", "nosniff");
+    if (!if_none_match.empty() && if_none_match == response_etag) {
+      response.status = 304;
+      response.content_type.clear();
+      return response;
+    }
+    if (!head) {
+      response.body = asset->payload;
     }
     return response;
   }
@@ -523,6 +597,18 @@ bool terrain_service::open(const terrain_dataset_config& config,
       return false;
     }
   }
+  for (const texture_descriptor& texture : config.textures) {
+    if (texture.local_file_path.empty()) {
+      continue;
+    }
+    implementation::texture_asset asset;
+    asset.id = texture.id;
+    asset.content_type = png_media_type;
+    if (!read_file(texture.local_file_path, asset.payload, error)) {
+      return false;
+    }
+    implementation_->texture_assets.push_back(std::move(asset));
+  }
 
   if (!read_metadata(config.terrain_base_path + ".xml",
                      implementation_->metadata,
@@ -603,6 +689,11 @@ http_response terrain_service::handle(const http_request& request) const {
       response.body = payload;
     }
     return response;
+  }
+
+  if (segments.size() == 6U && segments[4] == "textures") {
+    return implementation_->texture_response(segments[5], head,
+                                             if_none_match);
   }
 
   if (segments.size() != 8U ||
