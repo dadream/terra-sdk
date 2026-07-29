@@ -4,6 +4,9 @@
   "private": true,
   "description": "Multipart uploader for versioned Terra CloudBase datasets",
   "license": "UNLICENSED",
+  "scripts": {
+    "test": "node --test upload.test.js"
+  },
   "dependencies": {
     "cos-nodejs-sdk-v5": "3.0.0"
   }

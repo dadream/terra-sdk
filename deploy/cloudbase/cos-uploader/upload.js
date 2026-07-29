@@ -136,6 +136,49 @@ function callCos(cos, method, params) {
   })
 }
 
+function isTransientCosError(error) {
+  const statusCode = Number(error && error.statusCode)
+  if ([408, 429, 500, 502, 503, 504].includes(statusCode)) {
+    return true
+  }
+  const detail = [
+    error && error.code,
+    error && error.name,
+    error && error.message
+  ].filter(Boolean).join(' ')
+  return /ECONNRESET|ETIMEDOUT|EAI_AGAIN|ECONNREFUSED|ENETUNREACH|socket hang up/i
+    .test(detail)
+}
+
+function delay(milliseconds) {
+  return new Promise(resolve => setTimeout(resolve, milliseconds))
+}
+
+async function retryCollectionOperation(operation, key, options = {}) {
+  const maximumAttempts = Number(options.maximumAttempts || 5)
+  const initialDelayMilliseconds = Number(
+    options.initialDelayMilliseconds || 250)
+  let lastError
+  for (let attempt = 1; attempt <= maximumAttempts; ++attempt) {
+    try {
+      return await operation()
+    } catch (error) {
+      lastError = error
+      if (!isTransientCosError(error) || attempt === maximumAttempts) {
+        break
+      }
+      const waitMilliseconds = Math.min(
+        initialDelayMilliseconds * (2 ** (attempt - 1)), 2000)
+      console.warn(
+        `[retry] ${key} after ${error.message || error}; ` +
+        `attempt ${attempt + 1}/${maximumAttempts}`)
+      await delay(waitMilliseconds)
+    }
+  }
+  throw new Error(`${key}: ${lastError && lastError.message
+    ? lastError.message : String(lastError)}`)
+}
+
 function contentLength(result) {
   const headers = result && result.headers
   const value = headers && (headers['content-length'] || headers['Content-Length'])
@@ -171,7 +214,7 @@ function collectionFiles(root, extension) {
   return result
 }
 
-async function uploadCollectionFile(cos, options, source, key) {
+async function uploadCollectionFileOnce(cos, options, source, key) {
   const object = {
     Bucket: options.bucket,
     Region: options.region,
@@ -202,6 +245,11 @@ async function uploadCollectionFile(cos, options, source, key) {
     throw new Error(`uploaded object size differs: ${key}`)
   }
   return true
+}
+
+async function uploadCollectionFile(cos, options, source, key) {
+  return retryCollectionOperation(
+    () => uploadCollectionFileOnce(cos, options, source, key), key)
 }
 
 async function uploadCollection(cos, options, root) {
@@ -318,4 +366,11 @@ async function main() {
   }
 }
 
-main()
+if (require.main === module) {
+  main()
+}
+
+module.exports = {
+  isTransientCosError,
+  retryCollectionOperation
+}
