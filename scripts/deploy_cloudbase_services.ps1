@@ -160,7 +160,7 @@ function Get-LatestImage {
   $response = Get-DeploymentRecords $ServiceName
   $record = $response.data.DeployRecords |
     Where-Object {
-      $_.Status -in @('normal', 'running') -and
+      $_.Status -in @('normal', 'running', 'deploy_failed') -and
       -not [string]::IsNullOrWhiteSpace($_.ImageUrl)
     } |
     Sort-Object DeployTime -Descending |
@@ -245,7 +245,8 @@ function Deploy-Source {
   param([string]$ServiceName, [string]$Source)
   Write-Host "Building $ServiceName source image"
   $previousRunIds = @()
-  if (Test-ServiceExists $ServiceName) {
+  $serviceExisted = Test-ServiceExists $ServiceName
+  if ($serviceExisted) {
     $previous = Get-DeploymentRecords $ServiceName
     $previousRunIds = @(
       $previous.data.DeployRecords | ForEach-Object { $_.RunId })
@@ -279,11 +280,13 @@ function Deploy-Source {
   }
 
   if ($record.IsReleasing -eq $true) {
-    Write-Host "Closing $ServiceName source-build canary"
+    $trafficAction = if ($serviceExisted) { 'rollback' } else { 'promote' }
+    Write-Host (
+      "Closing $ServiceName source-build release with $trafficAction")
     $previousPreference = $ErrorActionPreference
     try {
       $ErrorActionPreference = 'Continue'
-      & tcb -e $EnvId cloudrun traffic rollback `
+      & tcb -e $EnvId cloudrun traffic $trafficAction `
         --serviceName $ServiceName `
         --json
       $exitCode = $LASTEXITCODE
@@ -291,7 +294,18 @@ function Deploy-Source {
       $ErrorActionPreference = $previousPreference
     }
     if ($exitCode -ne 0) {
-      throw "CloudBase Run source canary rollback failed: $ServiceName"
+      $releaseResponse = Get-DeploymentRecords $ServiceName
+      $currentRelease = $releaseResponse.data.DeployRecords |
+        Where-Object { $_.RunId -eq $record.RunId } |
+        Select-Object -First 1
+      if ($null -eq $currentRelease -or
+          $currentRelease.IsReleasing -eq $true) {
+        throw (
+          "CloudBase Run source release $trafficAction failed: $ServiceName")
+      }
+      Write-Host (
+        "$ServiceName source release closed despite a nonzero traffic " +
+        'command result.')
     }
     Wait-ReleaseClosed -ServiceName $ServiceName -RunId $record.RunId
   }
