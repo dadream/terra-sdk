@@ -7,7 +7,6 @@ ALLOWED_OUTPUT_ROOT="${ROOT_DIR}/viewer_verify_output"
 SITE_DIR="${OUTPUT_DIR}/site"
 WASM_IMAGE=${TERRA_SDK_WASM_IMAGE:-terra-sdk-wasm:emscripten-3.1.5}
 PORT=${WEB_SDK_PORT:-18765}
-VIRTUAL_TIME_BUDGET_MS=${WEB_SDK_VIRTUAL_TIME_BUDGET_MS:-30000}
 BROWSER_TIMEOUT_SECONDS=${WEB_SDK_BROWSER_TIMEOUT_SECONDS:-45}
 BROWSER_BIN=${WEB_SDK_BROWSER_BIN:-}
 SERVER_PID=
@@ -118,26 +117,19 @@ if [[ "${BROWSER_BIN}" == *.exe ]]; then
     --log-output "$(wslpath -w "${OUTPUT_DIR}/browser.log")" \
     --timeout "${BROWSER_TIMEOUT_SECONDS}"
 else
-  timeout --foreground --kill-after=5s "${BROWSER_TIMEOUT_SECONDS}s" \
-    "${BROWSER_BIN}" \
-    --headless=new \
-    --no-sandbox \
-    --no-first-run \
-    --disable-extensions \
-    --disable-background-networking \
-    --disable-component-update \
-    --enable-webgl \
-    --enable-unsafe-swiftshader \
-    --ignore-gpu-blocklist \
-    --use-angle=swiftshader \
-    --run-all-compositor-stages-before-draw \
-    --virtual-time-budget="${VIRTUAL_TIME_BUDGET_MS}" \
-    --window-size=1280,1000 \
-    --user-data-dir="${PROFILE_ARGUMENT}" \
-    --dump-dom \
-    "http://127.0.0.1:${PORT}/" \
-    > "${OUTPUT_DIR}/browser_dom.html" \
-    2> "${OUTPUT_DIR}/browser.log"
+  NODE_BIN=${WEB_SDK_NODE_BIN:-node}
+  if ! command -v "${NODE_BIN}" >/dev/null 2>&1; then
+    echo "Node.js is required for Chromium evidence; set WEB_SDK_NODE_BIN" >&2
+    exit 2
+  fi
+  "${NODE_BIN}" \
+    "${ROOT_DIR}/scripts/run_chromium_evidence.js" \
+    --browser "${BROWSER_BIN}" \
+    --profile "${PROFILE_ARGUMENT}" \
+    --url "http://127.0.0.1:${PORT}/" \
+    --dom-output "${OUTPUT_DIR}/browser_dom.html" \
+    --log-output "${OUTPUT_DIR}/browser.log" \
+    --timeout "${BROWSER_TIMEOUT_SECONDS}"
 fi
 BROWSER_STATUS=$?
 set -e

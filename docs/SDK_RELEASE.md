@@ -17,7 +17,8 @@ are CommonJS and require the checked-in loader.
 
 ## Build And Verify
 
-From a clean checkout with Docker, a Chromium-compatible browser, and the
+From a clean checkout with Docker, Node.js 20 or newer, a
+Chromium-compatible browser, and the
 canonical images available:
 
 ```bash
