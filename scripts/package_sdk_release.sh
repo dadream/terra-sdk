@@ -170,18 +170,31 @@ JSON
       -B "${RELEASE_DIR}/build/native_cpp" \
       -DCMAKE_BUILD_TYPE=Release \
       -DTerraSdk_DIR="${package_dir}"
-    cmake --build "${RELEASE_DIR}/build/native_cpp" \
-      --parallel "${BUILD_JOBS}"
+    cmake --build "${RELEASE_DIR}/build/native_cpp" --parallel "${BUILD_JOBS}" \
+      2>&1 | tee "${RELEASE_DIR}/native_cpp_build.log"
     "${RELEASE_DIR}/build/native_cpp/terra_sdk_cpp_example"
 
     cmake -S "${examples}/native_c" \
       -B "${RELEASE_DIR}/build/native_c" \
       -DCMAKE_BUILD_TYPE=Release \
       -DTerraSdk_DIR="${package_dir}"
-    cmake --build "${RELEASE_DIR}/build/native_c" \
-      --parallel "${BUILD_JOBS}"
+    cmake --build "${RELEASE_DIR}/build/native_c" --parallel "${BUILD_JOBS}" \
+      2>&1 | tee "${RELEASE_DIR}/native_c_build.log"
     "${RELEASE_DIR}/build/native_c/terra_sdk_c_example"
   '
+
+for example_build_log in \
+  "${RELEASE_DIR}/native_cpp_build.log" \
+  "${RELEASE_DIR}/native_c_build.log"; do
+  if [ ! -f "${example_build_log}" ]; then
+    echo "Missing release example build log: ${example_build_log}" >&2
+    exit 1
+  fi
+  if grep -n "warning:" "${example_build_log}"; then
+    echo "SDK release example compiler warning gate failed." >&2
+    exit 1
+  fi
+done
 
 echo "Terra SDK ${SDK_VERSION} release packages verified."
 echo "Release manifest: ${RELEASE_DIR}/release_manifest.json"
