@@ -21,7 +21,7 @@ bash scripts/stage_miniprogram_globe.sh
 ```
 
 使用微信开发者工具打开 `apps/miniprogram/`。真机或发布验收前，将
-`terra-tianditu-proxy` 的 HTTPS 域名加入小程序网络域名配置。
+`terra-imagery` 的 HTTPS 域名加入小程序网络域名配置。
 
 在开发者工具 Console 清除旧的本地服务覆盖：
 
@@ -29,6 +29,7 @@ bash scripts/stage_miniprogram_globe.sh
 wx.removeStorageSync('terra.terrainServiceOrigin')
 wx.removeStorageSync('terra.planarServiceOrigin')
 wx.removeStorageSync('terra.tiandituToken')
+wx.removeStorageSync('terra.imageryServiceOrigin')
 wx.setStorageSync('terra.imageryProfile', 'tianditu-img-c')
 ```
 
@@ -93,7 +94,7 @@ getApp().globalData.globeReport
 
 - terrain 请求通过 `wx.cloud.callContainer` 访问 `terra-terrain-1k` 或
   `terra-terrain-globe`；
-- imagery 只访问 `terra-tianditu-proxy`，不直连 `tianditu.gov.cn`；
+- imagery 只访问 `terra-imagery`，不直连 `tianditu.gov.cn`；
 - 请求、日志、小程序 storage 和报告中均无天地图 token；
 - Mini Program 不直接调用 `terra-testdata` PG Storage API。
 

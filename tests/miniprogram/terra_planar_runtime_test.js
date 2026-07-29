@@ -149,23 +149,39 @@ async function main() {
   const insecure = manifest()
   insecure.textures[0].url_template = 'http://terrain.example/texture.png'
   assert.throws(() => common.validatePlanarManifest(insecure, 'ps-1k'),
-    /relative to the service or use HTTPS/)
+    /relative, HTTPS, or loopback HTTP/)
   const publicRuntime = new runtimeModule.TerraPlanarRuntime({
     canvas: canvas(),
     serviceOrigin: 'http://127.0.0.1:18081',
     imagery: {
       id: 'planar-public',
-      tileScheme: 'planar-single',
+      tileScheme: 'planar-tms',
       minimumLevel: 0,
-      maximumLevel: 0,
-      resolveTile: () => 'https://public.example/planar.png'
+      maximumLevel: 2,
+      matrixLevelOffset: 0,
+      texture: {
+        id: 'planar-public',
+        kind: 'planar-tms',
+        url_template:
+          'https://public.example/imagery/{z}/{x}/{y}.jpg',
+        minimum_level: 0,
+        maximum_level: 2,
+        matrix_level_offset: 0,
+        tile_size: 256,
+        level_zero_columns: 1,
+        level_zero_rows: 1,
+        origin: 'top-left',
+        bounds: [[0, 0], [1025, 1025]]
+      },
+      resolveTile: (tile) => 'https://public.example/imagery/' +
+        tile.level + '/' + tile.column + '/' + tile.row + '.jpg'
     }
   })
   publicRuntime.manifest = publicRuntime.validateRuntimeManifest(manifest())
   assert.strictEqual(publicRuntime.manifest.texture.id, 'planar-public')
   assert.strictEqual(publicRuntime.textureUrl({
-    level: 0, matrix: 0, row: 0, column: 0
-  }), 'https://public.example/planar.png')
+    level: 2, matrix: 2, row: 1, column: 3
+  }), 'https://public.example/imagery/2/3/1.jpg')
 
   const abi = new FakeAbi()
   let renderer = null

@@ -16,10 +16,11 @@ planar 1k、globe terrain 和天地图影像代理，并建立可自动回归、
 flowchart LR
     MP["微信小程序"] --> P["terra-terrain-1k"]
     MP --> G["terra-terrain-globe"]
-    MP --> I["terra-tianditu-proxy"]
+    MP --> I["terra-imagery"]
     P --> TD["版本化 terrain 存储"]
     G --> TD
     I --> L1["进程内 LRU"]
+    I --> IS["Versioned imagery storage"]
     L1 --> IC["私有 COS 影像缓存"]
     IC --> T["天地图 WMTS"]
 ```
@@ -28,7 +29,7 @@ flowchart LR
 | --- | --- | --- |
 | `terra-terrain-1k` | planar 1k terrain HTTP API | read-only COS mount |
 | `terra-terrain-globe` | globe CBDAM terrain HTTP API | read-only COS mount |
-| `terra-tianditu-proxy` | token protection, tile validation and caching | read-write COS mount |
+| `terra-imagery` | static tiles, token protection, validation, and caching | read-only data and read-write cache mounts |
 
 三个服务分别部署、扩缩容和回滚。Terrain 服务不持有天地图 token，影像代理
 不解析 CBDAM repository。
@@ -235,7 +236,7 @@ CloudBase 控制台中 `terra-testdata` “未配置 RLS，API 访问将被拒�
 因此不得为消除控制台提示而添加公开或全量 RLS。只有产品明确需要客户端直读
 Storage API 时，才为指定 bucket、对象前缀和用户身份设计最小 RLS。
 
-当前 `terra-tianditu-proxy` 的公开 HTTPS 域名仅用于测试验收，因为
+当前 `terra-imagery` 的公开 HTTPS 域名仅用于测试验收，因为
 `canvas.createImage().src` 需要 URL。它隐藏 token，但不能阻止第三方消耗代理
 额度。生产化必须把影像改为 `wx.cloud.callContainer` 取二进制后写临时文件，
 或在网关增加鉴权、限流和配额；不得直接沿用无鉴权公开代理。

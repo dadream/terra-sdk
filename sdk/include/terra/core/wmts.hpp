@@ -47,6 +47,37 @@ class global_geodetic_wmts_selector {
   int maximum_level_;
 };
 
+class planar_tms_selector {
+ public:
+  planar_tms_selector(const bounds2d& bounds,
+                      std::size_t tile_width,
+                      int level_zero_columns,
+                      int level_zero_rows,
+                      int matrix_level_offset,
+                      int maximum_level);
+
+  bool is_valid() const;
+  int matrix_level_offset() const;
+  int maximum_level() const;
+
+  wmts_tile_key select(const bounds2d& bounds,
+                       std::size_t sample_width) const;
+  wmts_tile_key select_clamped(const bounds2d& bounds,
+                               std::size_t sample_width) const;
+  wmts_tile_key select_level(const bounds2d& bounds, int level) const;
+  bounds2d tile_bounds(const wmts_tile_key& tile) const;
+
+ private:
+  int closest_level(double units_per_sample) const;
+
+  bounds2d bounds_;
+  std::size_t tile_width_;
+  int level_zero_columns_;
+  int level_zero_rows_;
+  int matrix_level_offset_;
+  int maximum_level_;
+};
+
 }  // namespace core
 }  // namespace terra
 

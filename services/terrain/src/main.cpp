@@ -91,6 +91,7 @@ void print_usage(const char* program) {
       << "  --max-requests COUNT       Exit after COUNT requests; 0 is unlimited\n"
       << "  --texture-id ID            Optional texture descriptor ID\n"
       << "  --texture-kind KIND        Optional texture descriptor kind\n"
+      << "  --texture-manifest URL     Optional imagery manifest URL\n"
       << "  --texture-template URL     Optional credential-free URL template\n"
       << "  --texture-file FILE        Optional local PNG served by descriptor ID\n"
       << "  --texture-level-offset N   Optional matrix level offset\n"
@@ -153,6 +154,11 @@ bool parse_options(int argc, char** argv, options& result) {
       result.has_texture = true;
     } else if (argument == "--texture-kind") {
       if (!take_value(argc, argv, index, result.texture.kind)) {
+        return false;
+      }
+      result.has_texture = true;
+    } else if (argument == "--texture-manifest") {
+      if (!take_value(argc, argv, index, result.texture.manifest_url)) {
         return false;
       }
       result.has_texture = true;

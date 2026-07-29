@@ -407,6 +407,8 @@ std::string manifest_json(const terrain_dataset_config& config,
     }
     output << "\n    {\"id\": " << json_escape(texture.id)
            << ", \"kind\": " << json_escape(texture.kind)
+           << ", \"manifest_url\": "
+           << json_escape(texture.manifest_url)
            << ", \"url_template\": "
            << json_escape(texture.url_template)
            << ", \"matrix_level_offset\": "

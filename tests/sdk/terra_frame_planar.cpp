@@ -4,6 +4,7 @@
 #include <terra/frame/surface_mesh.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -129,6 +130,43 @@ void verify_surface(const terra::core::bounds2d& bounds) {
               "planar surface UV is outside the single texture");
     }
   }
+
+  const terra::core::planar_tms_selector tiled_selector(
+      bounds, 256U, 1, 1, 0, 2);
+  const terra::frame::lod_cut tiled_cut =
+      terra::frame::select_fixed_planar_lod(64U, 6U);
+  std::array<bool, 4U> selected_columns{{false, false, false, false}};
+  bool selected_detail_level = false;
+  for (const terra::frame::lod_patch& tiled_patch : tiled_cut.patches) {
+    for (std::uint8_t fragment = 0U; fragment < 2U; ++fragment) {
+      if (!tiled_patch.has_fragment(fragment)) {
+        continue;
+      }
+      terra::frame::patch_surface_mesh mesh;
+      require(terra::frame::make_planar_patch_surface(
+                  tiled_patch, fragment, 64U, bounds, tiled_selector, mesh) ==
+                  terra::frame::surface_mesh_status::ok,
+              "unable to build planar tiled surface");
+      require(mesh.texture_tile.is_valid() &&
+                  mesh.texture_tile.level <= 2 &&
+                  mesh.texture_tile.matrix == mesh.texture_tile.level,
+              "planar tiled surface selected an invalid texture key");
+      selected_detail_level = selected_detail_level ||
+                              mesh.texture_tile.level > 0;
+      selected_columns.at(
+          static_cast<std::size_t>(mesh.texture_tile.column)) = true;
+      require(std::all_of(mesh.texture_uv.begin(), mesh.texture_uv.end(),
+                          [](float value) {
+                            return std::isfinite(value) && value >= -0.0001F &&
+                                   value <= 1.0001F;
+                          }),
+              "planar tiled surface UV escaped its selected tile");
+    }
+  }
+  require(selected_detail_level,
+          "planar tiled surface never selected a detail texture level");
+  require(std::count(selected_columns.begin(), selected_columns.end(), true) > 1,
+          "planar tiled surface never selected multiple texture columns");
 }
 
 }  // namespace

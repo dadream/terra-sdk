@@ -3,9 +3,10 @@
 This directory contains the source-only deployment templates for the three
 CloudBase Run services:
 
-- `terra-terrain-1k`: PS 1k planar terrain and local validation texture.
+- `terra-terrain-1k`: PS 1k planar CBDAM terrain.
 - `terra-terrain-globe`: global CBDAM terrain.
-- `terra-tianditu-proxy`: Tianditu `img-c` HTTPS proxy with persistent cache.
+- `terra-imagery`: versioned PS 1k and Blue Marble JPEG tiles plus the
+  Tianditu `img-c` HTTPS proxy with persistent cache.
 
 Before deployment, create a CloudBase resource connection of type `cloud-api`
 named `terra-cos-mount-v2`. Use a dedicated CAM sub-user and attach
@@ -55,12 +56,17 @@ product requirement and is reviewed separately.
 
 ## Mini Program Test Routing
 
-The test app uses `wx.cloud.callContainer` for both terrain services. Imagery
-uses the `terra-tianditu-proxy` public HTTPS domain because the current WebGL
+The test app uses `wx.cloud.callContainer` for both terrain services. All
+imagery uses the public HTTPS domain of `terra-imagery` because the WebGL
 loader assigns tile URLs to `canvas.createImage().src`. This keeps the
-Tianditu token server-side while preserving the native image decoding path.
-The proxy domain may need to be registered in the Mini Program network-domain
+Tianditu token server-side and gives planar and globe imagery one stable API.
+The imagery domain may need to be registered in the Mini Program network-domain
 configuration for real-device and release builds.
+
+The service publishes normalized metadata at
+`/terra/v1/imagery/{ps-1k|blue-marble|tianditu-img-c}/manifest`. Tile paths use
+top-left rows; the service converts them to the bottom-origin VicTMS repository
+layout internally.
 
 This public image endpoint is for the current test acceptance environment.
 Although it hides the Tianditu token, an unauthenticated public caller could
@@ -74,8 +80,21 @@ for the DevTools planar/globe visual acceptance sequence and required evidence.
 
 Generated binaries, upload manifests, deployment details, and verification
 evidence stay under `viewer_verify_output/cloudbase/`. Terrain data is mounted
-read-only from `/terra-testdata`; proxy cache is mounted read-write from
-`/terra-tianditu-cache` and stores JPEG files as:
+read-only from `/terra-testdata`. `terra-imagery` mounts that prefix read-only
+at `/mnt/terra-data` and mounts `/terra-tianditu-cache` read-write at
+`/mnt/terra-cache`. Versioned imagery uses these physical COS keys:
+
+```text
+terra-testdata/datasets/ps-1k/v1/imagery/ps-1k/00..02/...
+terra-testdata/datasets/globe/v1/imagery/blue-marble/00..07/...
+```
+
+The directories retain their existing VicTMS layout and `.jpg` suffixes. The
+upload script publishes them as immutable collections with one scoped STS
+credential per collection. Blue Marble remains external test data and is never
+committed to Git.
+
+Tianditu cache entries are retained for one year and stored as:
 
 ```text
 img-c/v1/z/{z}/x/{x}/y/{y}.jpg
@@ -95,9 +114,11 @@ node upload.js `
 ```
 
 The uploader asks STS `GetFederationToken` for a 15-minute credential scoped
-to the one target object. It never reads or prints the permanent local login
-credential, uses 20 MiB multipart slices, and verifies the final object size. The main upload script selects this
-path automatically for files of 100 MiB or larger.
+to one target object, or a two-hour credential scoped to one imagery prefix.
+It never reads or prints the permanent local login credential, uses 20 MiB
+multipart slices for large files, uploads JPEG collections with bounded
+concurrency, and verifies every final object size. The main upload script
+selects the correct path automatically.
 
 Multipart uploads write the physical COS object directly. They do not create a
 row in the logical PG Storage metadata table, so the CloudBase PG bucket page

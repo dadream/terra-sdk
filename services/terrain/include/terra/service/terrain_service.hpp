@@ -33,6 +33,7 @@ struct http_response {
 struct texture_descriptor {
   std::string id;
   std::string kind;
+  std::string manifest_url;
   std::string url_template;
   std::string local_file_path;
   int matrix_level_offset = 0;

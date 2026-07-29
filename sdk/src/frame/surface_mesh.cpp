@@ -212,7 +212,9 @@ surface_mesh_status make_planar_patch_surface_impl(
     const lod_patch& patch, std::uint8_t fragment,
     std::uint32_t patch_dimension,
     const codec::height_fragment* heights, double height_scale,
-    const core::bounds2d& bounds, patch_surface_mesh& output) {
+    const core::bounds2d& bounds,
+    const core::planar_tms_selector& texture_selector,
+    patch_surface_mesh& output) {
   output = patch_surface_mesh();
   const double width = bounds.maximum[0] - bounds.minimum[0];
   const double height = bounds.maximum[1] - bounds.minimum[1];
@@ -220,7 +222,8 @@ surface_mesh_status make_planar_patch_surface_impl(
       !std::isfinite(bounds.minimum[0]) ||
       !std::isfinite(bounds.minimum[1]) ||
       !std::isfinite(bounds.maximum[0]) ||
-      !std::isfinite(bounds.maximum[1]) || width <= 0.0 || height <= 0.0) {
+      !std::isfinite(bounds.maximum[1]) || width <= 0.0 || height <= 0.0 ||
+      !texture_selector.is_valid()) {
     return surface_mesh_status::invalid_argument;
   }
   if (fragment > 1U || !patch.has_fragment(fragment)) {
@@ -236,12 +239,55 @@ surface_mesh_status make_planar_patch_surface_impl(
     return surface_mesh_status::invalid_height;
   }
 
+  const std::size_t bounds_first = (1U + 2U * fragment) % 4U;
+  const std::size_t bounds_second = (2U + 2U * fragment) % 4U;
+  const std::size_t bounds_third = (0U + 2U * fragment) % 4U;
+  const core::grid_point fragment_points[] = {
+      patch.corners[bounds_first], patch.corners[bounds_second],
+      patch.corners[bounds_third]};
+  core::vector2d fragment_grid_minimum{{
+      static_cast<double>(fragment_points[0][0]),
+      static_cast<double>(fragment_points[0][1])}};
+  core::vector2d fragment_grid_maximum = fragment_grid_minimum;
+  for (const core::grid_point& point : fragment_points) {
+    fragment_grid_minimum[0] = std::min(
+        fragment_grid_minimum[0], static_cast<double>(point[0]));
+    fragment_grid_minimum[1] = std::min(
+        fragment_grid_minimum[1], static_cast<double>(point[1]));
+    fragment_grid_maximum[0] = std::max(
+        fragment_grid_maximum[0], static_cast<double>(point[0]));
+    fragment_grid_maximum[1] = std::max(
+        fragment_grid_maximum[1], static_cast<double>(point[1]));
+  }
+  const double grid_minimum = core::grid_coordinate_min;
+  const double grid_span = static_cast<double>(core::grid_coordinate_max) -
+                           static_cast<double>(core::grid_coordinate_min);
+  const core::bounds2d fragment_extent(
+      core::vector2d{{
+          bounds.minimum[0] +
+              (fragment_grid_minimum[0] - grid_minimum) / grid_span * width,
+          bounds.minimum[1] +
+              (fragment_grid_minimum[1] - grid_minimum) / grid_span * height}},
+      core::vector2d{{
+          bounds.minimum[0] +
+              (fragment_grid_maximum[0] - grid_minimum) / grid_span * width,
+          bounds.minimum[1] +
+              (fragment_grid_maximum[1] - grid_minimum) / grid_span * height}});
+  const core::wmts_tile_key tile =
+      texture_selector.select_clamped(fragment_extent, patch_dimension);
+  const core::bounds2d tile_extent = texture_selector.tile_bounds(tile);
+  const double tile_width = tile_extent.maximum[0] - tile_extent.minimum[0];
+  const double tile_height = tile_extent.maximum[1] - tile_extent.minimum[1];
+  if (!tile.is_valid() || tile_width <= 0.0 || tile_height <= 0.0) {
+    return surface_mesh_status::invalid_texture;
+  }
+
 #if !defined(TERRA_SDK_NO_EXCEPTIONS)
   try {
 #endif
     output.patch = patch;
     output.fragment = fragment;
-    output.texture_tile = core::wmts_tile_key(0, 0, 0, 0);
+    output.texture_tile = tile;
     output.positions_xyz.reserve(vertex_count * 3U);
     output.texture_uv.reserve(vertex_count * 2U);
     output.origin = planar_uvh_from_grid(patch.id, bounds);
@@ -272,9 +318,9 @@ surface_mesh_status make_planar_patch_surface_impl(
             static_cast<float>(uvh[1] - output.origin[1]));
         output.positions_xyz.push_back(static_cast<float>(uvh[2]));
         output.texture_uv.push_back(static_cast<float>(
-            (uvh[0] - bounds.minimum[0]) / width));
+            (uvh[0] - tile_extent.minimum[0]) / tile_width));
         output.texture_uv.push_back(static_cast<float>(
-            (bounds.maximum[1] - uvh[1]) / height));
+            (tile_extent.maximum[1] - uvh[1]) / tile_height));
         ++vertex;
       }
     }
@@ -314,17 +360,43 @@ surface_mesh_status make_planar_patch_surface(
     const lod_patch& patch, std::uint8_t fragment,
     std::uint32_t patch_dimension, const core::bounds2d& bounds,
     patch_surface_mesh& output) {
+  const core::planar_tms_selector selector(
+      bounds, patch_dimension, 1, 1, 0, 0);
   return make_planar_patch_surface_impl(
-      patch, fragment, patch_dimension, nullptr, 0.0, bounds, output);
+      patch, fragment, patch_dimension, nullptr, 0.0, bounds,
+      selector, output);
+}
+
+surface_mesh_status make_planar_patch_surface(
+    const lod_patch& patch, std::uint8_t fragment,
+    std::uint32_t patch_dimension, const core::bounds2d& bounds,
+    const core::planar_tms_selector& texture_selector,
+    patch_surface_mesh& output) {
+  return make_planar_patch_surface_impl(
+      patch, fragment, patch_dimension, nullptr, 0.0, bounds,
+      texture_selector, output);
 }
 
 surface_mesh_status make_planar_patch_surface(
     const lod_patch& patch, std::uint8_t fragment,
     const codec::height_fragment& heights, double height_scale,
     const core::bounds2d& bounds, patch_surface_mesh& output) {
+  const core::planar_tms_selector selector(
+      bounds, heights.dimension, 1, 1, 0, 0);
   return make_planar_patch_surface_impl(
       patch, fragment, heights.dimension, &heights, height_scale,
-      bounds, output);
+      bounds, selector, output);
+}
+
+surface_mesh_status make_planar_patch_surface(
+    const lod_patch& patch, std::uint8_t fragment,
+    const codec::height_fragment& heights, double height_scale,
+    const core::bounds2d& bounds,
+    const core::planar_tms_selector& texture_selector,
+    patch_surface_mesh& output) {
+  return make_planar_patch_surface_impl(
+      patch, fragment, heights.dimension, &heights, height_scale,
+      bounds, texture_selector, output);
 }
 
 const char* surface_mesh_status_message(surface_mesh_status status) {

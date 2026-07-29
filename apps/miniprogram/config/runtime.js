@@ -3,8 +3,8 @@ module.exports = {
   cloudbaseEnvId: 'shunlu-api-test-d9fvhxfy3199a35a',
   cloudbaseGlobeTerrainService: 'terra-terrain-globe',
   cloudbasePlanarTerrainService: 'terra-terrain-1k',
-  tiandituProxyOrigin:
-    'https://terra-tianditu-proxy-277006-4-1254147477.sh.run.tcloudbase.com',
+  imageryServiceOrigin:
+    'https://terra-imagery-277006-4-1254147477.sh.run.tcloudbase.com',
   terrainServiceOrigin: '',
   planarServiceOrigin: '',
   planarManifestPath: '/terra/v1/datasets/ps-1k/manifest',

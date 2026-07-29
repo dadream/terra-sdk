@@ -86,6 +86,19 @@ export interface ImagerySource {
   minimumLevel?: 0
   maximumLevel?: number
   matrixLevelOffset?: number
+  texture?: {
+    id: string
+    kind: 'global-geodetic' | 'planar-tms' | 'planar-single'
+    url_template: string
+    minimum_level?: 0
+    maximum_level: number
+    matrix_level_offset: number
+    tile_size?: number
+    level_zero_columns?: number
+    level_zero_rows?: number
+    origin?: 'top-left'
+    bounds?: [[number, number], [number, number]]
+  }
   attribution?: string
   resolveTile(tile: {
     level: number

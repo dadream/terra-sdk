@@ -143,6 +143,43 @@ function joinServiceUrl(origin, endpoint) {
   return `${origin.replace(/\/$/, '')}/${endpoint.replace(/^\//, '')}`
 }
 
+function validateTextureMatrix(texture, terrain, defaults) {
+  const minimumLevel = texture.minimum_level === undefined
+    ? 0 : texture.minimum_level
+  const tileSize = texture.tile_size === undefined
+    ? 256 : texture.tile_size
+  const columns = texture.level_zero_columns === undefined
+    ? defaults.columns : texture.level_zero_columns
+  const rows = texture.level_zero_rows === undefined
+    ? defaults.rows : texture.level_zero_rows
+  const origin = texture.origin || 'top-left'
+  const bounds = texture.bounds || [[terrain.minimumU, terrain.minimumV],
+    [terrain.maximumU, terrain.maximumV]]
+  invariant(minimumLevel === 0, 'Texture minimum level must be zero in V1')
+  invariant(Number.isInteger(tileSize) && tileSize > 0 && tileSize <= 16384,
+    'Texture tile size is invalid')
+  invariant(Number.isInteger(columns) && columns > 0 && columns <= 1024 &&
+    Number.isInteger(rows) && rows > 0 && rows <= 1024,
+  'Texture level-zero matrix is invalid')
+  invariant(origin === 'top-left', 'Texture origin must be top-left')
+  invariant(Array.isArray(bounds) && bounds.length === 2 &&
+    Array.isArray(bounds[0]) && bounds[0].length === 2 &&
+    Array.isArray(bounds[1]) && bounds[1].length === 2,
+  'Texture bounds are invalid')
+  bounds.forEach((point, pointIndex) => point.forEach((value, axis) =>
+    finiteNumber(value, `Texture bound ${pointIndex}/${axis}`)))
+  invariant(bounds[0][0] < bounds[1][0] && bounds[0][1] < bounds[1][1],
+    'Texture bounds are empty')
+  return Object.assign({}, texture, {
+    minimum_level: minimumLevel,
+    tile_size: tileSize,
+    level_zero_columns: columns,
+    level_zero_rows: rows,
+    origin,
+    bounds: [bounds[0].slice(), bounds[1].slice()]
+  })
+}
+
 function selectTextureDescriptor(manifest, textureId) {
   const textures = Array.isArray(manifest.textures) ? manifest.textures : []
   const candidates = textureId
@@ -211,13 +248,28 @@ function selectPlanarTextureDescriptor(manifest, textureId) {
     ? textures.filter((texture) => texture.id === textureId)
     : textures
   const texture = candidates.find((candidate) =>
-    candidate && candidate.kind === 'planar-single')
-  invariant(texture, 'Manifest has no planar-single texture descriptor')
+    candidate && (candidate.kind === 'planar-tms' ||
+      candidate.kind === 'planar-single'))
+  invariant(texture, 'Manifest has no planar texture descriptor')
   invariant(typeof texture.url_template === 'string' &&
-    (/^\//.test(texture.url_template) || /^https:\/\//.test(texture.url_template)),
-  'Planar texture URL must be relative to the service or use HTTPS')
-  invariant(texture.matrix_level_offset === 0 && texture.maximum_level === 0,
-    'Planar single texture level descriptor is invalid')
+    (/^\//.test(texture.url_template) ||
+      /^https:\/\//.test(texture.url_template) ||
+      /^http:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::[0-9]+)?\//
+        .test(texture.url_template)),
+  'Planar texture URL must be relative, HTTPS, or loopback HTTP')
+  invariant(Number.isInteger(texture.matrix_level_offset) &&
+    texture.matrix_level_offset >= 0 &&
+    Number.isInteger(texture.maximum_level) &&
+    texture.maximum_level >= 0 && texture.maximum_level <= 28,
+  'Planar texture level descriptor is invalid')
+  if (texture.kind === 'planar-single') {
+    invariant(texture.matrix_level_offset === 0 && texture.maximum_level === 0,
+      'Planar single texture level descriptor is invalid')
+  } else {
+    invariant(/\{z\}/.test(texture.url_template) &&
+      /\{x\}/.test(texture.url_template) && /\{y\}/.test(texture.url_template),
+    'Planar TMS texture template must contain z, x, and y')
+  }
   return texture
 }
 
@@ -230,7 +282,8 @@ function validateManifest(manifest, textureId) {
   invariant(transform.radius > 0, 'Manifest terrain radius must be positive')
   result.transform = 'cylindrical'
   result.radius = transform.radius
-  result.texture = selectTextureDescriptor(manifest, textureId)
+  result.texture = validateTextureMatrix(
+    selectTextureDescriptor(manifest, textureId), result, { columns: 2, rows: 1 })
   return result
 }
 
@@ -244,7 +297,9 @@ function validatePlanarManifest(manifest, textureId) {
     'Planar terrain radius must be zero')
   result.transform = 'planar'
   result.radius = 0
-  result.texture = selectPlanarTextureDescriptor(manifest, textureId)
+  result.texture = validateTextureMatrix(
+    selectPlanarTextureDescriptor(manifest, textureId), result,
+    { columns: 1, rows: 1 })
   return result
 }
 

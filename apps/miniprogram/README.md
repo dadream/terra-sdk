@@ -46,14 +46,17 @@ The checked-in test configuration uses CloudBase environment
   `wx.cloud.callContainer`;
 - globe terrain calls `terra-terrain-globe` through
   `wx.cloud.callContainer`;
-- Tianditu imagery loads from the public HTTPS endpoint of
-  `terra-tianditu-proxy`.
+- PS 1k, Blue Marble, and Tianditu imagery load from the public HTTPS endpoint
+  of `terra-imagery`.
 
-The proxy domain is configuration, not a credential. The Tianditu token remains
-only in the proxy service environment and must not be stored in the Mini
-Program. Before real-device or release validation, add the proxy HTTPS domain
-to the Mini Program network-domain configuration required for
+The imagery domain is configuration, not a credential. The Tianditu token
+remains only in the imagery service environment and must not be stored in the
+Mini Program. Before real-device or release validation, add the imagery HTTPS
+domain to the Mini Program network-domain configuration required for
 `canvas.createImage`.
+
+Set `terra.imageryServiceOrigin` in storage only when overriding the checked-in
+CloudBase endpoint for a test deployment.
 
 Local origins still take precedence when
 `terra.terrainServiceOrigin` or `terra.planarServiceOrigin` is set in

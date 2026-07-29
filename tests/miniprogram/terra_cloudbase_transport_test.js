@@ -10,9 +10,9 @@ async function main() {
   assert.strictEqual(runtimeConfig.cloudbaseGlobeTerrainService,
     'terra-terrain-globe')
   assert.strictEqual(runtimeConfig.imageryProfile, 'tianditu-img-c')
-  assert.match(runtimeConfig.tiandituProxyOrigin,
+  assert.match(runtimeConfig.imageryServiceOrigin,
     /^https:\/\/[^/?#]+$/)
-  assert.ok(!/tianditu\.gov\.cn/.test(runtimeConfig.tiandituProxyOrigin))
+  assert.ok(!/tianditu\.gov\.cn/.test(runtimeConfig.imageryServiceOrigin))
   assert.ok(!Object.prototype.hasOwnProperty.call(
     runtimeConfig, 'tiandituToken'))
 

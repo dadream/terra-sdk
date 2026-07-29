@@ -58,7 +58,7 @@ function tcbInvocation() {
   return { executable: process.execPath, prefix: [entry] }
 }
 
-function readTemporaryCredential(options) {
+function readTemporaryCredential(options, directory) {
   if (!/^[A-Za-z0-9-]+$/.test(options.env)) {
     throw new Error('CloudBase environment ID is invalid')
   }
@@ -69,9 +69,11 @@ function readTemporaryCredential(options) {
   if (!account || !options.key || options.key.includes('..')) {
     throw new Error('COS bucket or object key is invalid')
   }
+  const key = directory
+    ? `${options.key.replace(/\/+$/, '')}/*` : options.key
   const resource =
     `qcs::cos:${options.region}:uid/${account[1]}:` +
-    `${options.bucket}/${options.key}`
+    `${options.bucket}/${key}`
   const policy = {
     version: '2.0',
     statement: [{
@@ -92,7 +94,7 @@ function readTemporaryCredential(options) {
   const body = {
     Name: 'terra-cloudbase-data-upload',
     Policy: JSON.stringify(policy),
-    DurationSeconds: 900
+    DurationSeconds: directory ? 7200 : 900
   }
   const invocation = tcbInvocation()
   const result = spawnSync(invocation.executable, [
@@ -140,19 +142,123 @@ function contentLength(result) {
   return Number(value)
 }
 
+function collectionFiles(root, extension) {
+  const expected = (extension || '.jpg').toLowerCase()
+  const pending = ['']
+  const result = []
+  while (pending.length > 0) {
+    const relativeDirectory = pending.pop()
+    const directory = path.join(root, relativeDirectory)
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const relative = path.join(relativeDirectory, entry.name)
+      if (entry.isDirectory()) {
+        pending.push(relative)
+      } else if (entry.isFile() &&
+                 path.extname(entry.name).toLowerCase() === expected) {
+        const file = path.join(root, relative)
+        result.push({
+          file,
+          relative: relative.split(path.sep).join('/'),
+          size: fs.statSync(file).size
+        })
+      }
+    }
+  }
+  result.sort((left, right) => left.relative.localeCompare(right.relative))
+  if (result.length === 0) {
+    throw new Error(`source collection has no ${expected} files: ${root}`)
+  }
+  return result
+}
+
+async function uploadCollectionFile(cos, options, source, key) {
+  const object = {
+    Bucket: options.bucket,
+    Region: options.region,
+    Key: key
+  }
+  try {
+    const existing = await callCos(cos, 'headObject', object)
+    const remoteSize = contentLength(existing)
+    if (remoteSize === source.size) {
+      return false
+    }
+    throw new Error(
+      `remote object size ${remoteSize} differs from local size ` +
+      `${source.size}: ${key}`)
+  } catch (error) {
+    if (Number(error.statusCode) !== 404) {
+      throw error
+    }
+  }
+  await callCos(cos, 'putObject', {
+    ...object,
+    Body: fs.createReadStream(source.file),
+    ContentLength: source.size,
+    ContentType: 'image/jpeg'
+  })
+  const uploaded = await callCos(cos, 'headObject', object)
+  if (contentLength(uploaded) !== source.size) {
+    throw new Error(`uploaded object size differs: ${key}`)
+  }
+  return true
+}
+
+async function uploadCollection(cos, options, root) {
+  const files = collectionFiles(root, options['include-extension'])
+  const requestedConcurrency = Number(options.concurrency || 8)
+  if (!Number.isInteger(requestedConcurrency) || requestedConcurrency < 1) {
+    throw new Error('collection concurrency must be a positive integer')
+  }
+  const concurrency = Math.min(32, requestedConcurrency)
+  const prefix = options.key.replace(/\/+$/, '')
+  let cursor = 0
+  let uploaded = 0
+  let verified = 0
+  async function worker() {
+    while (cursor < files.length) {
+      const index = cursor++
+      const source = files[index]
+      const changed = await uploadCollectionFile(
+        cos, options, source, `${prefix}/${source.relative}`)
+      uploaded += changed ? 1 : 0
+      verified += changed ? 0 : 1
+      const completed = uploaded + verified
+      if (completed % 250 === 0 || completed === files.length) {
+        console.log(`[progress] ${completed}/${files.length}`)
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, files.length) },
+    () => worker()))
+  const bytes = files.reduce((sum, file) => sum + file.size, 0)
+  console.log(`[ok] collection ${options.key} files=${files.length} ` +
+    `bytes=${bytes} uploaded=${uploaded} verified=${verified}`)
+}
+
 async function upload(options) {
   const source = path.resolve(options.source)
   const stat = fs.statSync(source)
-  if (!stat.isFile()) {
-    throw new Error(`source is not a file: ${source}`)
+  if (!stat.isFile() && !stat.isDirectory()) {
+    throw new Error(`source is not a file or directory: ${source}`)
   }
 
-  const credential = readTemporaryCredential(options)
+  const credential = readTemporaryCredential(options, stat.isDirectory())
   const cos = new COS({
     SecretId: credential.secretId,
     SecretKey: credential.secretKey,
     SecurityToken: credential.token
   })
+  if (stat.isDirectory()) {
+    try {
+      await uploadCollection(cos, options, source)
+    } finally {
+      credential.secretId = ''
+      credential.secretKey = ''
+      credential.token = ''
+    }
+    return
+  }
   const object = {
     Bucket: options.bucket,
     Region: options.region,
@@ -164,6 +270,9 @@ async function upload(options) {
     const remoteSize = contentLength(existing)
     if (remoteSize === stat.size) {
       console.log(`[ok] object already exists (${remoteSize} bytes)`)
+      credential.secretId = ''
+      credential.secretKey = ''
+      credential.token = ''
       return
     }
     throw new Error(

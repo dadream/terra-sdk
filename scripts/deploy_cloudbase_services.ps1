@@ -19,7 +19,7 @@ $EvidenceDir = Join-Path $RepoRoot 'viewer_verify_output\cloudbase'
 $StagingRoot = Join-Path $EvidenceDir 'staging'
 $token = $env:TERRA_TIANDITU_TOKEN
 if ([string]::IsNullOrWhiteSpace($token)) {
-  throw 'Set TERRA_TIANDITU_TOKEN before deploying the proxy.'
+  throw 'Set TERRA_TIANDITU_TOKEN before deploying the imagery service.'
 }
 if ($token -notmatch '^[A-Za-z0-9_-]{16,128}$') {
   throw 'TERRA_TIANDITU_TOKEN has an invalid format.'
@@ -304,8 +304,8 @@ function Wait-HttpReady {
 
 $terrain1k = Join-Path $StagingRoot 'terra-terrain-ps-1k'
 $terrainGlobe = Join-Path $StagingRoot 'terra-terrain-globe'
-$proxySource = Join-Path $RepoRoot 'deploy\cloudbase\tianditu-proxy'
-foreach ($source in @($terrain1k, $terrainGlobe, $proxySource)) {
+$imagerySource = Join-Path $RepoRoot 'deploy\cloudbase\imagery'
+foreach ($source in @($terrain1k, $terrainGlobe, $imagerySource)) {
   if (-not (Test-Path -LiteralPath (Join-Path $source 'Dockerfile'))) {
     throw "Missing deployment source: $source"
   }
@@ -318,7 +318,7 @@ try {
   $sources = [ordered]@{
     'terra-terrain-1k' = $terrain1k
     'terra-terrain-globe' = $terrainGlobe
-    'terra-tianditu-proxy' = $proxySource
+    'terra-imagery' = $imagerySource
   }
   $images = @{}
   foreach ($entry in $sources.GetEnumerator()) {
@@ -342,7 +342,8 @@ try {
     SrcPath = '/terra-testdata'
     ReadOnly = $true
   })
-  $cacheVolume = @(@{
+  $imageryVolumes = @($terrainVolume[0])
+  $imageryVolumes += @{
     Type = 'COS'
     BucketName = $PhysicalBucket
     Endpoint = $endpoint
@@ -350,24 +351,30 @@ try {
     DstPath = '/mnt/terra-cache'
     SrcPath = '/terra-tianditu-cache'
     ReadOnly = $false
-  })
+  }
 
   $details = @{}
-  $details['terra-terrain-1k'] = Update-ServiceConfig `
-    'terra-terrain-1k' $images['terra-terrain-1k'] $terrainVolume @{}
-  $details['terra-terrain-globe'] = Update-ServiceConfig `
-    'terra-terrain-globe' $images['terra-terrain-globe'] $terrainVolume @{}
-  $details['terra-tianditu-proxy'] = Update-ServiceConfig `
-    'terra-tianditu-proxy' $images['terra-tianditu-proxy'] $cacheVolume @{
+  $details['terra-imagery'] = Update-ServiceConfig `
+    'terra-imagery' $images['terra-imagery'] $imageryVolumes @{
       TIANDITU_TOKEN = $token
+      DATA_ROOT = '/mnt/terra-data'
       CACHE_ROOT = '/mnt/terra-cache'
       HOST = '0.0.0.0'
       PORT = '8080'
     }
+  $imageryOrigin = $details['terra-imagery'].data.BaseInfo.DefaultDomainName
+  $details['terra-terrain-1k'] = Update-ServiceConfig `
+    'terra-terrain-1k' $images['terra-terrain-1k'] $terrainVolume @{
+      TERRA_IMAGERY_ORIGIN = $imageryOrigin
+    }
+  $details['terra-terrain-globe'] = Update-ServiceConfig `
+    'terra-terrain-globe' $images['terra-terrain-globe'] $terrainVolume @{
+      TERRA_IMAGERY_ORIGIN = $imageryOrigin
+    }
 
   $services = @()
   foreach ($name in @(
-    'terra-terrain-1k', 'terra-terrain-globe', 'terra-tianditu-proxy')) {
+    'terra-terrain-1k', 'terra-terrain-globe', 'terra-imagery')) {
     $detail = $details[$name]
     $domain = $detail.data.BaseInfo.DefaultDomainName
     Wait-HttpReady -ServiceName $name -Domain $domain | Out-Null

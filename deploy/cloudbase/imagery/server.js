@@ -13,6 +13,45 @@ const CLIENT_CACHE_SECONDS = 365 * 24 * 60 * 60
 const JPEG_CONTENT_TYPE = 'image/jpeg'
 const JPEG_UPSTREAM_CONTENT_TYPES = new Set(['image/jpeg', 'image/jpg'])
 
+const STATIC_PROFILES = {
+  'ps-1k': {
+    id: 'ps-1k',
+    kind: 'planar-tms',
+    srs: 'EPSG:4326',
+    bounds: [[0, 0], [1025, 1025]],
+    tileSize: 256,
+    levelZeroColumns: 1,
+    levelZeroRows: 1,
+    matrixLevelOffset: 0,
+    maximumLevel: 2,
+    relativeRoot: path.join('datasets', 'ps-1k', 'v1', 'imagery', 'ps-1k')
+  },
+  'blue-marble': {
+    id: 'blue-marble',
+    kind: 'global-geodetic',
+    srs: 'EPSG:4326',
+    bounds: [[-180, -90], [180, 90]],
+    tileSize: 256,
+    levelZeroColumns: 2,
+    levelZeroRows: 1,
+    matrixLevelOffset: 0,
+    maximumLevel: 7,
+    relativeRoot: path.join('datasets', 'globe', 'v1', 'imagery', 'blue-marble')
+  }
+}
+
+const TIANDITU_PROFILE = {
+  id: 'tianditu-img-c',
+  kind: 'global-geodetic',
+  srs: 'EPSG:4326',
+  bounds: [[-180, -90], [180, 90]],
+  tileSize: 256,
+  levelZeroColumns: 2,
+  levelZeroRows: 1,
+  matrixLevelOffset: 1,
+  maximumLevel: 17
+}
+
 class MemoryCache {
   constructor(maximumEntries, maximumBytes) {
     this.maximumEntries = maximumEntries
@@ -79,6 +118,86 @@ function parseTilePath(urlPath) {
     return null
   }
   return { level, column, row }
+}
+
+function tileShape(profile, level) {
+  const scale = 2 ** level
+  return {
+    columns: profile.levelZeroColumns * scale,
+    rows: profile.levelZeroRows * scale
+  }
+}
+
+function validTile(profile, level, column, row) {
+  if (!profile || level === null || column === null || row === null ||
+      level > profile.maximumLevel) {
+    return false
+  }
+  const shape = tileShape(profile, level)
+  return column < shape.columns && row < shape.rows
+}
+
+function parseStaticTilePath(urlPath) {
+  const match = /^\/terra\/v1\/imagery\/(ps-1k|blue-marble)\/([0-9]+)\/([0-9]+)\/([0-9]+)\.jpg$/.exec(
+    urlPath)
+  if (!match) {
+    return null
+  }
+  const profile = STATIC_PROFILES[match[1]]
+  const level = parseInteger(match[2])
+  const column = parseInteger(match[3])
+  const row = parseInteger(match[4])
+  return validTile(profile, level, column, row)
+    ? { profile, level, column, row }
+    : null
+}
+
+function paddedCoordinate(value) {
+  return String(value).padStart(8, '0')
+}
+
+function vicTmsTilePath(dataRoot, tile) {
+  const shape = tileShape(tile.profile, tile.level)
+  const repositoryRow = shape.rows - 1 - tile.row
+  const row = paddedCoordinate(repositoryRow)
+  const column = paddedCoordinate(tile.column)
+  return path.join(dataRoot, tile.profile.relativeRoot,
+    String(tile.level).padStart(2, '0'), row.slice(0, 4), row.slice(4),
+    column.slice(0, 4), `${column.slice(4)}.jpg`)
+}
+
+function requestOrigin(req) {
+  const forwarded = String(req.headers['x-forwarded-proto'] || '')
+    .split(',')[0].trim().toLowerCase()
+  const protocol = forwarded === 'https' ? 'https' : 'http'
+  const host = String(req.headers['x-forwarded-host'] || req.headers.host || '')
+    .split(',')[0].trim()
+  return `${protocol}://${host}`
+}
+
+function imageryManifest(profile, origin, routeId) {
+  const id = routeId || profile.id
+  return {
+    schema: 'terra.imagery-manifest',
+    schema_version: 1,
+    id,
+    kind: profile.kind,
+    srs: profile.srs,
+    bounds: profile.bounds,
+    tile_size: profile.tileSize,
+    matrix: {
+      origin: 'top-left',
+      matrix_level_offset: profile.matrixLevelOffset,
+      level_zero_columns: profile.levelZeroColumns,
+      level_zero_rows: profile.levelZeroRows,
+      minimum_level: 0,
+      maximum_level: profile.maximumLevel
+    },
+    format: 'image/jpeg',
+    url_template: routeId === 'tianditu-img-c'
+      ? `${origin}/terra/v1/imagery/tianditu/img-c/{z}/{x}/{y}.jpg`
+      : `${origin}/terra/v1/imagery/${id}/{z}/{x}/{y}.jpg`
+  }
 }
 
 function tileKey(tile) {
@@ -156,6 +275,7 @@ function responseHeaders(cacheStatus) {
     'Cache-Control':
       `public, max-age=${CLIENT_CACHE_SECONDS}, stale-if-error=2592000`,
     'Content-Type': JPEG_CONTENT_TYPE,
+    'Access-Control-Allow-Origin': '*',
     'X-Terra-Cache': cacheStatus
   }
 }
@@ -200,9 +320,11 @@ function requestWithHttps(url, options) {
   })
 }
 
-function createProxyServer(options = {}) {
+function createImageryServer(options = {}) {
   const host = options.host || process.env.HOST || '0.0.0.0'
   const port = Number(options.port || process.env.PORT || 8080)
+  const dataRoot = options.dataRoot || process.env.DATA_ROOT ||
+    '/mnt/terra-data'
   const cacheRoot = options.cacheRoot || process.env.CACHE_ROOT ||
     '/mnt/terra-cache'
   const token = options.token === undefined
@@ -225,6 +347,7 @@ function createProxyServer(options = {}) {
   const negative = new Map()
   const stats = {
     requests: 0,
+    staticHits: 0,
     memoryHits: 0,
     diskHits: 0,
     misses: 0,
@@ -347,6 +470,19 @@ function createProxyServer(options = {}) {
     if (!token) {
       return { ok: false, reason: 'token_not_configured' }
     }
+    const profiles = Object.values(STATIC_PROFILES)
+    for (let index = 0; index < profiles.length; ++index) {
+      const profile = profiles[index]
+      const root = path.join(dataRoot, profile.relativeRoot)
+      try {
+        const stat = await fsp.stat(root)
+        if (!stat.isDirectory()) {
+          return { ok: false, reason: `imagery_data_missing:${profile.id}` }
+        }
+      } catch (error) {
+        return { ok: false, reason: `imagery_data_missing:${profile.id}` }
+      }
+    }
     try {
       await fsp.mkdir(cacheRoot, { recursive: true })
       const probe = path.join(cacheRoot, `.ready-${process.pid}`)
@@ -356,6 +492,28 @@ function createProxyServer(options = {}) {
     } catch (error) {
       return { ok: false, reason: 'cache_not_writable' }
     }
+  }
+
+  async function loadStaticTile(tile) {
+    const file = vicTmsTilePath(dataRoot, tile)
+    let bytes
+    try {
+      bytes = await fsp.readFile(file)
+    } catch (error) {
+      if (error && error.code === 'ENOENT') {
+        const missing = new Error('Static imagery tile was not found')
+        missing.status = 404
+        throw missing
+      }
+      throw error
+    }
+    if (!isJpeg(bytes)) {
+      const invalid = new Error('Static imagery tile is not JPEG')
+      invalid.status = 500
+      throw invalid
+    }
+    stats.staticHits += 1
+    return bytes
   }
 
   const server = http.createServer(async (req, res) => {
@@ -374,9 +532,42 @@ function createProxyServer(options = {}) {
       }, Buffer.from(JSON.stringify(status) + '\n'))
       return
     }
-    if (req.method !== 'GET') {
+    const head = req.method === 'HEAD'
+    if (req.method !== 'GET' && !head) {
       send(res, 405, { 'Content-Type': 'application/json' },
         Buffer.from('{"error":"method_not_allowed"}\n'))
+      return
+    }
+    const manifestMatch = /^\/terra\/v1\/imagery\/(ps-1k|blue-marble|tianditu-img-c)\/manifest$/.exec(
+      url.pathname)
+    if (manifestMatch) {
+      const id = manifestMatch[1]
+      const profile = id === 'tianditu-img-c'
+        ? TIANDITU_PROFILE : STATIC_PROFILES[id]
+      const body = Buffer.from(JSON.stringify(
+        imageryManifest(profile, requestOrigin(req), id), null, 2) + '\n')
+      send(res, 200, {
+        'Content-Type': 'application/vnd.terra.imagery+json;version=1',
+        'Cache-Control': 'public, max-age=60',
+        'Access-Control-Allow-Origin': '*'
+      }, head ? Buffer.alloc(0) : body)
+      return
+    }
+    const staticTile = parseStaticTilePath(url.pathname)
+    if (staticTile) {
+      stats.requests += 1
+      try {
+        const bytes = await loadStaticTile(staticTile)
+        send(res, 200, responseHeaders('STATIC'),
+          head ? Buffer.alloc(0) : bytes)
+      } catch (error) {
+        const status = error.status || 500
+        console.error(
+          `[imagery][error] static_tile_failed status=${status} profile=${staticTile.profile.id}`)
+        send(res, status, { 'Content-Type': 'application/json',
+          'Cache-Control': 'no-store' },
+        Buffer.from(`{"error":"imagery_unavailable","status":${status}}\n`))
+      }
       return
     }
     const tile = parseTilePath(url.pathname)
@@ -389,12 +580,13 @@ function createProxyServer(options = {}) {
     stats.requests += 1
     try {
       const result = await loadSingleFlight(tile)
-      send(res, 200, responseHeaders(result.cacheStatus), result.bytes)
+      send(res, 200, responseHeaders(result.cacheStatus),
+        head ? Buffer.alloc(0) : result.bytes)
     } catch (error) {
       const status = error.status || 502
       const reason = upstreamFailureReason(error)
       console.error(
-        `[tianditu-proxy][error] upstream_failed status=${status} reason=${reason}`)
+        `[imagery][error] upstream_failed status=${status} reason=${reason}`)
       send(res, status, { 'Content-Type': 'application/json',
         'Cache-Control': 'no-store' },
       Buffer.from(`{"error":"imagery_unavailable","status":${status}}\n`))
@@ -405,17 +597,24 @@ function createProxyServer(options = {}) {
 }
 
 if (require.main === module) {
-  const proxy = createProxyServer()
-  proxy.server.listen(proxy.port, proxy.host, () => {
-    console.log(`[tianditu-proxy] ready address=${proxy.host} port=${proxy.port}`)
+  const imagery = createImageryServer()
+  imagery.server.listen(imagery.port, imagery.host, () => {
+    console.log(`[imagery] ready address=${imagery.host} port=${imagery.port}`)
   })
 }
 
 module.exports = {
+  BLUE_MARBLE_PROFILE: STATIC_PROFILES['blue-marble'],
   JPEG_CONTENT_TYPE,
+  PLANAR_1K_PROFILE: STATIC_PROFILES['ps-1k'],
+  TIANDITU_PROFILE,
   cachePaths,
-  createProxyServer,
+  createImageryServer,
+  createProxyServer: createImageryServer,
+  imageryManifest,
   isJpeg,
+  parseStaticTilePath,
   parseTilePath,
-  upstreamUrl
+  upstreamUrl,
+  vicTmsTilePath
 }

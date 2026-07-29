@@ -23,6 +23,7 @@ mkdir -p "${BUILD_DIR}" "${PACKAGE_DIR}/include/terra/c_api" \
 
 set +e
 {
+  set -e
   docker run --rm \
     -v "${ROOT_DIR}:/workspace" \
     -v "${ROOT_DIR}/workspace_old:/wksp" \

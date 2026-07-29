@@ -242,7 +242,10 @@
       if (!frame || !renderer || frame.loadedRecordCount < 8 ||
         frame.drawCount < requiredDraws ||
         renderer.draws.submitted !== frame.drawCount ||
-        renderer.geometry.entries < requiredDraws || renderer.textures.entries < 1) {
+        renderer.geometry.entries < requiredDraws ||
+        renderer.textures.entries < 1 || !renderer.textures.idle ||
+        renderer.textures.missingRatio !== 0 ||
+        renderer.textures.fallbackRatio !== 0) {
         return null
       }
       if (previousSequence !== undefined && frame.sequence <= previousSequence) {
@@ -521,6 +524,7 @@
       const state = runtime.state()
       return !state.contextLost && state.renderer.draws.submitted >= 4
     }, 8000)
+    await waitForRenderedFrame(undefined, 4)
     const restored = await capture('context_restored')
     check('context_restore_draw', restored.state.renderer.draws.submitted >= 4,
       `${restored.state.renderer.draws.submitted} draws`)

@@ -60,7 +60,15 @@ async function main() {
       radius: 0,
       texture: {
         matrix_level_offset: 0,
-        maximum_level: 0
+        maximum_level: 0,
+        minimum_level: 0,
+        tile_size: 256,
+        level_zero_columns: 1,
+        level_zero_rows: 1,
+        bounds: [
+          [0, 0],
+          [1025, 1025]
+        ]
       }
     })
     abi.setPlanarLevel(1)

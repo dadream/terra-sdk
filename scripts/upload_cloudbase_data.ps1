@@ -8,7 +8,9 @@ param(
   [string]$Region = 'ap-shanghai',
   [long]$LargeFileThresholdBytes = 104857600,
   [string]$GlobeDataRoot =
-    'S:\terra-data\globe\cbdam-srtm-v2-global-geodetic'
+    'S:\terra-data\globe\cbdam-srtm-v2-global-geodetic',
+  [string]$BlueMarbleRoot =
+    'S:\terra-data\globe\blue-marble-global-geodetic'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -37,10 +39,6 @@ $files = @(
     Object = 'datasets/ps-1k/v1/terrain/terrain.data'
   },
   @{
-    Source = Join-Path $RepoRoot 'testdata\datasets\ps_1k\source\ps_texture_1k.png'
-    Object = 'datasets/ps-1k/v1/texture/ps_texture_1k.png'
-  },
-  @{
     Source = Join-Path $GlobeDataRoot 'global_srtm_tol2.xml'
     Object = 'datasets/globe/v1/terrain/global_srtm_tol2.xml'
   },
@@ -54,7 +52,19 @@ $files = @(
   }
 )
 
+$collections = @(
+  @{
+    Source = Join-Path $RepoRoot 'testdata\datasets\ps_1k\reference\texture'
+    Object = 'datasets/ps-1k/v1/imagery/ps-1k'
+  },
+  @{
+    Source = $BlueMarbleRoot
+    Object = 'datasets/globe/v1/imagery/blue-marble'
+  }
+)
+
 $evidence = @()
+$collectionEvidence = @()
 $ErrorActionPreference = 'Continue'
 foreach ($item in $files) {
   if (-not (Test-Path -LiteralPath $item.Source -PathType Leaf)) {
@@ -135,6 +145,48 @@ foreach ($item in $files) {
     upload_mode = 'pg-put'
   }
 }
+
+if (-not (Test-Path -LiteralPath $CosUploader -PathType Leaf) -or
+    -not (Test-Path -LiteralPath $CosSdk -PathType Container)) {
+  throw (
+    'COS collection uploader is not installed. Run npm ci in ' +
+    'deploy/cloudbase/cos-uploader.')
+}
+foreach ($collection in $collections) {
+  if (-not (Test-Path -LiteralPath $collection.Source -PathType Container)) {
+    throw "Missing imagery collection: $($collection.Source)"
+  }
+  $tiles = @(Get-ChildItem -LiteralPath $collection.Source -Recurse -File |
+    Where-Object { $_.Extension -ieq '.jpg' })
+  if ($tiles.Count -eq 0) {
+    throw "Imagery collection has no JPEG tiles: $($collection.Source)"
+  }
+  [long]$collectionBytes = 0
+  foreach ($tile in $tiles) {
+    $collectionBytes += $tile.Length
+  }
+  Write-Host (
+    "Verifying imagery collection $BucketId/$($collection.Object) " +
+    "($($tiles.Count) files, $collectionBytes bytes)")
+  & node $CosUploader `
+    --env $EnvId `
+    --source $collection.Source `
+    --bucket $PhysicalBucket `
+    --region $Region `
+    --key "$BucketId/$($collection.Object)" `
+    --include-extension .jpg `
+    --concurrency 8
+  if ($LASTEXITCODE -ne 0) {
+    throw "CloudBase COS collection upload failed: $($collection.Object)"
+  }
+  $collectionEvidence += [ordered]@{
+    object_prefix = "$BucketId/$($collection.Object)"
+    files = $tiles.Count
+    bytes = $collectionBytes
+    format = 'image/jpeg'
+    upload_mode = 'cos-collection'
+  }
+}
 $ErrorActionPreference = 'Stop'
 
 $manifest = [ordered]@{
@@ -143,6 +195,7 @@ $manifest = [ordered]@{
   bucket = $BucketId
   uploaded_at = (Get-Date).ToUniversalTime().ToString('o')
   files = $evidence
+  collections = $collectionEvidence
 }
 $manifestPath = Join-Path $EvidenceDir 'data_upload.json'
 $manifest | ConvertTo-Json -Depth 5 |

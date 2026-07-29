@@ -9,12 +9,12 @@ ps-1k
 --texture-id
 ps-1k
 --texture-kind
-planar-single
+planar-tms
+--texture-manifest
+@TERRA_IMAGERY_ORIGIN@/terra/v1/imagery/ps-1k/manifest
 --texture-template
-/terra/v1/datasets/ps-1k/textures/ps-1k
---texture-file
-/mnt/terra-data/datasets/ps-1k/v1/texture/ps_texture_1k.png
+@TERRA_IMAGERY_ORIGIN@/terra/v1/imagery/ps-1k/{z}/{x}/{y}.jpg
 --texture-level-offset
 0
 --texture-max-level
-0
+2

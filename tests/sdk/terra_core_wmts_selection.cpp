@@ -65,6 +65,33 @@ int main() {
     return 1;
   }
 
+  const terra::core::planar_tms_selector planar(
+      bounds(0.0, 0.0, 1024.0, 1024.0), 256U, 1, 1, 0, 2);
+  if (!planar.is_valid()) {
+    return 1;
+  }
+  const terra::core::wmts_tile_key north_west =
+      planar.select_level(bounds(0.0, 768.0, 256.0, 1024.0), 2);
+  const terra::core::wmts_tile_key south_east_planar =
+      planar.select_level(bounds(768.0, 0.0, 1024.0, 256.0), 2);
+  expect_tile(north_west, 2, 2, 0, 0);
+  expect_tile(south_east_planar, 2, 2, 3, 3);
+  expect_tile(planar.select_clamped(
+                  bounds(0.0, 768.0, 256.0, 1024.0), 1024U),
+              2, 2, 0, 0);
+  const terra::core::bounds2d south_east_bounds =
+      planar.tile_bounds(south_east_planar);
+  if (south_east_bounds.minimum != terra::core::vector2d{{768.0, 0.0}} ||
+      south_east_bounds.maximum != terra::core::vector2d{{1024.0, 256.0}} ||
+      planar.select_level(bounds(-1.0, 0.0, 1.0, 1.0), 0).is_valid()) {
+    return 1;
+  }
+  const terra::core::planar_tms_selector invalid_planar(
+      bounds(0.0, 0.0, 0.0, 1024.0), 256U, 1, 1, 0, 2);
+  if (invalid_planar.is_valid()) {
+    return 1;
+  }
+
   const terra::core::global_geodetic_wmts_selector overflowing(
       std::numeric_limits<int>::max(), 1);
   if (overflowing.is_valid() ||

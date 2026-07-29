@@ -15,7 +15,7 @@ const MIN_TILT_RADIANS = -80 * DEGREES_TO_RADIANS
 const MAX_TILT_RADIANS = 0
 
 const ABI_LAYOUT = {
-  manifest: 80,
+  manifest: 128,
   viewport: 24,
   camera: 32,
   key: 16,
@@ -115,15 +115,19 @@ function manifestForImagerySource(rawManifest, source, expectedKind) {
     'Imagery source ID is required')
   common.invariant(typeof source.resolveTile === 'function',
     'Imagery source resolver is required')
-  common.invariant(!source.tileScheme || source.tileScheme === expectedKind,
-    `Imagery tile scheme must be ${expectedKind}`)
+  const expectedKinds = Array.isArray(expectedKind)
+    ? expectedKind : [expectedKind]
+  common.invariant(!source.tileScheme ||
+    expectedKinds.indexOf(source.tileScheme) >= 0,
+  `Imagery tile scheme must be ${expectedKinds.join(' or ')}`)
   const textures = Array.isArray(rawManifest.textures)
     ? rawManifest.textures : []
   const configuredTexture = source.texture &&
-    source.texture.kind === expectedKind ? source.texture : null
+    expectedKinds.indexOf(source.texture.kind) >= 0 ? source.texture : null
   const base = configuredTexture || textures.find((texture) => texture &&
-    texture.kind === expectedKind)
-  common.invariant(base, `Manifest has no ${expectedKind} texture descriptor`)
+    expectedKinds.indexOf(texture.kind) >= 0)
+  common.invariant(base,
+    `Manifest has no ${expectedKinds.join(' or ')} texture descriptor`)
   const texture = Object.assign({}, base, { id: source.id })
   if (source.matrixLevelOffset !== undefined) {
     common.invariant(Number.isInteger(source.matrixLevelOffset) &&
@@ -238,6 +242,17 @@ class TerraAbi {
       view.setUint32(pointer + 72,
         manifest.texture.matrix_level_offset, true)
       view.setUint32(pointer + 76, manifest.texture.maximum_level, true)
+      view.setUint32(pointer + 80, manifest.texture.tile_size, true)
+      view.setUint32(pointer + 84,
+        manifest.texture.level_zero_columns, true)
+      view.setUint32(pointer + 88,
+        manifest.texture.level_zero_rows, true)
+      view.setUint32(pointer + 92,
+        manifest.texture.minimum_level, true)
+      view.setFloat64(pointer + 96, manifest.texture.bounds[0][0], true)
+      view.setFloat64(pointer + 104, manifest.texture.bounds[0][1], true)
+      view.setFloat64(pointer + 112, manifest.texture.bounds[1][0], true)
+      view.setFloat64(pointer + 120, manifest.texture.bounds[1][1], true)
       requireStatus(this.module.call('terra_load_manifest', this.context, pointer),
         'terra_load_manifest')
     } finally {
@@ -1411,7 +1426,7 @@ class TerraPlanarRuntime extends TerraGlobeRuntime {
     if (imagery && typeof imagery.resolveTile === 'function') {
       this.textureUrlResolver = imagery.resolveTile
       return common.validatePlanarManifest(manifestForImagerySource(
-        rawManifest, imagery, 'planar-single'), imagery.id)
+        rawManifest, imagery, ['planar-tms', 'planar-single']), imagery.id)
     }
     this.textureUrlResolver = null
     return common.validatePlanarManifest(rawManifest, this.options.textureId)
@@ -1570,9 +1585,17 @@ class TerraPlanarRuntime extends TerraGlobeRuntime {
       return resolved
     }
     const endpoint = this.manifest.texture.url_template
-    return /^https:\/\//.test(endpoint)
-      ? endpoint
-      : common.joinServiceUrl(this.serviceOrigin, endpoint)
+    const expanded = this.manifest.texture.kind === 'planar-tms'
+      ? common.replaceTemplate(endpoint, {
+        z: tile.level,
+        x: tile.column,
+        y: tile.row
+      })
+      : endpoint
+    return /^https:\/\//.test(expanded) ||
+      /^http:\/\/(localhost|127\.0\.0\.1|\[::1\])/.test(expanded)
+      ? expanded
+      : common.joinServiceUrl(this.serviceOrigin, expanded)
   }
 
   state() {

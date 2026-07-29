@@ -58,6 +58,8 @@ namespace {
 
 constexpr std::size_t manifest_v1_base_size =
     offsetof(terra_manifest_v1, texture_matrix_level_offset);
+constexpr std::size_t manifest_v1_tiled_texture_size =
+    offsetof(terra_manifest_v1, texture_minimum_u);
 constexpr std::size_t frame_v1_base_size =
     offsetof(terra_frame_v1, draw_count);
 
@@ -320,6 +322,17 @@ terra_status build_render_buffers(
   const terra::core::global_geodetic_wmts_selector selector(
       static_cast<int>(context.manifest.texture_matrix_level_offset),
       static_cast<int>(context.manifest.texture_maximum_level));
+  const terra::core::bounds2d texture_bounds(
+      terra::core::vector2d{{context.manifest.texture_minimum_u,
+                             context.manifest.texture_minimum_v}},
+      terra::core::vector2d{{context.manifest.texture_maximum_u,
+                             context.manifest.texture_maximum_v}});
+  const terra::core::planar_tms_selector planar_texture_selector(
+      texture_bounds, context.manifest.texture_tile_size,
+      static_cast<int>(context.manifest.texture_level_zero_columns),
+      static_cast<int>(context.manifest.texture_level_zero_rows),
+      static_cast<int>(context.manifest.texture_matrix_level_offset),
+      static_cast<int>(context.manifest.texture_maximum_level));
   for (const terra::frame::lod_patch& patch : cut.patches) {
     if (!patch.visible) {
       continue;
@@ -345,6 +358,7 @@ terra_status build_render_buffers(
                                                context.manifest.minimum_v}},
                         terra::core::vector2d{{context.manifest.maximum_u,
                                                context.manifest.maximum_v}}),
+                    planar_texture_selector,
                     mesh)
               : terra::frame::make_cylindrical_patch_surface(
                     patch, fragment, height->second.fragments[fragment],
@@ -544,6 +558,29 @@ terra_status terra_load_manifest(terra_context* context,
   std::memcpy(&input, manifest,
               std::min<std::size_t>(manifest->struct_size, sizeof(input)));
   input.struct_size = sizeof(input);
+  if (manifest->struct_size < manifest_v1_tiled_texture_size ||
+      input.texture_tile_size == 0U) {
+    input.texture_tile_size = 256U;
+  }
+  if (input.texture_level_zero_columns == 0U) {
+    input.texture_level_zero_columns =
+        input.transform == TERRA_TRANSFORM_CYLINDRICAL ? 2U : 1U;
+  }
+  if (input.texture_level_zero_rows == 0U) {
+    input.texture_level_zero_rows = 1U;
+  }
+  if (manifest->struct_size < sizeof(terra_manifest_v1) ||
+      !std::isfinite(input.texture_minimum_u) ||
+      !std::isfinite(input.texture_minimum_v) ||
+      !std::isfinite(input.texture_maximum_u) ||
+      !std::isfinite(input.texture_maximum_v) ||
+      input.texture_minimum_u >= input.texture_maximum_u ||
+      input.texture_minimum_v >= input.texture_maximum_v) {
+    input.texture_minimum_u = input.minimum_u;
+    input.texture_minimum_v = input.minimum_v;
+    input.texture_maximum_u = input.maximum_u;
+    input.texture_maximum_v = input.maximum_v;
+  }
   if (input.api_version != TERRA_C_API_VERSION) {
     return fail(context, TERRA_STATUS_UNSUPPORTED,
                 "unsupported C API version");
@@ -554,9 +591,13 @@ terra_status terra_load_manifest(terra_context* context,
                 "unsupported coordinate transform");
   }
   if (input.texture_matrix_level_offset > 28U ||
-      input.texture_maximum_level > 28U) {
+      input.texture_maximum_level > 28U ||
+      input.texture_minimum_level != 0U ||
+      input.texture_tile_size > 16384U ||
+      input.texture_level_zero_columns > 1024U ||
+      input.texture_level_zero_rows > 1024U) {
     return fail(context, TERRA_STATUS_INVALID_ARGUMENT,
-                "invalid global-geodetic texture levels");
+                "invalid texture matrix descriptor");
   }
   TERRA_C_API_TRY {
     const terra::core::metadata_validation validation =

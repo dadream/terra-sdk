@@ -12,6 +12,9 @@
 - `SDK_MINIPROGRAM_ROADMAP.md`: staged SDK and mini-program delivery plan.
 - `SDK_RELEASE.md`: package surfaces, compatibility policy, release gate, and
   final manual acceptance handoff.
+- `SDK_PRODUCT_DEFINITION.md`: developer product positioning, SDK/service
+  boundary, default-provider offer, reference applications, licensing, and
+  product-release criteria.
 - `SDK_PRODUCTIZATION_PLAN.md`: lightweight SDK scope, budgets, camera
   interaction, ancestor imagery fallback, basic POI/single-route support, and
   Mini Program business UI boundaries.
@@ -31,8 +34,9 @@
 - `cloudbase/STORAGE_SMOKE_TEST.md`: verified PG cloud-storage upload,
   metadata, download, SHA-256 evidence, and the verified Run mount contract.
 - `cloudbase/DEPLOYMENT_ARCHITECTURE.md`: three-service CloudBase Run
-  architecture, versioned terrain storage, and one-year persistent Tianditu
-  imagery cache design.
+  architecture, versioned terrain and imagery storage, and persistent cache.
+- `cloudbase/IMAGERY_SERVICE.md`: unified PS 1k, Blue Marble, and Tianditu
+  imagery HTTP contract, COS layout, deployment, and acceptance procedure.
 - `cloudbase/MINIPROGRAM_ACCEPTANCE.md`: DevTools planar/globe manual
   acceptance, interaction, imagery refresh, evidence, and security checks.
 

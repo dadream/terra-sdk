@@ -45,7 +45,7 @@ foreach ($service in $deployment.services) {
   $services[$service.name] = $service
 }
 foreach ($required in @(
-  'terra-terrain-1k', 'terra-terrain-globe', 'terra-tianditu-proxy')) {
+  'terra-terrain-1k', 'terra-terrain-globe', 'terra-imagery')) {
   if (-not $services.ContainsKey($required)) {
     throw "Missing deployed service: $required"
   }
@@ -65,6 +65,38 @@ $globeManifest = Invoke-RestMethod -TimeoutSec 60 -Uri (
 if ($globeManifest.dataset_id -ne 'globe' -or
     $globeManifest.transform.kind -ne 'cylindrical') {
   throw 'Globe manifest contract mismatch.'
+}
+
+$imageryOrigin = $services['terra-imagery'].domain
+$planarImageryManifest = Invoke-RestMethod -TimeoutSec 60 -Uri (
+  "$imageryOrigin/terra/v1/imagery/ps-1k/manifest")
+$blueMarbleManifest = Invoke-RestMethod -TimeoutSec 60 -Uri (
+  "$imageryOrigin/terra/v1/imagery/blue-marble/manifest")
+$tiandituManifest = Invoke-RestMethod -TimeoutSec 60 -Uri (
+  "$imageryOrigin/terra/v1/imagery/tianditu-img-c/manifest")
+if ($planarImageryManifest.schema -ne 'terra.imagery-manifest' -or
+    $planarImageryManifest.kind -ne 'planar-tms' -or
+    $planarImageryManifest.matrix.maximum_level -ne 2) {
+  throw 'Planar imagery manifest contract mismatch.'
+}
+if ($blueMarbleManifest.kind -ne 'global-geodetic' -or
+    $blueMarbleManifest.matrix.maximum_level -ne 7 -or
+    $blueMarbleManifest.matrix.matrix_level_offset -ne 0) {
+  throw 'Blue Marble imagery manifest contract mismatch.'
+}
+if ($tiandituManifest.kind -ne 'global-geodetic' -or
+    $tiandituManifest.matrix.matrix_level_offset -ne 1) {
+  throw 'Tianditu imagery manifest contract mismatch.'
+}
+if ($planarManifest.textures[0].kind -ne 'planar-tms' -or
+    $planarManifest.textures[0].manifest_url -ne
+      "$imageryOrigin/terra/v1/imagery/ps-1k/manifest") {
+  throw 'Planar terrain manifest is not linked to the imagery service.'
+}
+if ($globeManifest.textures[0].id -ne 'blue-marble' -or
+    $globeManifest.textures[0].manifest_url -ne
+      "$imageryOrigin/terra/v1/imagery/blue-marble/manifest") {
+  throw 'Globe terrain manifest is not linked to Blue Marble imagery.'
 }
 
 $planarPatchPath = Join-Path ([IO.Path]::GetTempPath()) (
@@ -96,33 +128,50 @@ try {
   }
 }
 
-$tileUrl = "$($services['terra-tianditu-proxy'].domain)" +
-  '/terra/v1/imagery/tianditu/img-c/3/13/2.jpg'
-$tilePath = Join-Path ([IO.Path]::GetTempPath()) (
-  'terra-tianditu-' + [Guid]::NewGuid().ToString('N') + '.jpg')
-try {
-  $firstTile = Invoke-WebRequest -UseBasicParsing -TimeoutSec 60 `
-    -Uri $tileUrl -OutFile $tilePath -PassThru
-  $bytes = [IO.File]::ReadAllBytes($tilePath)
-  $secondTile = Invoke-WebRequest -UseBasicParsing -TimeoutSec 60 -Uri $tileUrl
-  if ($firstTile.StatusCode -ne 200 -or $secondTile.StatusCode -ne 200) {
-    throw 'Tianditu proxy tile request failed.'
+$imageChecks = @(
+  @{
+    Id = 'ps-1k'
+    Url = "$imageryOrigin/terra/v1/imagery/ps-1k/2/3/0.jpg"
+  },
+  @{
+    Id = 'blue-marble'
+    Url = "$imageryOrigin/terra/v1/imagery/blue-marble/7/210/35.jpg"
+  },
+  @{
+    Id = 'tianditu-img-c'
+    Url = "$imageryOrigin/terra/v1/imagery/tianditu/img-c/3/13/2.jpg"
   }
-  if ($firstTile.Headers['Content-Type'] -notmatch '^image/jpeg' -or
-      $bytes.Length -lt 4) {
-    throw 'Tianditu proxy did not return a JPEG.'
+)
+$imageryEvidence = @()
+foreach ($check in $imageChecks) {
+  $tilePath = Join-Path ([IO.Path]::GetTempPath()) (
+    'terra-imagery-' + [Guid]::NewGuid().ToString('N') + '.jpg')
+  try {
+    $response = Invoke-WebRequest -UseBasicParsing -TimeoutSec 60 `
+      -Uri $check.Url -OutFile $tilePath -PassThru
+    $bytes = [IO.File]::ReadAllBytes($tilePath)
+    if ($response.StatusCode -ne 200 -or
+        $response.Headers['Content-Type'] -notmatch '^image/jpeg' -or
+        $bytes.Length -lt 4 -or $bytes[0] -ne 0xff -or
+        $bytes[1] -ne 0xd8 -or $bytes[2] -ne 0xff) {
+      throw "$($check.Id) imagery tile is not a valid JPEG."
+    }
+    $imageryEvidence += [ordered]@{
+      id = $check.Id
+      bytes = $bytes.Length
+      cache = $response.Headers['X-Terra-Cache']
+    }
+  } finally {
+    if (Test-Path -LiteralPath $tilePath) {
+      Remove-Item -LiteralPath $tilePath -Force
+    }
   }
-  if ($secondTile.Headers['X-Terra-Cache'] -notmatch '^HIT') {
-    throw 'Tianditu proxy second request was not a cache hit.'
-  }
-  if ($bytes[0] -ne 0xff -or $bytes[1] -ne 0xd8 -or
-      $bytes[2] -ne 0xff) {
-    throw 'Tianditu proxy JPEG signature is invalid.'
-  }
-} finally {
-  if (Test-Path -LiteralPath $tilePath) {
-    Remove-Item -LiteralPath $tilePath -Force
-  }
+}
+$tiandituSecond = Invoke-WebRequest -UseBasicParsing -TimeoutSec 60 `
+  -Uri $imageChecks[2].Url
+if ($tiandituSecond.StatusCode -ne 200 -or
+    $tiandituSecond.Headers['X-Terra-Cache'] -notmatch '^HIT') {
+  throw 'Tianditu second request was not served from cache.'
 }
 
 $result = [ordered]@{
@@ -133,10 +182,11 @@ $result = [ordered]@{
   globe_transform = $globeManifest.transform
   planar_patch_bytes = $planarPatchBytes.Length
   globe_beijing_patch_bytes = $globePatchBytes.Length
-  imagery_content_type = $firstTile.Headers['Content-Type']
-  imagery_first_cache = $firstTile.Headers['X-Terra-Cache']
-  imagery_second_cache = $secondTile.Headers['X-Terra-Cache']
-  imagery_bytes = $bytes.Length
+  planar_imagery = $planarImageryManifest
+  blue_marble_imagery = $blueMarbleManifest
+  tianditu_imagery = $tiandituManifest
+  imagery_tiles = $imageryEvidence
+  tianditu_second_cache = $tiandituSecond.Headers['X-Terra-Cache']
 }
 $evidenceDir = Join-Path $RepoRoot 'viewer_verify_output\cloudbase'
 $resultPath = Join-Path $evidenceDir 'verification.json'

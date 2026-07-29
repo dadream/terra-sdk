@@ -4,10 +4,30 @@ const profiles = require('../../apps/miniprogram/utils/terra_imagery_profiles')
 
 function main() {
   const token = '0123456789abcdef0123456789abcdef'
+  const origin = 'https://terra-imagery.example.com'
+  const planar = profiles.resolvePlanarImageryProfile(origin)
+  assert.strictEqual(planar.tileScheme, 'planar-tms')
+  assert.strictEqual(planar.texture.maximum_level, 2)
+  assert.strictEqual(planar.urlForTile({
+    level: 2,
+    matrix: 2,
+    row: 1,
+    column: 3
+  }), origin + '/terra/v1/imagery/ps-1k/2/3/1.jpg')
+
   const blue = profiles.resolveImageryProfile('blue-marble', '', 'blue-marble')
   assert.strictEqual(blue.textureId, 'blue-marble')
   assert.strictEqual(blue.texture, null)
   assert.strictEqual(blue.attribution, '')
+  const hostedBlue = profiles.resolveImageryProfile(
+    'blue-marble', '', 'blue-marble', origin)
+  assert.strictEqual(hostedBlue.texture.maximum_level, 7)
+  assert.strictEqual(hostedBlue.urlForTile({
+    level: 7,
+    matrix: 7,
+    row: 63,
+    column: 128
+  }), origin + '/terra/v1/imagery/blue-marble/7/128/63.jpg')
 
   const tianditu = profiles.resolveImageryProfile('tianditu-img-c', token)
   assert.strictEqual(tianditu.texture.matrix_level_offset, 1)
@@ -28,13 +48,13 @@ function main() {
     column: 1
   }).indexOf('https://t1.tianditu.gov.cn/'), 0)
   const proxied = profiles.resolveImageryProfile(
-    'tianditu-img-c', '', '', 'https://terra-tianditu.example.com')
+    'tianditu-img-c', '', '', origin)
   assert.strictEqual(proxied.urlForTile({
     level: 2,
     matrix: 3,
     row: 1,
     column: 3
-  }), 'https://terra-tianditu.example.com/terra/v1/imagery/tianditu/' +
+  }), origin + '/terra/v1/imagery/tianditu/' +
     'img-c/2/3/1.jpg')
   assert.throws(() => profiles.resolveImageryProfile(
     'tianditu-img-c', '', '', 'http://terra-tianditu.example.com'),

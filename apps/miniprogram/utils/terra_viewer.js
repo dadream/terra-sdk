@@ -336,10 +336,11 @@ class TerraViewer {
     common.invariant(source && typeof source.id === 'string' &&
       source.id.length > 0 && typeof source.resolveTile === 'function',
     'Imagery source ID and resolver are required')
-    const expectedScheme = this.mode === 'globe'
-      ? 'global-geodetic' : 'planar-single'
-    common.invariant(!source.tileScheme || source.tileScheme === expectedScheme,
-      `Imagery tile scheme must be ${expectedScheme}`)
+    const expectedSchemes = this.mode === 'globe'
+      ? ['global-geodetic'] : ['planar-tms', 'planar-single']
+    common.invariant(!source.tileScheme ||
+      expectedSchemes.indexOf(source.tileScheme) >= 0,
+    'Imagery tile scheme is incompatible with viewer mode')
     const maximumLevel = source.maximumLevel === undefined
       ? this.runtime.manifest.texture.maximum_level : source.maximumLevel
     const minimumLevel = source.minimumLevel === undefined
@@ -354,9 +355,9 @@ class TerraViewer {
     common.invariant(Number.isInteger(matrixLevelOffset) &&
       matrixLevelOffset >= 0 && matrixLevelOffset <= 28,
     'Imagery matrix level offset is invalid')
-    if (this.mode === 'planar') {
+    if (this.mode === 'planar' && source.tileScheme === 'planar-single') {
       common.invariant(minimumLevel === 0 && maximumLevel === 0,
-        'Planar imagery only supports level zero')
+        'Planar single imagery only supports level zero')
     }
     this.imagerySource = {
       id: source.id,
@@ -366,6 +367,9 @@ class TerraViewer {
     this.runtime.textureUrlResolver = source.resolveTile
     this.runtime.manifest.texture.id = source.id
     this.runtime.manifest.texture.matrix_level_offset = matrixLevelOffset
+    if (source.tileScheme) {
+      this.runtime.manifest.texture.kind = source.tileScheme
+    }
     this.runtime.manifest.texture.maximum_level = maximumLevel
     if (this.runtime.renderer && this.runtime.renderer.textures) {
       this.runtime.renderer.textures.clear()

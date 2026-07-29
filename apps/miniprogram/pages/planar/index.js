@@ -1,4 +1,5 @@
 const runtimeConfig = require('../../config/runtime')
+const imageryProfiles = require('../../utils/terra_imagery_profiles')
 const { TerraViewer } = require('../../utils/terra_viewer')
 const { createCloudbaseRequest } = require(
   '../../utils/terra_cloudbase_transport')
@@ -97,6 +98,11 @@ Page({
       if (!serviceOrigin) {
         throw new Error('Planar service origin is not configured')
       }
+      const imageryOrigin =
+        wx.getStorageSync('terra.imageryServiceOrigin') ||
+        runtimeConfig.imageryServiceOrigin
+      const imagery = imageryProfiles.resolvePlanarImageryProfile(
+        imageryOrigin)
       const viewer = await TerraViewer.create({
         mode: 'planar',
         canvas,
@@ -104,6 +110,7 @@ Page({
         request,
         manifestPath: runtimeConfig.planarManifestPath,
         textureId: runtimeConfig.planarTextureId,
+        imagery,
         planarLevel: runtimeConfig.planarLevel,
         viewport: viewport(width, height),
         onState: (state) => this.updateState(state),

@@ -51,6 +51,14 @@ typedef struct terra_manifest_v1 {
   double radius;
   uint32_t texture_matrix_level_offset;
   uint32_t texture_maximum_level;
+  uint32_t texture_tile_size;
+  uint32_t texture_level_zero_columns;
+  uint32_t texture_level_zero_rows;
+  uint32_t texture_minimum_level;
+  double texture_minimum_u;
+  double texture_minimum_v;
+  double texture_maximum_u;
+  double texture_maximum_v;
 } terra_manifest_v1;
 
 typedef struct terra_viewport_v1 {

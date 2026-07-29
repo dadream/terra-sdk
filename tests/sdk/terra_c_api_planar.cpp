@@ -81,6 +81,14 @@ terra_manifest_v1 planar_manifest() {
   manifest.radius = 0.0;
   manifest.texture_matrix_level_offset = 0U;
   manifest.texture_maximum_level = 0U;
+  manifest.texture_tile_size = 256U;
+  manifest.texture_level_zero_columns = 1U;
+  manifest.texture_level_zero_rows = 1U;
+  manifest.texture_minimum_level = 0U;
+  manifest.texture_minimum_u = 0.0;
+  manifest.texture_minimum_v = 0.0;
+  manifest.texture_maximum_u = 1025.0;
+  manifest.texture_maximum_v = 1025.0;
   return manifest;
 }
 

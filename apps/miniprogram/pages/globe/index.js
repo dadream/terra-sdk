@@ -129,7 +129,8 @@ Page({
           runtimeConfig.imageryProfile,
         wx.getStorageSync(imageryProfiles.TIANDITU_TOKEN_STORAGE_KEY),
         runtimeConfig.textureId,
-        runtimeConfig.tiandituProxyOrigin)
+        wx.getStorageSync('terra.imageryServiceOrigin') ||
+          runtimeConfig.imageryServiceOrigin)
       const viewer = await TerraViewer.create({
         mode: 'globe',
         canvas,
