@@ -17,6 +17,7 @@ if ([string]::IsNullOrWhiteSpace($RepoRoot)) {
 }
 $EvidenceDir = Join-Path $RepoRoot 'viewer_verify_output\cloudbase'
 $StagingRoot = Join-Path $EvidenceDir 'staging'
+$TcbJsonHelper = Join-Path $RepoRoot 'scripts\invoke_tcb_json.js'
 $token = $env:TERRA_TIANDITU_TOKEN
 if ([string]::IsNullOrWhiteSpace($token)) {
   throw 'Set TERRA_TIANDITU_TOKEN before deploying the imagery service.'
@@ -33,24 +34,32 @@ if ($StorageKeyId -notmatch '^[A-Za-z][A-Za-z0-9_-]{0,127}$') {
 
 function Invoke-TcbJson {
   param([string[]]$Arguments)
+  if (-not (Test-Path -LiteralPath $TcbJsonHelper -PathType Leaf)) {
+    throw "Missing CloudBase JSON helper: $TcbJsonHelper"
+  }
+  $nodeCommand = (Get-Command node.exe -ErrorAction Stop).Source
   $nativeArguments = @()
+  $body = ''
   for ($index = 0; $index -lt $Arguments.Count; $index++) {
     if ($Arguments[$index] -eq '--body') {
       if ($index + 1 -ge $Arguments.Count) {
         throw 'Missing value after --body.'
       }
-      $escapedBody = $Arguments[$index + 1] -replace '"', '\"'
-      $nativeArguments += "--body=$escapedBody"
+      $body = $Arguments[$index + 1]
       $index++
-    } else {
-      $nativeArguments += $Arguments[$index]
+      continue
     }
+    $nativeArguments += $Arguments[$index]
   }
 
   $previousPreference = $ErrorActionPreference
   try {
     $ErrorActionPreference = 'Continue'
-    $text = (& tcb @nativeArguments --json 2>$null | Out-String).Trim()
+    $text = (
+      $body |
+        & $nodeCommand $TcbJsonHelper @nativeArguments 2>$null |
+        Out-String
+    ).Trim()
     $exitCode = $LASTEXITCODE
   } finally {
     $ErrorActionPreference = $previousPreference
