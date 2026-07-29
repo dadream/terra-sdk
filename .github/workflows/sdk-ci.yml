@@ -17,6 +17,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The desktop oracle verifies that its baseline commit is an ancestor.
+          fetch-depth: 0
 
       - name: Build canonical native image
         run: bash scripts/build_docker_image.sh
