@@ -95,6 +95,14 @@ function Get-DeploymentRecords {
     '--api-version', '2022-02-17', '--body', $body)
 }
 
+function Test-ServiceExists {
+  param([string]$ServiceName)
+  $response = Invoke-TcbJson @('-e', $EnvId, 'cloudrun', 'list')
+  $names = @(
+    $response.data.ServerList | ForEach-Object { $_.ServerName })
+  return $names -contains $ServiceName
+}
+
 function Wait-DeploymentImage {
   param(
     [string]$ServiceName,
@@ -114,7 +122,7 @@ function Wait-DeploymentImage {
       continue
     }
     $lastStatus = $record.Status
-    if ($record.Status -in @('normal', 'running') -and
+    if ($record.Status -in @('normal', 'running', 'deploy_failed') -and
         -not [string]::IsNullOrWhiteSpace($record.ImageUrl)) {
       return $record
     }
@@ -236,9 +244,12 @@ function Update-ServiceConfig {
 function Deploy-Source {
   param([string]$ServiceName, [string]$Source)
   Write-Host "Building $ServiceName source image"
-  $previous = Get-DeploymentRecords $ServiceName
-  $previousRunIds = @(
-    $previous.data.DeployRecords | ForEach-Object { $_.RunId })
+  $previousRunIds = @()
+  if (Test-ServiceExists $ServiceName) {
+    $previous = Get-DeploymentRecords $ServiceName
+    $previousRunIds = @(
+      $previous.data.DeployRecords | ForEach-Object { $_.RunId })
+  }
   $previousPreference = $ErrorActionPreference
   try {
     $ErrorActionPreference = 'Continue'
@@ -261,6 +272,11 @@ function Deploy-Source {
   Write-Host (
     "$ServiceName image ready: status=$($record.Status), " +
     "build=$($record.BuildId)")
+  if ($record.Status -eq 'deploy_failed') {
+    Write-Host (
+      "$ServiceName bootstrap container did not start before its runtime " +
+      'mounts and environment were applied; publishing the built image.')
+  }
 
   if ($record.IsReleasing -eq $true) {
     Write-Host "Closing $ServiceName source-build canary"
