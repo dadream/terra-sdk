@@ -381,23 +381,24 @@ try {
     SrcPath = '/terra-testdata'
     ReadOnly = $true
   })
-  $imageryVolumes = @($terrainVolume[0])
-  $imageryVolumes += @{
+  # Mount the bucket once for imagery. CloudBase/cosfs does not reliably
+  # expose two prefixes from the same bucket as independent volumes.
+  $imageryVolumes = @(@{
     Type = 'COS'
     BucketName = $PhysicalBucket
     Endpoint = $endpoint
     KeyID = $StorageKeyId
-    DstPath = '/mnt/terra-cache'
-    SrcPath = '/terra-tianditu-cache'
+    DstPath = '/mnt/terra-cos'
+    SrcPath = '/'
     ReadOnly = $false
-  }
+  })
 
   $details = @{}
   $details['terra-imagery'] = Update-ServiceConfig `
     'terra-imagery' $images['terra-imagery'] $imageryVolumes @{
       TIANDITU_TOKEN = $token
-      DATA_ROOT = '/mnt/terra-data'
-      CACHE_ROOT = '/mnt/terra-cache'
+      DATA_ROOT = '/mnt/terra-cos/terra-testdata'
+      CACHE_ROOT = '/mnt/terra-cos/terra-tianditu-cache'
       HOST = '0.0.0.0'
       PORT = '8080'
     }

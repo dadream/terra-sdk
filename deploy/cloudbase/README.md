@@ -80,9 +80,11 @@ for the DevTools planar/globe visual acceptance sequence and required evidence.
 
 Generated binaries, upload manifests, deployment details, and verification
 evidence stay under `viewer_verify_output/cloudbase/`. Terrain data is mounted
-read-only from `/terra-testdata`. `terra-imagery` mounts that prefix read-only
-at `/mnt/terra-data` and mounts `/terra-tianditu-cache` read-write at
-`/mnt/terra-cache`. Versioned imagery uses these physical COS keys:
+read-only from `/terra-testdata`. `terra-imagery` mounts the COS bucket once at
+`/mnt/terra-cos`; `DATA_ROOT` selects `/mnt/terra-cos/terra-testdata` and
+`CACHE_ROOT` selects `/mnt/terra-cos/terra-tianditu-cache`. The resource
+connection's CAM policy keeps test data read-only and permits writes only under
+the cache prefix. Versioned imagery uses these physical COS keys:
 
 ```text
 terra-testdata/datasets/ps-1k/v1/imagery/ps-1k/00..02/...

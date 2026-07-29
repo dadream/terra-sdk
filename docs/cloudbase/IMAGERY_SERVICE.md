@@ -40,12 +40,17 @@ VicTMS files use bottom-origin rows, so the service performs
 
 ## Storage Layout
 
-The imagery service receives two COS mounts:
+The imagery service mounts the physical COS bucket once:
 
 ```text
-/terra-testdata       -> /mnt/terra-data  (read-only)
-/terra-tianditu-cache -> /mnt/terra-cache (read-write)
+/ -> /mnt/terra-cos
+DATA_ROOT  = /mnt/terra-cos/terra-testdata
+CACHE_ROOT = /mnt/terra-cos/terra-tianditu-cache
 ```
+
+A single mount avoids duplicate cosfs mounts of the same bucket. The resource
+connection's CAM policy denies writes under `terra-testdata` and allows them
+only under `terra-tianditu-cache`.
 
 Static collections are immutable and versioned:
 
