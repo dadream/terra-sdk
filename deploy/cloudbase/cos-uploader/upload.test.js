@@ -3,6 +3,8 @@
 const assert = require('node:assert/strict')
 const test = require('node:test')
 const {
+  collectionDirectories,
+  directoryMarkerKey,
   isTransientCosError,
   retryCollectionOperation
 } = require('./upload')
@@ -49,3 +51,23 @@ test('does not retry a permanent failure and includes the object key',
       /tiles\/1\/2\/3\.jpg: access denied/)
     assert.equal(attempts, 1)
   })
+
+test('builds COS directory markers for every collection parent', () => {
+  const directories = collectionDirectories([
+    { relative: '02/0000/0003/0000/0003.jpg' },
+    { relative: '02/0000/0002/0000/0001.jpg' }
+  ])
+  assert.deepEqual(directories, [
+    '',
+    '02',
+    '02/0000',
+    '02/0000/0002',
+    '02/0000/0002/0000',
+    '02/0000/0003',
+    '02/0000/0003/0000'
+  ])
+  assert.equal(directoryMarkerKey('datasets/imagery', ''),
+    'datasets/imagery/')
+  assert.equal(directoryMarkerKey('datasets/imagery', '02/0000'),
+    'datasets/imagery/02/0000/')
+})

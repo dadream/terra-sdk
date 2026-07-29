@@ -214,6 +214,22 @@ function collectionFiles(root, extension) {
   return result
 }
 
+function collectionDirectories(files) {
+  const directories = new Set([''])
+  for (const source of files) {
+    let directory = path.posix.dirname(source.relative)
+    while (directory !== '.') {
+      directories.add(directory)
+      directory = path.posix.dirname(directory)
+    }
+  }
+  return Array.from(directories).sort()
+}
+
+function directoryMarkerKey(prefix, directory) {
+  return directory ? `${prefix}/${directory}/` : `${prefix}/`
+}
+
 async function uploadCollectionFileOnce(cos, options, source, key) {
   const object = {
     Bucket: options.bucket,
@@ -252,6 +268,41 @@ async function uploadCollectionFile(cos, options, source, key) {
     () => uploadCollectionFileOnce(cos, options, source, key), key)
 }
 
+async function uploadDirectoryMarkerOnce(cos, options, key) {
+  const object = {
+    Bucket: options.bucket,
+    Region: options.region,
+    Key: key
+  }
+  try {
+    const existing = await callCos(cos, 'headObject', object)
+    if (contentLength(existing) === 0) {
+      return false
+    }
+    throw new Error(`directory marker is not empty: ${key}`)
+  } catch (error) {
+    if (Number(error.statusCode) !== 404) {
+      throw error
+    }
+  }
+  await callCos(cos, 'putObject', {
+    ...object,
+    Body: Buffer.alloc(0),
+    ContentLength: 0,
+    ContentType: 'application/x-directory'
+  })
+  const uploaded = await callCos(cos, 'headObject', object)
+  if (contentLength(uploaded) !== 0) {
+    throw new Error(`uploaded directory marker is not empty: ${key}`)
+  }
+  return true
+}
+
+async function uploadDirectoryMarker(cos, options, key) {
+  return retryCollectionOperation(
+    () => uploadDirectoryMarkerOnce(cos, options, key), key)
+}
+
 async function uploadCollection(cos, options, root) {
   const files = collectionFiles(root, options['include-extension'])
   const requestedConcurrency = Number(options.concurrency || 8)
@@ -260,6 +311,26 @@ async function uploadCollection(cos, options, root) {
   }
   const concurrency = Math.min(32, requestedConcurrency)
   const prefix = options.key.replace(/\/+$/, '')
+  const directories = collectionDirectories(files)
+  let directoryCursor = 0
+  let markersUploaded = 0
+  let markersVerified = 0
+  async function directoryWorker() {
+    while (directoryCursor < directories.length) {
+      const directory = directories[directoryCursor++]
+      const changed = await uploadDirectoryMarker(
+        cos, options, directoryMarkerKey(prefix, directory))
+      markersUploaded += changed ? 1 : 0
+      markersVerified += changed ? 0 : 1
+    }
+  }
+  await Promise.all(Array.from({
+    length: Math.min(concurrency, directories.length)
+  }, () => directoryWorker()))
+  console.log(
+    `[ok] directory markers ${options.key} count=${directories.length} ` +
+    `uploaded=${markersUploaded} verified=${markersVerified}`)
+
   let cursor = 0
   let uploaded = 0
   let verified = 0
@@ -371,6 +442,8 @@ if (require.main === module) {
 }
 
 module.exports = {
+  collectionDirectories,
+  directoryMarkerKey,
   isTransientCosError,
   retryCollectionOperation
 }
