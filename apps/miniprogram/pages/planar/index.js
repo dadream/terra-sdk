@@ -1,5 +1,7 @@
 const runtimeConfig = require('../../config/runtime')
 const { TerraViewer } = require('../../utils/terra_viewer')
+const { createCloudbaseRequest } = require(
+  '../../utils/terra_cloudbase_transport')
 const { TerraMiniProgramInteractionAdapter } = require(
   '../../utils/terra_miniprogram_interaction')
 
@@ -80,9 +82,18 @@ Page({
 
   async initialize(canvas, width, height, token) {
     try {
-      const serviceOrigin =
+      let serviceOrigin =
         wx.getStorageSync('terra.planarServiceOrigin') ||
         runtimeConfig.planarServiceOrigin || runtimeConfig.terrainServiceOrigin
+      let request = null
+      if (!serviceOrigin && runtimeConfig.cloudbaseEnvId &&
+        runtimeConfig.cloudbasePlanarTerrainService) {
+        serviceOrigin = 'https://cloudbase.invalid'
+        request = createCloudbaseRequest({
+          envId: runtimeConfig.cloudbaseEnvId,
+          serviceName: runtimeConfig.cloudbasePlanarTerrainService
+        })
+      }
       if (!serviceOrigin) {
         throw new Error('Planar service origin is not configured')
       }
@@ -90,6 +101,7 @@ Page({
         mode: 'planar',
         canvas,
         serviceOrigin,
+        request,
         manifestPath: runtimeConfig.planarManifestPath,
         textureId: runtimeConfig.planarTextureId,
         planarLevel: runtimeConfig.planarLevel,

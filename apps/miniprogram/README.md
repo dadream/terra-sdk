@@ -39,13 +39,26 @@ bash scripts/verify_miniprogram_wasm.sh
 bash scripts/stage_miniprogram_globe.sh
 ```
 
-Set `terra.terrainServiceOrigin` in local storage to an HTTPS terrain-service
-origin registered in the Mini Program request-domain allowlist. The manifest's
-imagery host must also be registered. The checked-in runtime configuration has
-no deployment URL or credential. See `docs/miniprogram/GLOBE_RUNTIME.md` for
-the controls, cache/retry behavior, and required device evidence.
+The checked-in test configuration uses CloudBase environment
+`shunlu-api-test-d9fvhxfy3199a35a`:
 
-For an authorized Tianditu img_c run, set the local profile and frontend
-credential described in docs/miniprogram/GLOBE_RUNTIME.md. The default remains
-credential-free Blue Marble; do not put either frontend or service credentials
-in tracked configuration.
+- planar terrain calls `terra-terrain-1k` through
+  `wx.cloud.callContainer`;
+- globe terrain calls `terra-terrain-globe` through
+  `wx.cloud.callContainer`;
+- Tianditu imagery loads from the public HTTPS endpoint of
+  `terra-tianditu-proxy`.
+
+The proxy domain is configuration, not a credential. The Tianditu token remains
+only in the proxy service environment and must not be stored in the Mini
+Program. Before real-device or release validation, add the proxy HTTPS domain
+to the Mini Program network-domain configuration required for
+`canvas.createImage`.
+
+Local origins still take precedence when
+`terra.terrainServiceOrigin` or `terra.planarServiceOrigin` is set in
+storage. Remove those keys to exercise CloudBase. See
+`docs/miniprogram/GLOBE_RUNTIME.md` for controls, cache/retry behavior, and
+required device evidence. Follow
+`docs/cloudbase/MINIPROGRAM_ACCEPTANCE.md` for the complete planar/globe
+CloudBase manual acceptance checklist.

@@ -122,6 +122,12 @@ set +e
     -v "${ROOT_DIR}:/workspace" \
     -w /workspace \
     "${WASM_IMAGE}" \
+    node tests/miniprogram/terra_cloudbase_transport_test.js
+
+  docker run --rm \
+    -v "${ROOT_DIR}:/workspace" \
+    -w /workspace \
+    "${WASM_IMAGE}" \
     node tests/miniprogram/terra_webgl_renderer_test.js
 
   docker run --rm \

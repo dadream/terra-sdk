@@ -26,6 +26,16 @@
 - `miniprogram/CAPABILITY_PROBE.md`: final Mini Program environment acceptance.
 - `GLOBE_VERIFICATION.md`: spherical terrain and Tianditu WMTS verification.
 
+## CloudBase Deployment
+
+- `cloudbase/STORAGE_SMOKE_TEST.md`: verified PG cloud-storage upload,
+  metadata, download, SHA-256 evidence, and the verified Run mount contract.
+- `cloudbase/DEPLOYMENT_ARCHITECTURE.md`: three-service CloudBase Run
+  architecture, versioned terrain storage, and one-year persistent Tianditu
+  imagery cache design.
+- `cloudbase/MINIPROGRAM_ACCEPTANCE.md`: DevTools planar/globe manual
+  acceptance, interaction, imagery refresh, evidence, and security checks.
+
 ## Viewer Baseline
 
 - `VIEWER_BASELINE_SPEC.md`: deterministic viewer verification contract.

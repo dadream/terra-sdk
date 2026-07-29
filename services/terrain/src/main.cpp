@@ -50,13 +50,42 @@ bool parse_int(const std::string& value, int minimum, int maximum,
   return true;
 }
 
+bool valid_dataset_id(const std::string& value) {
+  if (value.empty()) {
+    return false;
+  }
+  for (const char character : value) {
+    const bool alpha_numeric =
+        (character >= 'a' && character <= 'z') ||
+        (character >= 'A' && character <= 'Z') ||
+        (character >= '0' && character <= '9');
+    if (!alpha_numeric && character != '-' &&
+        character != '_' && character != '.') {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool apply_cloud_environment(options& result) {
+  const char* port = std::getenv("PORT");
+  if (!port || !*port) {
+    return true;
+  }
+  if (!parse_int(port, 1, 65535, result.port)) {
+    return false;
+  }
+  result.bind_address = "0.0.0.0";
+  return true;
+}
+
 void print_usage(const char* program) {
   std::cerr
       << "Usage: " << program
       << " --dataset-id ID --terrain BASE [options]\n"
       << "Options:\n"
       << "  --bind ADDRESS             IPv4 address (default 127.0.0.1)\n"
-      << "  --port PORT                TCP port (default 18081)\n"
+      << "  --port PORT                TCP port (default 18081 or PORT env)\n"
       << "  --min-level LEVEL          Dataset minimum level\n"
       << "  --max-level LEVEL          Dataset maximum level\n"
       << "  --max-requests COUNT       Exit after COUNT requests; 0 is unlimited\n"
@@ -153,7 +182,8 @@ bool parse_options(int argc, char** argv, options& result) {
       return false;
     }
   }
-  return !result.dataset_id.empty() && !result.terrain_base_path.empty();
+  return valid_dataset_id(result.dataset_id) &&
+         !result.terrain_base_path.empty();
 }
 
 std::string trim(const std::string& value) {
@@ -264,11 +294,25 @@ bool send_response(int socket, const terra::service::http_response& response) {
          send_all(socket, response.body.data(), response.body.size());
 }
 
+terra::service::http_response health_response(const std::string& dataset_id) {
+  terra::service::http_response response;
+  response.status = 200;
+  response.content_type = "application/json";
+  const std::string body =
+      "{\"status\":\"ok\",\"dataset\":\"" + dataset_id + "\"}\n";
+  response.body.assign(body.begin(), body.end());
+  response.headers.emplace_back("Cache-Control", "no-store");
+  response.headers.emplace_back("Content-Length",
+                                std::to_string(response.body.size()));
+  return response;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
   options parsed;
-  if (!parse_options(argc, argv, parsed)) {
+  if (!apply_cloud_environment(parsed) ||
+      !parse_options(argc, argv, parsed)) {
     print_usage(argv[0]);
     return 2;
   }
@@ -336,6 +380,8 @@ int main(int argc, char** argv) {
   std::cout.flush();
 
   int request_count = 0;
+  int client_error_count = 0;
+  int error_count = 0;
   while (!stop_requested &&
          (parsed.maximum_requests == 0 ||
           request_count < parsed.maximum_requests)) {
@@ -359,7 +405,12 @@ int main(int argc, char** argv) {
     terra::service::http_request request;
     terra::service::http_response response;
     if (read_request(client, request)) {
-      response = service.handle(request);
+      if (request.method == "GET" &&
+          (request.target == "/healthz" || request.target == "/readyz")) {
+        response = health_response(parsed.dataset_id);
+      } else {
+        response = service.handle(request);
+      }
     } else {
       request.method = "INVALID";
       request.target = "<malformed>";
@@ -376,15 +427,22 @@ int main(int argc, char** argv) {
     const bool sent = send_response(client, response);
     close(client);
     ++request_count;
-    std::cout << "[terrain-service] request status="
-              << response.status << '\n';
-    std::cout.flush();
+    if (response.status >= 500) {
+      ++error_count;
+      std::cerr << "[terrain-service][error] request_failed status="
+                << response.status << '\n';
+    } else if (response.status >= 400) {
+      ++client_error_count;
+    }
     if (!sent) {
+      ++error_count;
       std::cerr << "[terrain-service][error] response_write_failed\n";
     }
   }
 
   close(server);
-  std::cout << "[terrain-service] stopped requests=" << request_count << '\n';
+  std::cout << "[terrain-service] stopped requests=" << request_count
+            << " client_errors=" << client_error_count
+            << " errors=" << error_count << '\n';
   return 0;
 }

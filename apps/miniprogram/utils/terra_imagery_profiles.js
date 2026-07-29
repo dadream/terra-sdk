@@ -40,6 +40,20 @@ function validateTiandituTile(tile) {
   return { level, matrix, row, column }
 }
 
+function validateTiandituProxyOrigin(proxyOrigin) {
+  common.invariant(typeof proxyOrigin === 'string' &&
+    /^https:\/\/[^/?#]+(?::[0-9]+)?(?:\/[^?#]*)?$/.test(proxyOrigin),
+  'Tianditu proxy origin must use HTTPS')
+  return proxyOrigin.replace(/\/+$/, '')
+}
+
+function tiandituProxyUrlForTile(tile, proxyOrigin) {
+  const value = validateTiandituTile(tile)
+  const origin = validateTiandituProxyOrigin(proxyOrigin)
+  return origin + '/terra/v1/imagery/tianditu/img-c/' +
+    value.level + '/' + value.column + '/' + value.row + '.jpg'
+}
+
 function tiandituUrlForTile(tile, credential) {
   const value = validateTiandituTile(tile)
   const token = validateTiandituToken(credential)
@@ -51,7 +65,8 @@ function tiandituUrlForTile(tile, credential) {
     '&tk=' + encodeURIComponent(token)
 }
 
-function resolveImageryProfile(profileName, credential, fallbackTextureId) {
+function resolveImageryProfile(
+  profileName, credential, fallbackTextureId, proxyOrigin) {
   const name = profileName || BLUE_MARBLE_PROFILE
   if (name === BLUE_MARBLE_PROFILE) {
     const textureId = fallbackTextureId || BLUE_MARBLE_PROFILE
@@ -66,7 +81,14 @@ function resolveImageryProfile(profileName, credential, fallbackTextureId) {
     }
   }
   if (name === TIANDITU_IMG_C_PROFILE) {
-    const token = validateTiandituToken(credential)
+    let tileResolver
+    if (proxyOrigin) {
+      const origin = validateTiandituProxyOrigin(proxyOrigin)
+      tileResolver = (tile) => tiandituProxyUrlForTile(tile, origin)
+    } else {
+      const token = validateTiandituToken(credential)
+      tileResolver = (tile) => tiandituUrlForTile(tile, token)
+    }
     return {
       id: TIANDITU_IMG_C_PROFILE,
       textureId: TIANDITU_IMG_C_PROFILE,
@@ -76,12 +98,8 @@ function resolveImageryProfile(profileName, credential, fallbackTextureId) {
       matrixLevelOffset: 1,
       attribution: TIANDITU_ATTRIBUTION,
       texture: Object.assign({}, TIANDITU_TEXTURE),
-      resolveTile(tile) {
-        return tiandituUrlForTile(tile, token)
-      },
-      urlForTile(tile) {
-        return tiandituUrlForTile(tile, token)
-      }
+      resolveTile: tileResolver,
+      urlForTile: tileResolver
     }
   }
   throw new Error('Unsupported imagery profile')
@@ -95,6 +113,7 @@ module.exports = {
   TIANDITU_TEXTURE,
   TIANDITU_TOKEN_STORAGE_KEY,
   resolveImageryProfile,
+  tiandituProxyUrlForTile,
   tiandituUrlForTile,
   validateTiandituTile,
   validateTiandituToken

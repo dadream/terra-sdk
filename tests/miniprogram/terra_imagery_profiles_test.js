@@ -27,6 +27,18 @@ function main() {
     row: 0,
     column: 1
   }).indexOf('https://t1.tianditu.gov.cn/'), 0)
+  const proxied = profiles.resolveImageryProfile(
+    'tianditu-img-c', '', '', 'https://terra-tianditu.example.com')
+  assert.strictEqual(proxied.urlForTile({
+    level: 2,
+    matrix: 3,
+    row: 1,
+    column: 3
+  }), 'https://terra-tianditu.example.com/terra/v1/imagery/tianditu/' +
+    'img-c/2/3/1.jpg')
+  assert.throws(() => profiles.resolveImageryProfile(
+    'tianditu-img-c', '', '', 'http://terra-tianditu.example.com'),
+  /HTTPS/)
   assert.throws(() => profiles.resolveImageryProfile('tianditu-img-c', 'bad'),
     /credential/)
   assert.throws(() => profiles.tiandituUrlForTile({

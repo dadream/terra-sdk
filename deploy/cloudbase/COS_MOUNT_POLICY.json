@@ -1,0 +1,47 @@
+{
+  "version": "2.0",
+  "statement": [
+    {
+      "effect": "allow",
+      "action": [
+        "name/cos:GetBucket",
+        "name/cos:HeadBucket",
+        "name/cos:ListMultipartUploads"
+      ],
+      "resource": [
+        "qcs::cos:ap-shanghai:uid/1254147477:7368-shunlu-api-test-d9fvhxfy3199a35a-1254147477",
+        "qcs::cos:ap-shanghai:uid/1254147477:7368-shunlu-api-test-d9fvhxfy3199a35a-1254147477/",
+        "qcs::cos:ap-shanghai:uid/1254147477:7368-shunlu-api-test-d9fvhxfy3199a35a-1254147477/*"
+      ]
+    },
+    {
+      "effect": "allow",
+      "action": [
+        "name/cos:GetObject",
+        "name/cos:HeadObject"
+      ],
+      "resource": [
+        "qcs::cos:ap-shanghai:uid/1254147477:7368-shunlu-api-test-d9fvhxfy3199a35a-1254147477/terra-testdata/*"
+      ]
+    },
+    {
+      "effect": "allow",
+      "action": [
+        "name/cos:GetObject",
+        "name/cos:HeadObject",
+        "name/cos:PutObject",
+        "name/cos:PutObjectCopy",
+        "name/cos:DeleteObject",
+        "name/cos:InitiateMultipartUpload",
+        "name/cos:UploadPart",
+        "name/cos:UploadPartCopy",
+        "name/cos:CompleteMultipartUpload",
+        "name/cos:AbortMultipartUpload",
+        "name/cos:ListParts"
+      ],
+      "resource": [
+        "qcs::cos:ap-shanghai:uid/1254147477:7368-shunlu-api-test-d9fvhxfy3199a35a-1254147477/terra-tianditu-cache/*"
+      ]
+    }
+  ]
+}

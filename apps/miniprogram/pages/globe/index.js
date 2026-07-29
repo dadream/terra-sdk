@@ -1,6 +1,8 @@
 const runtimeConfig = require('../../config/runtime')
 const { TerraViewer } = require('../../utils/terra_viewer')
 const imageryProfiles = require('../../utils/terra_imagery_profiles')
+const { createCloudbaseRequest } = require(
+  '../../utils/terra_cloudbase_transport')
 const { TerraMiniProgramInteractionAdapter } = require(
   '../../utils/terra_miniprogram_interaction')
 
@@ -107,8 +109,18 @@ Page({
       return
     }
     try {
-      const serviceOrigin = wx.getStorageSync('terra.terrainServiceOrigin') ||
+      let serviceOrigin =
+        wx.getStorageSync('terra.terrainServiceOrigin') ||
         runtimeConfig.terrainServiceOrigin
+      let request = null
+      if (!serviceOrigin && runtimeConfig.cloudbaseEnvId &&
+        runtimeConfig.cloudbaseGlobeTerrainService) {
+        serviceOrigin = 'https://cloudbase.invalid'
+        request = createCloudbaseRequest({
+          envId: runtimeConfig.cloudbaseEnvId,
+          serviceName: runtimeConfig.cloudbaseGlobeTerrainService
+        })
+      }
       if (!serviceOrigin) {
         throw new Error('Terrain service origin is not configured')
       }
@@ -116,11 +128,13 @@ Page({
         wx.getStorageSync(imageryProfiles.TIANDITU_PROFILE_STORAGE_KEY) ||
           runtimeConfig.imageryProfile,
         wx.getStorageSync(imageryProfiles.TIANDITU_TOKEN_STORAGE_KEY),
-        runtimeConfig.textureId)
+        runtimeConfig.textureId,
+        runtimeConfig.tiandituProxyOrigin)
       const viewer = await TerraViewer.create({
         mode: 'globe',
         canvas,
         serviceOrigin,
+        request,
         manifestPath: runtimeConfig.terrainManifestPath,
         textureId: runtimeConfig.textureId,
         initialTarget: runtimeConfig.initialTarget,
