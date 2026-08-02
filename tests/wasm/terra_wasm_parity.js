@@ -200,7 +200,7 @@ async function main() {
   }
   requireCondition(
     `${layout.manifest},${layout.viewport},${layout.key},${layout.texture},${layout.request},${layout.decision},${layout.draw},${layout.frame},${layout.stats}` ===
-      '128,24,16,16,24,32,88,208,56',
+      '128,24,16,16,24,32,88,224,56',
     'Wasm ABI structure layout changed'
   )
 

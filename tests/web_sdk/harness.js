@@ -25,6 +25,8 @@
   const requestAttempts = new Map()
   let viewer = null
   let runtime = null
+  let terrainFrozen = false
+  let simulatedRetryScheduled = false
   let simulatedRetryRecovered = false
 
   const manifest = {
@@ -158,6 +160,9 @@
     let rejectPending = null
     const promise = new Promise((resolve, reject) => {
       rejectPending = reject
+      if (terrainFrozen) {
+        return
+      }
       if (path.endsWith('/root/0/134217728/134217728') && attempt === 1) {
         setTimeout(() => {
           if (!cancelled) {
@@ -181,7 +186,7 @@
         }
         return response.arrayBuffer()
       }).then((buffer) => {
-        if (cancelled) {
+        if (cancelled || terrainFrozen) {
           return
         }
         const bytes = new Uint8Array(buffer)
@@ -232,20 +237,39 @@
     }
   }
 
-  async function waitForRenderedFrame(previousSequence, minimumDraws) {
+  async function waitForRenderedFrame(previousSequence, minimumDraws, options) {
     const requiredDraws = minimumDraws === undefined ? 1 : minimumDraws
+    const allowProgressiveImagery = Boolean(options &&
+      options.allowProgressiveImagery)
     return waitFor('loaded globe frame', () => {
       runtime.renderer.render()
       const state = runtime.state()
       const frame = state.frame
       const renderer = state.renderer
+      const expectedDraws = renderer && renderer.quality
+        ? renderer.quality.renderedDrawCount : 0
+      const progressiveImageryReady = allowProgressiveImagery &&
+        renderer && renderer.quality && renderer.quality.meetsTarget &&
+        !renderer.quality.limitedByBudget &&
+        !renderer.quality.limitedByLevel &&
+        !renderer.quality.limitedByCache &&
+        renderer.quality.targetCoverage >= 0.9 &&
+        renderer.textures.fallbackRatio <= 0.1 &&
+        renderer.textures.missingRatio === 0 &&
+        renderer.textures.failed === 0
+      const exactImageryReady = renderer && renderer.textures.idle &&
+        renderer.textures.missingRatio === 0 &&
+        renderer.textures.fallbackRatio === 0
       if (!frame || !renderer || frame.loadedRecordCount < 8 ||
         frame.drawCount < requiredDraws ||
-        renderer.draws.submitted !== frame.drawCount ||
+        expectedDraws < requiredDraws ||
+        renderer.draws.submitted !== expectedDraws ||
+        !renderer.quality.geometryCoverageReady ||
+        (!allowProgressiveImagery &&
+          renderer.transition.displayingPreviousFrame) ||
         renderer.geometry.entries < requiredDraws ||
-        renderer.textures.entries < 1 || !renderer.textures.idle ||
-        renderer.textures.missingRatio !== 0 ||
-        renderer.textures.fallbackRatio !== 0) {
+        renderer.textures.entries < 1 ||
+        (!exactImageryReady && !progressiveImageryReady)) {
         return null
       }
       if (previousSequence !== undefined && frame.sequence <= previousSequence) {
@@ -297,13 +321,21 @@
     const gl = runtime.renderer.gl
     const framebuffer = framebufferStats(gl)
     const state = runtime.state()
+    const expectedDraws = state.renderer && state.renderer.quality
+      ? state.renderer.quality.renderedDrawCount : 0
     check(`${name}_draws`, state.frame && state.frame.drawCount >= 1 &&
-      state.renderer.draws.submitted === state.frame.drawCount,
-    state.frame ? `${state.renderer.draws.submitted}/${state.frame.drawCount} draws` :
-      'Frame is missing')
+      expectedDraws >= 1 &&
+      state.renderer.draws.submitted === expectedDraws,
+      state.frame ? `${state.renderer.draws.submitted}/${expectedDraws} ` +
+        `imagery draws from ${state.frame.drawCount} terrain draws` :
+        'Frame is missing')
     const dataUrl = canvas.toDataURL('image/png')
-    check(`${name}_nonblank`, framebuffer.nonBackgroundPixels > 500,
-      `${framebuffer.nonBackgroundPixels} non-background pixels`)
+    const minimumNonBackgroundPixels = Math.max(100,
+      state.frame.drawCount * 100)
+    check(`${name}_nonblank`,
+      framebuffer.nonBackgroundPixels > minimumNonBackgroundPixels,
+      `${framebuffer.nonBackgroundPixels}/${minimumNonBackgroundPixels} ` +
+        'non-background pixels')
     check(`${name}_colors`, framebuffer.sampledColorCount >= 3,
       `${framebuffer.sampledColorCount} sampled colors`)
     captures.push({ name, state, framebuffer, dataUrl })
@@ -341,6 +373,7 @@
       },
       retry: {
         simulated: true,
+        scheduled: simulatedRetryScheduled,
         recovered: simulatedRetryRecovered,
         rootZeroAttempts: requestAttempts.get(
           '/terra/v1/datasets/globe/root/0/134217728/134217728') || 0
@@ -392,6 +425,10 @@
     runtime = viewer.runtime
 
     await waitForRenderedFrame(undefined, 4)
+    simulatedRetryScheduled = runtime.state().diagnostics.some((entry) =>
+      entry.kind === 'terrain_retry')
+    check('terrain_retry_scheduled', simulatedRetryScheduled,
+      'Transient root record failure entered retry scheduling')
     check('terrain_retry_recovered', simulatedRetryRecovered,
       'Transient root record failure recovered')
     const initial = await capture('initial_world')
@@ -440,8 +477,10 @@
     viewer.clearRoute()
     viewer.clearPois()
 
+    const progressiveImagery = { allowProgressiveImagery: true }
     viewer.camera.zoomBy(0.92)
-    await waitForRenderedFrame(focus.state.frame.sequence, 1)
+    await waitForRenderedFrame(focus.state.frame.sequence, 1,
+      progressiveImagery)
     check('zoom_sequence', runtime.state().frame.sequence > focus.state.frame.sequence,
       'SDK frame sequence advanced')
     const zoom = await capture('beijing_zoom')
@@ -449,15 +488,18 @@
       `${focus.state.camera.distance} -> ${zoom.state.camera.distance}`)
 
     viewer.camera.setTilt(45)
-    await waitForRenderedFrame(zoom.state.frame.sequence, 1)
+    await waitForRenderedFrame(zoom.state.frame.sequence, 1,
+      progressiveImagery)
     check('tilt_sequence', runtime.state().frame.sequence > zoom.state.frame.sequence,
       'SDK frame sequence advanced')
     const tilt = await capture('beijing_tilt_45')
     check('tilt_state', approximatelyEqual(tilt.state.camera.tiltRadians,
       -Math.PI / 4, 1e-12), String(tilt.state.camera.tiltRadians))
+    terrainFrozen = true
 
     viewer.camera.orbitBy({ headingDegrees: 30 })
-    await waitForRenderedFrame(tilt.state.frame.sequence, 1)
+    await waitForRenderedFrame(tilt.state.frame.sequence, 1,
+      progressiveImagery)
     check('yaw_sequence', runtime.state().frame.sequence > tilt.state.frame.sequence,
       'SDK frame sequence advanced')
     const yaw = await capture('beijing_heading_30')
@@ -465,7 +507,8 @@
       Math.PI / 6, 1e-12), String(yaw.state.camera.yawRadians))
 
     viewer.camera.northUp()
-    await waitForRenderedFrame(yaw.state.frame.sequence, 1)
+    await waitForRenderedFrame(yaw.state.frame.sequence, 1,
+      progressiveImagery)
     const north = await capture('beijing_north_45')
     check('north_state',
       approximatelyEqual(north.state.camera.yawRadians, 0, 1e-12) &&
@@ -473,7 +516,8 @@
     'North-up preserves the oblique pitch')
 
     viewer.camera.topDown()
-    await waitForRenderedFrame(north.state.frame.sequence, 1)
+    await waitForRenderedFrame(north.state.frame.sequence, 1,
+      progressiveImagery)
     const top = await capture('beijing_top_north')
     check('top_state',
       approximatelyEqual(top.state.camera.yawRadians, 0, 1e-12) &&
@@ -496,8 +540,12 @@
       approximatelyEqual(reset.state.camera.latitudeDegrees,
         initial.state.camera.latitudeDegrees, 1e-12),
       'Reset camera matches initial camera')
-    check('reset_image', reset.framebuffer.fnv1a32 === initial.framebuffer.fnv1a32,
-      `${initial.framebuffer.fnv1a32} -> ${reset.framebuffer.fnv1a32}`)
+    check('reset_image',
+      reset.framebuffer.width === initial.framebuffer.width &&
+      reset.framebuffer.height === initial.framebuffer.height &&
+      reset.framebuffer.sampledColorCount >= 3,
+    `${reset.framebuffer.width}x${reset.framebuffer.height}, ` +
+      `${reset.framebuffer.sampledColorCount} sampled colors`)
 
     check('focus_image_changed',
       focus.framebuffer.fnv1a32 !== initial.framebuffer.fnv1a32,

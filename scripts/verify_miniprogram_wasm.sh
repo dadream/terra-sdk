@@ -111,6 +111,12 @@ set +e
     -v "${ROOT_DIR}:/workspace" \
     -w /workspace \
     "${WASM_IMAGE}" \
+    node tests/miniprogram/terra_camera_motion_test.js
+
+  docker run --rm \
+    -v "${ROOT_DIR}:/workspace" \
+    -w /workspace \
+    "${WASM_IMAGE}" \
     node tests/miniprogram/terra_viewer_test.js
 
   docker run --rm \
@@ -118,6 +124,18 @@ set +e
     -w /workspace \
     "${WASM_IMAGE}" \
     node tests/miniprogram/terra_imagery_profiles_test.js
+
+  docker run --rm \
+    -v "${ROOT_DIR}:/workspace" \
+    -w /workspace \
+    "${WASM_IMAGE}" \
+    node tests/miniprogram/terra_local_resource_url_test.js
+
+  docker run --rm \
+    -v "${ROOT_DIR}:/workspace" \
+    -w /workspace \
+    "${WASM_IMAGE}" \
+    node tests/miniprogram/suzhou_tour_fixture_test.js
 
   docker run --rm \
     -v "${ROOT_DIR}:/workspace" \

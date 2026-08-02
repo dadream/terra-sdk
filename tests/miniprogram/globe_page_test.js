@@ -43,7 +43,14 @@ function state() {
     terrain: { failedRequestCount: 0 },
     renderer: {
       draws: { submitted: 1, queued: 0 },
-      textures: { failed: 0 }
+      textures: {
+        failed: 0,
+        state: 'settled',
+        cachedRoots: 2,
+        rootDesired: 2,
+        cachedTarget: 8,
+        targetDesired: 8
+      }
     },
     budget: { devicePixelRatio: 1.5 },
     camera: {
@@ -104,7 +111,9 @@ async function main() {
   assert.strictEqual(page.setDataCalls, 2)
   assert.strictEqual(page.data.metrics.indexOf('patches 3') >= 0, true)
   assert.strictEqual(page.data.metrics.indexOf(
-    'imagery tianditu-img-c') >= 0, true)
+    'imagery tianditu-img-c settled') >= 0, true)
+  assert.strictEqual(page.data.metrics.indexOf('roots 2/2') >= 0, true)
+  assert.strictEqual(page.data.metrics.indexOf('tiles 8/8') >= 0, true)
   assert.strictEqual(page.data.metrics.indexOf(
     'target 116.41, 39.90') >= 0, true)
   assert.strictEqual(page.data.metrics.indexOf('pitch -45') >= 0, true)

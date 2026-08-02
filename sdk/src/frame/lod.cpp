@@ -438,6 +438,377 @@ bool refine_planar(std::vector<level_map>& levels, std::size_t& node_count,
 
 }  // namespace
 
+struct cylindrical_lod_controller::implementation {
+  double radius = 0.0;
+  std::uint32_t patch_dimension = 0U;
+  std::size_t maximum_level = 0U;
+  std::size_t maximum_node_count = 0U;
+  std::size_t node_count = 0U;
+  std::vector<level_map> levels;
+
+  bool configured() const {
+    return std::isfinite(radius) && radius > 0.0 &&
+           patch_dimension > 0U && maximum_level > 0U &&
+           maximum_node_count >= 8U && !levels.empty();
+  }
+
+  static bool contains(const std::vector<lod_detail_key>& keys,
+                       std::size_t level, const core::grid_point& id) {
+    return std::any_of(
+        keys.begin(), keys.end(),
+        [level, &id](const lod_detail_key& key) {
+          return key.level == level && key.id == id;
+        });
+  }
+
+  bool detail_available(const lod_resource_state& resources,
+                        std::size_t level,
+                        const core::grid_point& id) const {
+    return contains(resources.available_details, level, id);
+  }
+
+  bool detail_unavailable(const lod_resource_state& resources,
+                          std::size_t level,
+                          const core::grid_point& id) const {
+    return contains(resources.unavailable_details, level, id);
+  }
+
+  bool root_available(const lod_resource_state& resources,
+                      const core::grid_point& id) const {
+    return contains(resources.available_roots, 0U, id);
+  }
+
+  void reset() {
+    radius = 0.0;
+    patch_dimension = 0U;
+    maximum_level = 0U;
+    maximum_node_count = 0U;
+    node_count = 0U;
+    levels.clear();
+  }
+
+  void initialize(double radius_value,
+                  std::uint32_t patch_dimension_value,
+                  std::size_t maximum_level_value,
+                  std::size_t maximum_node_count_value) {
+    reset();
+    if (!std::isfinite(radius_value) || radius_value <= 0.0 ||
+        patch_dimension_value == 0U || maximum_level_value == 0U ||
+        maximum_node_count_value < 8U) {
+      return;
+    }
+    radius = radius_value;
+    patch_dimension = patch_dimension_value;
+    maximum_level = std::min<std::size_t>(maximum_level_value, 40U);
+    maximum_node_count = maximum_node_count_value;
+    levels.push_back(level_map());
+    const core::coordinate_transform transform =
+        core::coordinate_transform::cylindrical(radius);
+    const std::array<core::grid_diamond, 8> roots =
+        core::cylindrical_roots();
+    for (const core::grid_diamond& root : roots) {
+      node root_node;
+      root_node.diamond = root;
+      root_node.has_fragment = {{true, true}};
+      root_node.bounds = make_box(root, transform);
+      levels[0U].emplace(root.id(), root_node);
+      ++node_count;
+    }
+  }
+
+  bool can_coarsen(std::size_t level, const node& parent) const {
+    if (parent.leaf || level + 1U >= levels.size()) {
+      return false;
+    }
+    for (std::size_t fragment = 0U; fragment < 2U; ++fragment) {
+      if (!parent.has_fragment[fragment]) {
+        continue;
+      }
+      for (std::size_t child_index = 0U; child_index < 2U;
+           ++child_index) {
+        const core::grid_diamond child =
+            parent.diamond.cylindrical_child_diamond(fragment, child_index);
+        const level_map::const_iterator found =
+            levels[level + 1U].find(child.id());
+        if (found == levels[level + 1U].end() ||
+            !found->second.leaf) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  bool coarsen(std::size_t level, const core::grid_point& id) {
+    if (level >= levels.size()) {
+      return false;
+    }
+    level_map::iterator parent = levels[level].find(id);
+    if (parent == levels[level].end() ||
+        !can_coarsen(level, parent->second)) {
+      return false;
+    }
+    const core::grid_diamond parent_diamond = parent->second.diamond;
+    const std::array<bool, 2> parent_fragments =
+        parent->second.has_fragment;
+    for (std::size_t fragment = 0U; fragment < 2U; ++fragment) {
+      if (!parent_fragments[fragment]) {
+        continue;
+      }
+      for (std::size_t child_index = 0U; child_index < 2U;
+           ++child_index) {
+        const core::grid_diamond child =
+            parent_diamond.cylindrical_child_diamond(
+                fragment, child_index);
+        level_map::iterator found =
+            levels[level + 1U].find(child.id());
+        if (found == levels[level + 1U].end()) {
+          return false;
+        }
+        const std::size_t child_fragment =
+            fragment_from_parent(child, parent_diamond.id());
+        found->second.has_fragment[child_fragment] = false;
+        if (!found->second.has_fragment[0U] &&
+            !found->second.has_fragment[1U]) {
+          levels[level + 1U].erase(found);
+          --node_count;
+        }
+      }
+    }
+    parent = levels[level].find(id);
+    parent->second.leaf = true;
+    return true;
+  }
+
+  bool refine(std::size_t level, const core::grid_point& id,
+              const lod_resource_state& resources, bool& changed) {
+    if (level >= maximum_level || level >= levels.size() ||
+        node_count + 4U > maximum_node_count ||
+        detail_unavailable(resources, level, id) ||
+        !detail_available(resources, level, id)) {
+      return false;
+    }
+    level_map::iterator current = levels[level].find(id);
+    if (current == levels[level].end() || !current->second.leaf) {
+      return false;
+    }
+    if (level == 0U && !root_available(resources, id)) {
+      return false;
+    }
+
+    if (level > 0U) {
+      for (std::size_t fragment = 0U; fragment < 2U; ++fragment) {
+        current = levels[level].find(id);
+        if (!current->second.has_fragment[fragment] &&
+            valid_fragment(current->second.diamond, fragment)) {
+          const core::grid_point parent_id =
+              current->second.diamond.parent_id(fragment);
+          static_cast<void>(
+              refine(level - 1U, parent_id, resources, changed));
+        }
+      }
+    }
+
+    current = levels[level].find(id);
+    if (current == levels[level].end() || !current->second.leaf) {
+      return false;
+    }
+    for (std::size_t fragment = 0U; fragment < 2U; ++fragment) {
+      if (!current->second.has_fragment[fragment] &&
+          valid_fragment(current->second.diamond, fragment)) {
+        return false;
+      }
+    }
+
+    const core::grid_diamond parent_diamond =
+        current->second.diamond;
+    const std::array<bool, 2> parent_fragments =
+        current->second.has_fragment;
+    current->second.leaf = false;
+    if (levels.size() == level + 1U) {
+      levels.push_back(level_map());
+    }
+    const core::coordinate_transform transform =
+        core::coordinate_transform::cylindrical(radius);
+    for (std::size_t fragment = 0U; fragment < 2U; ++fragment) {
+      if (!parent_fragments[fragment]) {
+        continue;
+      }
+      for (std::size_t child_index = 0U; child_index < 2U;
+           ++child_index) {
+        const core::grid_diamond child =
+            parent_diamond.cylindrical_child_diamond(
+                fragment, child_index);
+        const std::size_t child_fragment =
+            fragment_from_parent(child, parent_diamond.id());
+        std::pair<level_map::iterator, bool> inserted =
+            levels[level + 1U].emplace(child.id(), node());
+        if (inserted.second) {
+          ++node_count;
+          inserted.first->second.diamond = child;
+          inserted.first->second.bounds = make_box(child, transform);
+        }
+        inserted.first->second.has_fragment[child_fragment] = true;
+      }
+    }
+    changed = true;
+    return true;
+  }
+
+  lod_cut make_cut(float threshold, const camera_snapshot& camera,
+                   const lod_resource_state& resources) const {
+    lod_cut result;
+    if (!configured()) {
+      return result;
+    }
+    selection_context view(radius, patch_dimension, camera, maximum_level,
+                           maximum_node_count,
+                           resources.unavailable_details);
+    std::size_t graph_level_count = levels.size();
+    while (graph_level_count > 1U &&
+           levels[graph_level_count - 1U].empty()) {
+      --graph_level_count;
+    }
+    result.complete = true;
+    result.graph_level_count = graph_level_count;
+    result.leaf_count_by_level.assign(graph_level_count, 0U);
+
+    std::vector<std::vector<lod_patch>> patches_by_level(
+        graph_level_count);
+    for (std::size_t level = 0U; level < graph_level_count; ++level) {
+      for (const level_map::value_type& entry : levels[level]) {
+        const lod_patch patch = priority(level, entry.second, view);
+        patches_by_level[level].push_back(patch);
+        if (entry.second.leaf) {
+          ++result.leaf_count_by_level[level];
+          result.patches.push_back(patch);
+        }
+      }
+    }
+
+    for (const lod_patch& patch : patches_by_level[0U]) {
+      lod_record_request request;
+      request.kind = lod_record_kind::root;
+      request.patch = patch;
+      result.record_requests.push_back(request);
+    }
+    for (std::size_t level = 0U; level < graph_level_count; ++level) {
+      for (std::size_t index = 0U;
+           index < patches_by_level[level].size(); ++index) {
+        const lod_patch& patch = patches_by_level[level][index];
+        const level_map::const_iterator state =
+            levels[level].find(patch.id);
+        const bool pending_refine =
+            state != levels[level].end() && state->second.leaf &&
+            patch.visible && patch.priority > threshold &&
+            level < maximum_level &&
+            !detail_unavailable(resources, level, patch.id);
+        if ((state != levels[level].end() && !state->second.leaf) ||
+            pending_refine) {
+          lod_record_request request;
+          request.kind = lod_record_kind::detail;
+          request.patch = patch;
+          result.record_requests.push_back(request);
+        }
+      }
+    }
+    return result;
+  }
+
+  lod_cut update(float threshold, const camera_snapshot& camera,
+                 const lod_resource_state& resources) {
+    if (!configured() || !std::isfinite(threshold) || threshold < 0.0F) {
+      return lod_cut();
+    }
+    selection_context view(radius, patch_dimension, camera, maximum_level,
+                           maximum_node_count,
+                           resources.unavailable_details);
+    const float coarsen_threshold = threshold * 0.75F;
+
+    bool coarsened = false;
+    do {
+      coarsened = false;
+      for (std::size_t cursor = levels.size(); cursor > 0U; --cursor) {
+        const std::size_t level = cursor - 1U;
+        std::vector<core::grid_point> candidates;
+        for (const level_map::value_type& entry : levels[level]) {
+          if (entry.second.leaf ||
+              priority(level, entry.second, view).priority >=
+                  coarsen_threshold ||
+              !can_coarsen(level, entry.second)) {
+            continue;
+          }
+          candidates.push_back(entry.first);
+        }
+        for (const core::grid_point& id : candidates) {
+          coarsened = coarsen(level, id) || coarsened;
+        }
+      }
+    } while (coarsened);
+
+    while (node_count + 4U <= maximum_node_count) {
+      std::vector<lod_patch> candidates;
+      for (std::size_t level = 0U; level < levels.size(); ++level) {
+        for (const level_map::value_type& entry : levels[level]) {
+          if (!entry.second.leaf ||
+              detail_unavailable(resources, level, entry.first)) {
+            continue;
+          }
+          const lod_patch patch = priority(level, entry.second, view);
+          if (patch.visible && patch.priority > threshold &&
+              level < maximum_level) {
+            candidates.push_back(patch);
+          }
+        }
+      }
+      std::sort(candidates.begin(), candidates.end(),
+                [](const lod_patch& left, const lod_patch& right) {
+                  if (left.priority != right.priority) {
+                    return left.priority > right.priority;
+                  }
+                  if (left.level != right.level) {
+                    return left.level < right.level;
+                  }
+                  return morton_less()(left.id, right.id);
+                });
+      bool changed = false;
+      for (const lod_patch& candidate : candidates) {
+        static_cast<void>(
+            refine(candidate.level, candidate.id, resources, changed));
+        if (changed) {
+          break;
+        }
+      }
+      if (!changed) {
+        break;
+      }
+    }
+    return make_cut(threshold, camera, resources);
+  }
+};
+
+cylindrical_lod_controller::cylindrical_lod_controller()
+    : implementation_(new implementation()) {}
+
+cylindrical_lod_controller::~cylindrical_lod_controller() = default;
+
+void cylindrical_lod_controller::clear() {
+  implementation_->reset();
+}
+
+void cylindrical_lod_controller::configure(
+    double radius, std::uint32_t patch_dimension,
+    std::size_t maximum_level, std::size_t maximum_node_count) {
+  implementation_->initialize(radius, patch_dimension, maximum_level,
+                              maximum_node_count);
+}
+
+lod_cut cylindrical_lod_controller::update(
+    float threshold, const camera_snapshot& camera,
+    const lod_resource_state& resources) {
+  return implementation_->update(threshold, camera, resources);
+}
+
 lod_cut select_procedural_cylindrical_lod(
     double radius, std::uint32_t patch_dimension, float threshold,
     const camera_snapshot& camera, std::size_t maximum_level,

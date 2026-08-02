@@ -5,6 +5,7 @@ const BLUE_MARBLE_PROFILE = 'blue-marble'
 const TIANDITU_IMG_C_PROFILE = 'tianditu-img-c'
 const TIANDITU_PROFILE_STORAGE_KEY = 'terra.imageryProfile'
 const TIANDITU_TOKEN_STORAGE_KEY = 'terra.tiandituToken'
+const BLUE_MARBLE_ATTRIBUTION = 'Imagery: NASA Blue Marble'
 const TIANDITU_ATTRIBUTION = '\u00a9 \u5929\u5730\u56fe'
 
 const PLANAR_1K_TEXTURE = {
@@ -76,9 +77,16 @@ function validateTiandituTile(tile) {
 }
 
 function validateImageryOrigin(origin) {
-  common.invariant(typeof origin === 'string' &&
-    /^https:\/\/[^/?#]+(?::[0-9]+)?(?:\/[^?#]*)?$/.test(origin),
-  'Imagery service origin must use HTTPS')
+  const secure = typeof origin === 'string' &&
+    /^https:\/\/[^/?#]+(?::[0-9]+)?(?:\/[^?#]*)?$/.test(origin)
+  const loopbackMatch = typeof origin === 'string'
+    ? /^http:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::([0-9]{1,5}))?(?:\/[^?#]*)?$/.exec(
+      origin)
+    : null
+  const loopback = Boolean(loopbackMatch &&
+    (!loopbackMatch[1] || Number(loopbackMatch[1]) <= 65535))
+  common.invariant(secure || loopback,
+  'Imagery service origin must use HTTPS or loopback HTTP')
   return origin.replace(/\/+$/, '')
 }
 
@@ -166,7 +174,7 @@ function resolveImageryProfile(
         minimumLevel: 0,
         maximumLevel: 7,
         matrixLevelOffset: 0,
-        attribution: '',
+        attribution: BLUE_MARBLE_ATTRIBUTION,
         texture: Object.assign({}, BLUE_MARBLE_TEXTURE),
         resolveTile: tileResolver,
         urlForTile: tileResolver
@@ -175,7 +183,7 @@ function resolveImageryProfile(
     return {
       id: BLUE_MARBLE_PROFILE,
       textureId,
-      attribution: '',
+      attribution: BLUE_MARBLE_ATTRIBUTION,
       texture: null,
       urlForTile: null
     }
@@ -206,6 +214,7 @@ function resolveImageryProfile(
 }
 
 module.exports = {
+  BLUE_MARBLE_ATTRIBUTION,
   BLUE_MARBLE_TEXTURE,
   BLUE_MARBLE_PROFILE,
   PLANAR_1K_PROFILE,

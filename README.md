@@ -65,6 +65,13 @@ browser evidence:
 bash scripts/verify_sdk_release.sh
 ```
 
+Every test that accesses a live service is subject to the online-resource
+cleanup gate. Before reporting success, the test must close all pages,
+contexts, and browser/runtime handles it created, and must verify that no
+test-owned process remains active. The test must also confirm that no further
+requests are being generated for the tested service. A test with incomplete
+cleanup is a failed test, even when all functional assertions passed.
+
 Release archives are written under `workspace_old/package/release/`. Manual
 DevTools/Android/iOS acceptance is intentionally the final owner step and does
 not block the automated engineering gate.

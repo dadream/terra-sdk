@@ -132,6 +132,22 @@ function isAllowedServiceOrigin(origin) {
   return !loopback[2] || Number(loopback[2]) <= 65535
 }
 
+function isAllowedResourceUrl(url) {
+  if (typeof url !== 'string') {
+    return false
+  }
+  if (/^https:\/\//.test(url)) {
+    return true
+  }
+  const loopbackHost = '(localhost|127\\.0\\.0\\.1|\\[::1\\])'
+  const loopback = new RegExp(
+    `^http://${loopbackHost}(?::(\\d{1,5}))?(?:/|$)`).exec(url)
+  if (!loopback) {
+    return false
+  }
+  return !loopback[2] || Number(loopback[2]) <= 65535
+}
+
 function joinServiceUrl(origin, endpoint) {
   invariant(typeof endpoint === 'string' && endpoint.length > 0,
     'Endpoint is required')
@@ -188,9 +204,8 @@ function selectTextureDescriptor(manifest, textureId) {
   const texture = candidates.find((candidate) =>
     candidate && candidate.kind === 'global-geodetic')
   invariant(texture, 'Manifest has no global-geodetic texture descriptor')
-  invariant(typeof texture.url_template === 'string' &&
-    /^https:\/\//.test(texture.url_template),
-  'Texture URL template must use HTTPS')
+  invariant(isAllowedResourceUrl(texture.url_template),
+  'Texture URL template must use HTTPS or loopback HTTP')
   invariant(Number.isInteger(texture.matrix_level_offset) &&
     texture.matrix_level_offset >= 0 && Number.isInteger(texture.maximum_level) &&
     texture.maximum_level >= 0 && texture.maximum_level <= 28,
@@ -253,9 +268,7 @@ function selectPlanarTextureDescriptor(manifest, textureId) {
   invariant(texture, 'Manifest has no planar texture descriptor')
   invariant(typeof texture.url_template === 'string' &&
     (/^\//.test(texture.url_template) ||
-      /^https:\/\//.test(texture.url_template) ||
-      /^http:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::[0-9]+)?\//
-        .test(texture.url_template)),
+      isAllowedResourceUrl(texture.url_template)),
   'Planar texture URL must be relative, HTTPS, or loopback HTTP')
   invariant(Number.isInteger(texture.matrix_level_offset) &&
     texture.matrix_level_offset >= 0 &&
@@ -309,6 +322,8 @@ class LruCache {
     this.maximumEntries = value.maximumEntries || 0
     this.maximumBytes = value.maximumBytes || 0
     this.dispose = value.dispose || (() => {})
+    this.canEvict = typeof value.canEvict === 'function'
+      ? value.canEvict : (() => true)
     this.entries = new Map()
     this.bytes = 0
   }
@@ -370,7 +385,16 @@ class LruCache {
     while (this.entries.size > 0 &&
       ((this.maximumEntries > 0 && this.entries.size > this.maximumEntries) ||
        (this.maximumBytes > 0 && this.bytes > this.maximumBytes))) {
-      const oldest = this.entries.keys().next().value
+      let oldest = null
+      for (const [key, entry] of this.entries) {
+        if (this.canEvict(key, entry.value)) {
+          oldest = key
+          break
+        }
+      }
+      if (oldest === null) {
+        break
+      }
       this.delete(oldest)
     }
   }
@@ -383,11 +407,24 @@ class RequestScheduler {
     this.queued = new Map()
   }
 
-  enqueue(key, start) {
-    if (this.active.has(key) || this.queued.has(key)) {
+  enqueue(key, start, priority) {
+    const queued = {
+      start,
+      priority: Number.isFinite(Number(priority)) ? Number(priority) : 0
+    }
+    const active = this.active.get(key)
+    if (active) {
+      if (active.stale) active.restart = queued
       return
     }
-    this.queued.set(key, start)
+    const existing = this.queued.get(key)
+    if (existing) {
+      if (queued.priority > existing.priority) {
+        this.queued.set(key, queued)
+      }
+      return
+    }
+    this.queued.set(key, queued)
     this.pump()
   }
 
@@ -400,6 +437,10 @@ class RequestScheduler {
     })
     this.active.forEach((request, key) => {
       if (!wanted.has(key)) {
+        request.restart = null
+        if (request.stale) {
+          return
+        }
         request.stale = true
         if (typeof request.abort === 'function') {
           request.abort()
@@ -419,32 +460,41 @@ class RequestScheduler {
 
   pump() {
     while (this.active.size < this.maximumConcurrent && this.queued.size) {
-      const next = this.queued.entries().next().value
-      const key = next[0]
-      const start = next[1]
+      let key = null
+      let next = null
+      this.queued.forEach((candidate, candidateKey) => {
+        if (!next || candidate.priority > next.priority) {
+          key = candidateKey
+          next = candidate
+        }
+      })
       this.queued.delete(key)
       let started
       try {
-        started = start()
+        started = next.start()
       } catch (error) {
         continue
       }
       const request = {
         stale: false,
-        abort: started && started.abort
+        abort: started && started.abort,
+        restart: null
       }
       this.active.set(key, request)
       Promise.resolve(started && started.promise)
         .catch(() => undefined)
         .then(() => {
           this.active.delete(key)
+          if (request.restart) {
+            this.queued.set(key, request.restart)
+          }
           this.pump()
         })
     }
   }
 }
 
-function deriveFrameBudget(viewport, capabilities) {
+function deriveFrameBudget(viewport, capabilities, quality) {
   const width = Math.max(1, Math.round(viewport.width || 1))
   const height = Math.max(1, Math.round(viewport.height || 1))
   const requestedDpr = Number(viewport.devicePixelRatio) || 1
@@ -456,14 +506,27 @@ function deriveFrameBudget(viewport, capabilities) {
     Math.max(1, Math.round(width * devicePixelRatio)))
   const physicalHeight = Math.min(maxTextureSize,
     Math.max(1, Math.round(height * devicePixelRatio)))
-  const minimumDimension = Math.max(1, Math.min(physicalWidth, physicalHeight))
+  const effectiveDpr = Math.min(physicalWidth / width, physicalHeight / height)
+  const qualityOptions = quality || {}
+  const terrainPixelError = qualityOptions.terrainPixelError === undefined
+    ? 1.25
+    : finiteNumber(qualityOptions.terrainPixelError, 'Terrain pixel error')
+  const verticalFovRadians = qualityOptions.verticalFovRadians === undefined
+    ? 45 * Math.PI / 180
+    : finiteNumber(qualityOptions.verticalFovRadians, 'Vertical field of view')
+  invariant(terrainPixelError > 0 && terrainPixelError <= 16,
+    'Terrain pixel error must be in (0, 16]')
+  invariant(verticalFovRadians > 0 && verticalFovRadians < Math.PI,
+    'Vertical field of view must be in (0, PI)')
   return {
     cssWidth: width,
     cssHeight: height,
     physicalWidth,
     physicalHeight,
-    devicePixelRatio: Math.min(physicalWidth / width, physicalHeight / height),
-    lodThreshold: clamp(3.5 / minimumDimension, 0.0015, 0.02),
+    devicePixelRatio: effectiveDpr,
+    terrainPixelError,
+    lodThreshold: clamp(terrainPixelError * effectiveDpr / physicalHeight *
+      2 * Math.tan(verticalFovRadians / 2), 0.00001, 0.05),
     maximumConcurrentRequests: area > 700000 ? 3 : 5,
     uploadBudgetMs: area > 700000 ? 4 : 7,
     geometryCacheBytes: area > 700000 ? 8 * 1024 * 1024 : 16 * 1024 * 1024,
@@ -514,6 +577,7 @@ module.exports = {
   fnv1a64,
   getHeader,
   invariant,
+  isAllowedResourceUrl,
   isAllowedServiceOrigin,
   joinServiceUrl,
   patchKeyString,

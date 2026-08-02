@@ -212,6 +212,8 @@ Page({
     const textureFailures = state.renderer && state.renderer.textures
       ? state.renderer.textures.failed || 0
       : 0
+    const textures = state.renderer && state.renderer.textures
+      ? state.renderer.textures : {}
     const resourceFailures = terrainFailures + textureFailures
     const status = state.error
       ? state.error
@@ -232,7 +234,9 @@ Page({
     const metrics = [
       `patches ${frame.patchCount || 0} | requests ${frame.requestCount || 0} | draws ${draws ? draws.submitted : 0}`,
       `target ${longitude}, ${latitude} | pitch ${tiltDegrees} | heading ${yawDegrees}`,
-      `imagery ${state.imageryId || 'pending'} | DPR ${state.budget ? state.budget.devicePixelRatio.toFixed(2) : '0'}`
+      `imagery ${state.imageryId || 'pending'} ${textures.state || 'pending'} | ` +
+        `roots ${textures.cachedRoots || 0}/${textures.rootDesired || 0} | ` +
+        `tiles ${textures.cachedTarget || 0}/${textures.targetDesired || 0}`
     ].concat(resourceFailures ? [`failed ${resourceFailures}`] : []).join('\n')
     const nextData = {
       status,

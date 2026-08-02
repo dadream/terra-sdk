@@ -3,6 +3,7 @@ const { TerraGlobeRuntime, TerraPlanarRuntime } = require(
   './terra_globe_runtime')
 const { TerraInteractionController } = require(
   './terra_interaction_controller')
+const { TerraCameraMotionController } = require('./terra_camera_motion')
 
 const MAXIMUM_POIS = 256
 const MAXIMUM_ROUTE_POINTS = 2048
@@ -245,6 +246,20 @@ class TerraViewer {
     this.overlaySignature = ''
     this.paused = false
     this.destroyed = false
+    this.qualityActivity = { interaction: false, motion: false }
+    this.motionController = this.mode === 'globe'
+      ? new TerraCameraMotionController({
+        getView: () => this.runtime.getView(),
+        setView: (view) => this.runtime.setView(view)
+      }, Object.assign({}, this.options.cameraMotion, {
+        radius: this.runtime.manifest.radius,
+        verticalFovRadians: this.runtime.fovRadians,
+        onState: (state) => {
+          this.setQualityActivity('motion', state.mode !== 'idle')
+          this.events.emit('cameramotion', state)
+        }
+      }))
+      : null
     this.camera = this.createCameraFacade()
     this.interactionController = new TerraInteractionController(this.camera, {
       rotateEnabled: !this.options.interaction ||
@@ -253,9 +268,16 @@ class TerraViewer {
         this.options.interaction.tiltEnabled !== false,
       inertiaEnabled: !this.options.interaction ||
         this.options.interaction.inertiaEnabled !== false,
-      onEvent: (type, detail) => this.events.emit(type, Object.assign({
-        view: this.camera.getView()
-      }, detail)),
+      onEvent: (type, detail) => {
+        if (type === 'interactionstart') {
+          this.setQualityActivity('interaction', true)
+        } else if (type === 'camerasettle') {
+          this.setQualityActivity('interaction', false)
+        }
+        this.events.emit(type, Object.assign({
+          view: this.camera.getView()
+        }, detail))
+      },
       onTap: (point) => this.handleTap(point)
     })
     this.interaction = {
@@ -271,6 +293,10 @@ class TerraViewer {
     }
     this.imagery = {
       setSource: (source) => this.setImagerySource(source)
+    }
+    this.debug = {
+      setRendering: (options) => viewerCall('invalid_debug_options', () =>
+        this.runtime.setDebugRendering(options))
     }
   }
 
@@ -305,25 +331,99 @@ class TerraViewer {
     return viewer
   }
 
+  setQualityActivity(source, active) {
+    this.qualityActivity[source] = Boolean(active)
+    if (typeof this.runtime.setInteractionActive === 'function') {
+      this.runtime.setInteractionActive(
+        this.qualityActivity.interaction || this.qualityActivity.motion)
+    }
+  }
+
   createCameraFacade() {
+    const cancelMotion = () => {
+      if (this.motionController) this.motionController.stop('interaction')
+    }
+    const startMotion = (callback) => {
+      common.invariant(this.motionController,
+        'Camera motion is only available in globe mode')
+      this.runtime.cancelAnimation()
+      return callback()
+    }
     return {
       getView: () => viewerCall('camera_failed', () => this.runtime.getView()),
-      setView: (view, options) => viewerCall('invalid_view', () =>
-        this.runtime.setView(view, options)),
-      panBy: (change) => viewerCall('invalid_camera_change', () =>
-        this.runtime.panBy(change)),
-      zoomBy: (scale, options) => viewerCall('invalid_camera_change', () =>
-        this.runtime.zoomBy(scale, options)),
-      orbitBy: (change) => viewerCall('invalid_camera_change', () =>
-        this.runtime.orbitBy(change)),
-      setTilt: (value) => viewerCall('invalid_camera_change', () =>
-        this.runtime.setTilt(value)),
-      topDown: () => viewerCall('camera_failed', () => this.runtime.topDown()),
-      northUp: () => viewerCall('camera_failed', () => this.runtime.northUp()),
-      reset: () => viewerCall('camera_failed', () => this.runtime.reset()),
-      cancelAnimation: () => this.runtime.cancelAnimation(),
-      applyInteraction: (change) => viewerCall('invalid_interaction', () =>
-        this.runtime.applyInteraction(change))
+      setView: (view, options) => viewerCall('invalid_view', () => {
+        cancelMotion()
+        return this.runtime.setView(view, options)
+      }),
+      panBy: (change) => viewerCall('invalid_camera_change', () => {
+        cancelMotion()
+        return this.runtime.panBy(change)
+      }),
+      zoomBy: (scale, options) => viewerCall('invalid_camera_change', () => {
+        cancelMotion()
+        return this.runtime.zoomBy(scale, options)
+      }),
+      orbitBy: (change) => viewerCall('invalid_camera_change', () => {
+        cancelMotion()
+        return this.runtime.orbitBy(change)
+      }),
+      setTilt: (value) => viewerCall('invalid_camera_change', () => {
+        cancelMotion()
+        return this.runtime.setTilt(value)
+      }),
+      topDown: () => viewerCall('camera_failed', () => {
+        cancelMotion()
+        return this.runtime.topDown()
+      }),
+      northUp: () => viewerCall('camera_failed', () => {
+        cancelMotion()
+        return this.runtime.northUp()
+      }),
+      reset: () => viewerCall('camera_failed', () => {
+        cancelMotion()
+        return this.runtime.reset()
+      }),
+      showGlobe: (options) => viewerCall('invalid_camera_motion', () =>
+        startMotion(() => {
+          const target = this.runtime.options.initialTarget || {
+            longitudeDegrees: 0,
+            latitudeDegrees: 0
+          }
+          return this.motionController.flyTo([
+            target.longitudeDegrees,
+            target.latitudeDegrees,
+            0
+          ], Object.assign({
+            rangeMeters: this.runtime.manifest.radius * 2.5,
+            tiltDegrees: 0,
+            headingDegrees: 0,
+            path: 'auto'
+          }, options || {}))
+        })),
+      cancelAnimation: () => {
+        cancelMotion()
+        return this.runtime.cancelAnimation()
+      },
+      applyInteraction: (change) => viewerCall('invalid_interaction', () => {
+        cancelMotion()
+        return this.runtime.applyInteraction(change)
+      }),
+      flyTo: (coordinate, options) => viewerCall('invalid_camera_motion', () =>
+        startMotion(() => this.motionController.flyTo(coordinate, options))),
+      startOrbit: (coordinate, options) => viewerCall(
+        'invalid_camera_motion', () => startMotion(() =>
+          this.motionController.startOrbit(coordinate, options))),
+      playRoute: (coordinates, options) => viewerCall(
+        'invalid_camera_motion', () => startMotion(() =>
+          this.motionController.playRoute(coordinates, options))),
+      pauseMotion: () => this.motionController
+        ? this.motionController.pause() : false,
+      resumeMotion: () => this.motionController
+        ? this.motionController.resume() : false,
+      stopMotion: () => this.motionController
+        ? this.motionController.stop('stopped') : false,
+      getMotionState: () => this.motionController
+        ? this.motionController.state() : null
     }
   }
 
@@ -695,6 +795,8 @@ class TerraViewer {
       routeId: this.route && this.route.id,
       imageryAttribution: this.imagerySource
         ? this.imagerySource.attribution : '',
+      cameraMotion: this.motionController
+        ? this.motionController.state() : null,
       paused: this.paused
     })
   }
@@ -730,6 +832,7 @@ class TerraViewer {
     if (this.destroyed) return
     this.destroyed = true
     this.interactionController.destroy()
+    if (this.motionController) this.motionController.destroy()
     this.events.clear()
     this.runtime.destroy()
   }

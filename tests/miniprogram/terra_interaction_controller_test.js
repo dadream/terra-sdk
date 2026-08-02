@@ -116,8 +116,10 @@ function testPinchAndPointerRestart() {
 }
 
 function testLookAndCancel() {
-  const value = create({ mode: 'look', inertiaEnabled: false })
-  value.controller.begin({ pointers: [pointer(7, 10, 10)], timeMs: 0 })
+  const value = create({ mode: 'move', inertiaEnabled: false })
+  value.controller.begin({
+    pointers: [pointer(7, 10, 10)], timeMs: 0, mode: 'look'
+  })
   value.controller.update({ pointers: [pointer(7, 30, 30)], timeMs: 16 })
   value.clock.tick()
   assert.strictEqual(value.camera.changes[0].headingDegrees, 5)

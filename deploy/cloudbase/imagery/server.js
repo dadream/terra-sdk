@@ -586,7 +586,8 @@ function createImageryServer(options = {}) {
       const status = error.status || 502
       const reason = upstreamFailureReason(error)
       console.error(
-        `[imagery][error] upstream_failed status=${status} reason=${reason}`)
+        `[imagery][error] upstream_failed status=${status} reason=${reason} ` +
+        `tile=${tile.level}/${tile.column}/${tile.row}`)
       send(res, status, { 'Content-Type': 'application/json',
         'Cache-Control': 'no-store' },
       Buffer.from(`{"error":"imagery_unavailable","status":${status}}\n`))

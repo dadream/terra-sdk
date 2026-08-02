@@ -31,6 +31,22 @@ Remove-Item Env:TERRA_TIANDITU_TOKEN
 Remove-Item Env:TERRA_COS_CONNECTION_KEY_ID
 ```
 
+## Online Resource Cleanup Gate
+
+This gate is mandatory for every CloudBase or browser-based verification:
+
+- Close every page, browser context, and browser/runtime handle created by the
+  test in a `finally`/cleanup path, including failure and timeout paths.
+- Do not open service default domains for monitoring after functional checks;
+  browser favicon discovery is real traffic and can prevent scale-to-zero.
+- Verify the test-owned automation process has stopped, without terminating a
+  pre-existing shared runtime that belongs to another task.
+- Use CloudBase control-plane APIs for final Pod and configuration checks; do
+  not poll `/readyz` or application endpoints after cleanup.
+- Only publish a passing result after the service has had an idle observation
+  window with no new test-generated requests. If cleanup cannot be proven,
+  mark the test as failed and record the remaining process or request source.
+
 When all three images have already been built, add `-ReuseLatestImages` to
 skip source builds and publish the latest recorded images with the COS mounts.
 For a fresh source build, the script creates a temporary canary only to obtain

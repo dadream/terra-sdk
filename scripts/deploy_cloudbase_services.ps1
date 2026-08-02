@@ -220,6 +220,10 @@ function Update-ServiceConfig {
     [hashtable]$Environment
   )
   $items = @(
+    @{ Key = 'OperationMode'; Value = 'alwaysScale' },
+    @{ Key = 'MinNum'; IntValue = 0 },
+    @{ Key = 'MaxNum'; IntValue = 5 },
+    @{ Key = 'TimerScale'; TimerScale = @() },
     @{ Key = 'Port'; IntValue = 8080 },
     @{ Key = 'AccessTypes'; ArrayValue = @('PUBLIC', 'MINIAPP') },
     @{ Key = 'VolumesConf'; VolumesConf = $Volumes }
@@ -417,13 +421,26 @@ try {
     'terra-terrain-1k', 'terra-terrain-globe', 'terra-imagery')) {
     $detail = $details[$name]
     $domain = $detail.data.BaseInfo.DefaultDomainName
+    $serverConfig = $detail.data.ServerConfig
+    if ($serverConfig.OperationMode -ne 'alwaysScale' -or
+        [int]$serverConfig.MinNum -ne 0) {
+      throw (
+        "$name is not in scale-to-zero mode: " +
+        "operationMode=$($serverConfig.OperationMode), " +
+        "minNum=$($serverConfig.MinNum)")
+    }
     Wait-HttpReady -ServiceName $name -Domain $domain | Out-Null
     $services += [ordered]@{
       name = $name
       domain = $domain
       image = $images[$name]
       status = $detail.data.BaseInfo.Status
-      volumes = $detail.data.ServerConfig.VolumesConf
+      scaling = [ordered]@{
+        operation_mode = $serverConfig.OperationMode
+        min_instances = [int]$serverConfig.MinNum
+        max_instances = [int]$serverConfig.MaxNum
+      }
+      volumes = $serverConfig.VolumesConf
     }
   }
 

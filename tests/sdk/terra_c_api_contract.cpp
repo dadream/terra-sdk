@@ -155,8 +155,12 @@ int main(int argc, char** argv) {
     require_status(terra_get_frame(context, &frame), TERRA_STATUS_OK,
                    "get frame");
     require(frame.sequence == 1U && frame.decisions_complete == 1U &&
-                frame.patch_count == 28U && frame.request_count == 20U &&
-                frame.loaded_patch_count == 0U && frame.draw_count == 0U,
+                frame.patch_count == 8U && frame.request_count == 20U &&
+                frame.loaded_patch_count == 0U && frame.draw_count == 0U &&
+                frame.expected_draw_count > 0U &&
+                frame.omitted_draw_count == frame.expected_draw_count &&
+                frame.coverage_draw_count == 0U &&
+                frame.coverage_complete == 0U,
             "initial frame counts changed");
     require(std::isfinite(frame.camera_position[0]) &&
                 std::isfinite(frame.camera_position[1]) &&
@@ -190,19 +194,19 @@ int main(int argc, char** argv) {
     require_status(terra_get_frame_patches(context, nullptr, 0U,
                                            &patch_count),
                    TERRA_STATUS_BUFFER_TOO_SMALL, "patch sizing");
-    require(patch_count == 28U, "patch sizing count changed");
+    require(patch_count == 8U, "patch sizing count changed");
     std::vector<terra_patch_decision_v1> patches(patch_count);
     require_status(terra_get_frame_patches(context, patches.data(),
                                            patches.size(), &patch_count),
                    TERRA_STATUS_OK, "get patches");
-    require(patches.front().key.level == 1U &&
+    require(patches.front().key.level == 0U &&
                 patches.front().key.i == 0 &&
-                patches.front().key.j == 268435456 &&
+                patches.front().key.j == 134217728 &&
                 patches.front().key.k == 134217728 &&
                 patches.front().visible == 1U &&
-                patches.back().key.level == 2U &&
-                patches.back().key.i == -67108864 &&
-                patches.back().key.j == -67108864 &&
+                patches.back().key.level == 0U &&
+                patches.back().key.i == 0 &&
+                patches.back().key.j == -134217728 &&
                 patches.back().key.k == -134217728 &&
                 patches.back().visible == 1U,
             "frame patch IDs changed");
@@ -289,7 +293,7 @@ int main(int argc, char** argv) {
     frame.struct_size = sizeof(frame);
     require_status(terra_get_frame(context, &frame), TERRA_STATUS_OK,
                    "get drawable frame");
-    require(frame.sequence == 3U && frame.patch_count == 62U &&
+    require(frame.sequence == 3U && frame.patch_count == 16U &&
                 frame.request_count == 33U &&
                 frame.loaded_patch_count == 5U && frame.draw_count > 0U,
             "drawable hierarchy state changed");
@@ -319,7 +323,17 @@ int main(int argc, char** argv) {
                        context, texture_uv.data(), texture_uv.size(),
                        &texture_count),
                    TERRA_STATUS_OK, "get texture coordinates");
+    const std::size_t coverage_draw_count =
+        static_cast<std::size_t>(std::count_if(
+            draws.begin(), draws.end(), [](const terra_draw_range_v1& draw) {
+              return draw.flags == TERRA_DRAW_FLAG_COVERAGE;
+            }));
     require(draw_count == frame.draw_count &&
+                coverage_draw_count == frame.coverage_draw_count &&
+                frame.draw_count >= frame.coverage_draw_count &&
+                frame.expected_draw_count ==
+                    frame.draw_count - frame.coverage_draw_count +
+                        frame.omitted_draw_count &&
                 position_count == frame.position_float_count &&
                 texture_count == frame.texture_float_count &&
                 position_count == frame.vertex_count * 3U &&
@@ -336,6 +350,8 @@ int main(int argc, char** argv) {
                   draw.texture.matrix ==
                       static_cast<std::int32_t>(draw.texture.level) &&
                   draw.texture.row >= 0 && draw.texture.column >= 0 &&
+                  (draw.flags == TERRA_DRAW_FLAG_NONE ||
+                   draw.flags == TERRA_DRAW_FLAG_COVERAGE) &&
                   std::isfinite(draw.origin[0]) &&
                   std::isfinite(draw.origin[1]) &&
                   std::isfinite(draw.origin[2]),
@@ -368,7 +384,7 @@ int main(int argc, char** argv) {
     require(stats.update_count == 3U && stats.loaded_patch_count == 5U &&
                 stats.failed_patch_count == 1U &&
                 stats.decoded_value_count == 20738U &&
-                stats.current_patch_count == 62U &&
+                stats.current_patch_count == 16U &&
                 stats.current_request_count == 33U &&
                 stats.last_sequence == 3U,
             "ABI statistics changed");

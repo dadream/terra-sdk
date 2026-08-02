@@ -57,7 +57,68 @@ async function testScheduler() {
   assert.strictEqual(scheduler.stats().queued, 0)
 }
 
+async function testSchedulerRestartsStaleKey() {
+  const scheduler = new common.RequestScheduler(1)
+  const events = []
+  let resolveFirst = null
+  scheduler.enqueue('tile', () => ({
+    promise: new Promise((resolve) => { resolveFirst = resolve }),
+    abort() {
+      events.push('aborted')
+      resolveFirst()
+    }
+  }))
+  scheduler.cancelExcept(new Set())
+  scheduler.enqueue('tile', () => {
+    events.push('restarted')
+    return { promise: Promise.resolve(), abort() {} }
+  })
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  assert.deepStrictEqual(events, ['aborted', 'restarted'])
+  assert.strictEqual(scheduler.stats().active, 0)
+  assert.strictEqual(scheduler.stats().queued, 0)
+
+  let resolveDiscarded = null
+  scheduler.enqueue('discarded', () => ({
+    promise: new Promise((resolve) => { resolveDiscarded = resolve }),
+    abort() { resolveDiscarded() }
+  }))
+  scheduler.cancelExcept(new Set())
+  scheduler.enqueue('discarded', () => {
+    events.push('unexpected-restart')
+    return { promise: Promise.resolve(), abort() {} }
+  })
+  scheduler.cancelExcept(new Set())
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  assert(!events.includes('unexpected-restart'))
+}
+
+async function testSchedulerPriority() {
+  const scheduler = new common.RequestScheduler(1)
+  const events = []
+  let releaseActive = null
+  scheduler.enqueue('active', () => {
+    events.push('active')
+    return {
+      promise: new Promise((resolve) => { releaseActive = resolve }),
+      abort() { releaseActive() }
+    }
+  })
+  scheduler.enqueue('support', () => {
+    events.push('support')
+    return { promise: Promise.resolve(), abort() {} }
+  }, 0)
+  scheduler.enqueue('target', () => {
+    events.push('target')
+    return { promise: Promise.resolve(), abort() {} }
+  }, 10)
+  releaseActive()
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  assert.deepStrictEqual(events, ['active', 'target', 'support'])
+}
+
 async function main() {
+  await testSchedulerPriority()
   const hello = bytes('hello')
   assert.strictEqual(common.fnv1a64(hello), 'a430d84680aabd0b')
   assert.deepStrictEqual(Array.from(common.validateRecordPayload(hello, {
@@ -123,6 +184,29 @@ async function main() {
   assert.deepStrictEqual(disposed, ['b'])
   assert.deepStrictEqual(cache.stats(), { entries: 2, bytes: 4 })
 
+  const protectedKeys = new Set(['a'])
+  const protectedDisposed = []
+  const protectedCache = new common.LruCache({
+    maximumEntries: 2,
+    canEvict: (key) => !protectedKeys.has(key),
+    dispose: (value) => protectedDisposed.push(value)
+  })
+  protectedCache.set('a', 'a', 1)
+  protectedCache.set('b', 'b', 1)
+  protectedCache.set('c', 'c', 1)
+  assert.strictEqual(protectedCache.has('a'), true)
+  assert.strictEqual(protectedCache.has('b'), false)
+  assert.strictEqual(protectedCache.has('c'), true)
+  assert.deepStrictEqual(protectedDisposed, ['b'])
+  protectedKeys.add('c')
+  protectedCache.maximumEntries = 1
+  protectedCache.evict()
+  assert.deepStrictEqual(protectedCache.stats(), { entries: 2, bytes: 2 })
+  protectedKeys.delete('a')
+  protectedCache.evict()
+  assert.deepStrictEqual(protectedCache.stats(), { entries: 1, bytes: 1 })
+  assert.strictEqual(protectedCache.has('c'), true)
+
   const budget = common.deriveFrameBudget({
     width: 1000,
     height: 1000,
@@ -131,6 +215,18 @@ async function main() {
   assert.strictEqual(budget.physicalWidth, 1024)
   assert.strictEqual(budget.physicalHeight, 1024)
   assert.strictEqual(budget.maximumConcurrentRequests, 3)
+  assert.strictEqual(budget.terrainPixelError, 1.25)
+  assert(budget.lodThreshold > 0.001 && budget.lodThreshold < 0.0011)
+  const coarseBudget = common.deriveFrameBudget({
+    width: 800,
+    height: 600,
+    devicePixelRatio: 1
+  }, { maxTextureSize: 2048 }, {
+    terrainPixelError: 2.5,
+    verticalFovRadians: Math.PI / 3
+  })
+  assert(Math.abs(coarseBudget.lodThreshold -
+    (2.5 / 600 * 2 * Math.tan(Math.PI / 6))) < 1e-12)
 
   const relative = common.relativeProjectionView(new Float64Array([
     1, 0, 0, 0,
@@ -152,6 +248,7 @@ async function main() {
   ])
 
   await testScheduler()
+  await testSchedulerRestartsStaleKey()
   console.log('Mini Program globe common tests passed.')
 }
 

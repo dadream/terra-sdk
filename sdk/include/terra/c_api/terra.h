@@ -105,6 +105,11 @@ typedef struct terra_patch_decision_v1 {
   uint32_t reserved;
 } terra_patch_decision_v1;
 
+typedef enum terra_draw_flag_v1 {
+  TERRA_DRAW_FLAG_NONE = 0,
+  TERRA_DRAW_FLAG_COVERAGE = 1
+} terra_draw_flag_v1;
+
 typedef struct terra_draw_range_v1 {
   uint32_t struct_size;
   uint32_t fragment;
@@ -135,6 +140,10 @@ typedef struct terra_frame_v1 {
   uint32_t vertex_count;
   uint32_t position_float_count;
   uint32_t texture_float_count;
+  uint32_t expected_draw_count;
+  uint32_t omitted_draw_count;
+  uint32_t coverage_draw_count;
+  uint32_t coverage_complete;
 } terra_frame_v1;
 
 typedef struct terra_stats_v1 {

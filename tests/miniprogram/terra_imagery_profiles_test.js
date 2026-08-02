@@ -18,10 +18,11 @@ function main() {
   const blue = profiles.resolveImageryProfile('blue-marble', '', 'blue-marble')
   assert.strictEqual(blue.textureId, 'blue-marble')
   assert.strictEqual(blue.texture, null)
-  assert.strictEqual(blue.attribution, '')
+  assert.strictEqual(blue.attribution, 'Imagery: NASA Blue Marble')
   const hostedBlue = profiles.resolveImageryProfile(
     'blue-marble', '', 'blue-marble', origin)
   assert.strictEqual(hostedBlue.texture.maximum_level, 7)
+  assert.strictEqual(hostedBlue.attribution, 'Imagery: NASA Blue Marble')
   assert.strictEqual(hostedBlue.urlForTile({
     level: 7,
     matrix: 7,

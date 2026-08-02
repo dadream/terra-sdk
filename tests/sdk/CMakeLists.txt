@@ -156,6 +156,17 @@ add_test(NAME terra_sdk_frame_lod_golden
     COMMAND "$<TARGET_FILE:terra_sdk_frame_lod_golden>"
         "${_terra_sdk_core_golden}")
 
+add_executable(terra_sdk_frame_lod_controller
+    terra_frame_lod_controller.cpp)
+target_link_libraries(terra_sdk_frame_lod_controller PRIVATE Terra::frame)
+target_compile_features(terra_sdk_frame_lod_controller PRIVATE cxx_std_14)
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(
+        terra_sdk_frame_lod_controller PRIVATE -Wall -Wextra)
+endif()
+add_test(NAME terra_sdk_frame_lod_controller
+    COMMAND "$<TARGET_FILE:terra_sdk_frame_lod_controller>")
+
 add_executable(terra_sdk_c_api_contract
     terra_c_api_contract.cpp)
 target_link_libraries(terra_sdk_c_api_contract PRIVATE Terra::c_api)
@@ -246,6 +257,7 @@ add_custom_target(terra_sdk_frame_tests
     DEPENDS
         terra_sdk_frame_camera_golden
         terra_sdk_frame_lod_golden
+        terra_sdk_frame_lod_controller
         terra_sdk_frame_mesh
         terra_sdk_frame_surface_mesh
         terra_sdk_frame_planar

@@ -23,8 +23,23 @@ const ABI_LAYOUT = {
   request: 24,
   decision: 32,
   draw: 88,
-  frame: 208,
+  frame: [208, 216, 224],
   stats: 56
+}
+
+function terrainRequestPriority(request) {
+  return request && request.kind === REQUEST_ROOT
+    ? 0x7fffffff : 0x40000000
+}
+
+function orderTerrainRequests(requests) {
+  return (requests || []).map((request, index) => ({
+    request,
+    index,
+    priority: terrainRequestPriority(request)
+  })).sort((left, right) =>
+    right.priority - left.priority || left.index - right.index)
+    .map((item) => item.request)
 }
 
 function statusError(operation, status, detail) {
@@ -174,7 +189,10 @@ class TerraAbi {
     const layout = {}
     Object.keys(exported).forEach((name) => {
       layout[name] = this.module.call(exported[name])
-      common.invariant(layout[name] === ABI_LAYOUT[name],
+      const supported = Array.isArray(ABI_LAYOUT[name])
+        ? ABI_LAYOUT[name].indexOf(layout[name]) >= 0
+        : layout[name] === ABI_LAYOUT[name]
+      common.invariant(supported,
         `Unsupported Terra ABI ${name} size: ${layout[name]}`)
     })
     return layout
@@ -341,7 +359,15 @@ class TerraAbi {
         drawCount: view.getUint32(pointer + 192, true),
         vertexCount: view.getUint32(pointer + 196, true),
         positionFloatCount: view.getUint32(pointer + 200, true),
-        textureFloatCount: view.getUint32(pointer + 204, true)
+        textureFloatCount: view.getUint32(pointer + 204, true),
+        expectedDrawCount: this.layout.frame >= 216
+          ? view.getUint32(pointer + 208, true) : 0,
+        omittedDrawCount: this.layout.frame >= 216
+          ? view.getUint32(pointer + 212, true) : 0,
+        coverageDrawCount: this.layout.frame >= 224
+          ? view.getUint32(pointer + 216, true) : 0,
+        coverageComplete: this.layout.frame >= 224
+          ? view.getUint32(pointer + 220, true) !== 0 : false
       }
     } finally {
       this.free(pointer)
@@ -548,12 +574,35 @@ class TerraGlobeRuntime {
     this.canvas = this.options.canvas
     common.invariant(this.canvas, 'A Mini Program canvas is required')
     this.fovRadians = this.options.verticalFovRadians || DEFAULT_FOV_RADIANS
+    this.terrainPixelError = this.options.terrainPixelError === undefined
+      ? 1.25 : common.finiteNumber(this.options.terrainPixelError,
+        'Terrain pixel error')
+    this.imageryPixelError = this.options.imageryPixelError === undefined
+      ? 1.25 : common.finiteNumber(this.options.imageryPixelError,
+        'Imagery pixel error')
+    this.interactionImageryPixelError =
+      this.options.interactionImageryPixelError === undefined
+        ? 2.5 : common.finiteNumber(this.options.interactionImageryPixelError,
+          'Interaction imagery pixel error')
+    common.invariant(this.terrainPixelError > 0 &&
+      this.terrainPixelError <= 16 && this.imageryPixelError > 0 &&
+      this.imageryPixelError <= 16 && this.interactionImageryPixelError > 0 &&
+      this.interactionImageryPixelError <= 32,
+    'Terrain and imagery pixel errors are outside supported ranges')
+    this.frameQuality = {
+      terrainPixelError: this.terrainPixelError,
+      verticalFovRadians: this.fovRadians
+    }
     this.serviceOrigin = this.options.serviceOrigin || ''
     this.request = this.options.request || requestWithWx
     this.maximumTerrainRequests = Number.isInteger(
       this.options.maximumTerrainRequests)
       ? common.clamp(this.options.maximumTerrainRequests, 1, 8)
       : 4
+    this.maximumTextureRequests = Number.isInteger(
+      this.options.maximumTextureRequests)
+      ? common.clamp(this.options.maximumTextureRequests, 1, 8)
+      : this.maximumTerrainRequests
     this.maximumTerrainRetries = Number.isInteger(
       this.options.maximumTerrainRetries)
       ? common.clamp(this.options.maximumTerrainRetries, 0, 5)
@@ -597,7 +646,7 @@ class TerraGlobeRuntime {
     const rawManifest = this.options.manifest || await this.fetchManifest()
     this.manifest = this.validateRuntimeManifest(rawManifest)
     const viewport = this.options.viewport || { width: 1, height: 1, devicePixelRatio: 1 }
-    this.budget = common.deriveFrameBudget(viewport, {})
+    this.budget = common.deriveFrameBudget(viewport, {}, this.frameQuality)
     this.canvas.width = this.budget.physicalWidth
     this.canvas.height = this.budget.physicalHeight
     const rendererOptions = {
@@ -609,9 +658,16 @@ class TerraGlobeRuntime {
       textureCacheBytes: this.budget.textureCacheBytes,
       uploadBudgetMs: this.budget.uploadBudgetMs,
       mode: this.renderMode,
+      textureDescriptor: this.manifest.texture,
+      devicePixelRatio: this.budget.devicePixelRatio,
+      imageryPixelError: this.imageryPixelError,
+      interactionImageryPixelError: this.interactionImageryPixelError,
+      maximumImagerySubdivisionLevels:
+        this.options.maximumImagerySubdivisionLevels,
+      maximumImageryDraws: this.options.maximumImageryDraws,
       heightRange: this.options.heightRange,
-      maximumTextureRequests: Math.max(1,
-        this.budget.maximumConcurrentRequests - 1),
+      maximumTextureRequests: Math.max(1, Math.min(
+        this.maximumTextureRequests, this.budget.maximumConcurrentRequests)),
       maximumTextureRetries: this.options.maximumTextureRetries,
       textureRetryDelayMs: this.options.textureRetryDelayMs
     }
@@ -623,7 +679,8 @@ class TerraGlobeRuntime {
     rendererMethods.forEach((name) => common.invariant(
       this.renderer && typeof this.renderer[name] === 'function',
       `Terra renderer is missing ${name}`))
-    this.budget = common.deriveFrameBudget(viewport, this.renderer.capabilities())
+    this.budget = common.deriveFrameBudget(viewport,
+      this.renderer.capabilities(), this.frameQuality)
     this.applyBudget()
     this.canvas.width = this.budget.physicalWidth
     this.canvas.height = this.budget.physicalHeight
@@ -697,7 +754,8 @@ class TerraGlobeRuntime {
 
   resize(viewport) {
     common.invariant(!this.destroyed, 'Terra globe runtime is destroyed')
-    this.budget = common.deriveFrameBudget(viewport, this.renderer.capabilities())
+    this.budget = common.deriveFrameBudget(viewport,
+      this.renderer.capabilities(), this.frameQuality)
     this.applyBudget()
     this.canvas.width = this.budget.physicalWidth
     this.canvas.height = this.budget.physicalHeight
@@ -716,7 +774,9 @@ class TerraGlobeRuntime {
         geometryCacheBytes: this.budget.geometryCacheBytes,
         textureCacheBytes: this.budget.textureCacheBytes,
         uploadBudgetMs: this.budget.uploadBudgetMs,
-        maximumTextureRequests: Math.max(1, maximumTerrainRequests - 1)
+        devicePixelRatio: this.budget.devicePixelRatio,
+        maximumTextureRequests: Math.max(1, Math.min(
+          this.maximumTextureRequests, this.budget.maximumConcurrentRequests))
       })
     }
   }
@@ -879,20 +939,45 @@ class TerraGlobeRuntime {
   }
 
   applyPanPixels(deltaX, deltaY) {
-    const referenceDistance = defaultCamera(this.manifest.radius,
-      this.budget.physicalWidth, this.budget.physicalHeight,
-      this.fovRadians).distance
-    const distanceScale = common.clamp(
-      this.camera.distance / referenceDistance, 0.04, 1)
+    const radius = this.manifest.radius
     const devicePixelRatio = Math.max(1, this.budget.devicePixelRatio || 1)
-    const viewportSize = Math.max(1, Math.min(
-      this.budget.physicalWidth / devicePixelRatio,
-      this.budget.physicalHeight / devicePixelRatio))
-    const degreesPerPixel = 180 * distanceScale / viewportSize
+    const viewportHeight = Math.max(1,
+      this.budget.physicalHeight / devicePixelRatio)
+    const altitude = Math.max(radius * 0.001,
+      this.camera.distance - radius)
+    const metersPerPixel = 2 * altitude * Math.tan(this.fovRadians / 2) /
+      viewportHeight
+    const tiltScale = 1 / Math.max(0.25,
+      Math.cos(Math.abs(this.camera.tiltRadians)))
+    const localEast = -deltaX * metersPerPixel
+    const localNorth = deltaY * metersPerPixel * tiltScale
+    const heading = this.camera.yawRadians
+    const east = localEast * Math.cos(heading) -
+      localNorth * Math.sin(heading)
+    const north = localEast * Math.sin(heading) +
+      localNorth * Math.cos(heading)
+    const latitudeRadians = this.camera.latitudeDegrees * DEGREES_TO_RADIANS
+    const longitudeRadius = radius * Math.max(Math.cos(latitudeRadians),
+      Math.cos(85 * DEGREES_TO_RADIANS))
     this.camera.longitudeDegrees = wrapDegrees(
-      this.camera.longitudeDegrees - deltaX * degreesPerPixel)
+      this.camera.longitudeDegrees + east / longitudeRadius *
+        RADIANS_TO_DEGREES)
     this.camera.latitudeDegrees = common.clamp(
-      this.camera.latitudeDegrees + deltaY * degreesPerPixel, -85, 85)
+      this.camera.latitudeDegrees + north / radius * RADIANS_TO_DEGREES,
+      -85, 85)
+  }
+
+  applyZoomScale(value, name) {
+    const scale = common.finiteNumber(value, name || 'Zoom scale')
+    common.invariant(scale > 0, `${name || 'Zoom scale'} must be positive`)
+    const radius = this.manifest.radius
+    const limits = this.rangeLimits()
+    const previousAltitude = Math.max(limits.minimum - radius,
+      this.camera.distance - radius)
+    const nextAltitude = common.clamp(previousAltitude * scale,
+      limits.minimum - radius, limits.maximum - radius)
+    this.camera.distance = radius + nextAltitude
+    return nextAltitude / previousAltitude
   }
 
   applyInteraction(change) {
@@ -906,23 +991,18 @@ class TerraGlobeRuntime {
       this.applyPanPixels(panX, panY)
     }
     if (value.zoomScale !== undefined && value.zoomScale !== 1) {
-      const scale = common.finiteNumber(value.zoomScale,
+      const effectiveScale = this.applyZoomScale(value.zoomScale,
         'Interaction zoom scale')
-      common.invariant(scale > 0, 'Interaction zoom scale must be positive')
-      const previous = this.camera.distance
-      const limits = this.rangeLimits()
-      this.camera.distance = common.clamp(previous * scale,
-        limits.minimum, limits.maximum)
       if (value.anchor) {
         const dpr = Math.max(1, this.budget.devicePixelRatio || 1)
         const width = this.budget.physicalWidth / dpr
         const height = this.budget.physicalHeight / dpr
-        const effectiveScale = this.camera.distance / previous
+        const anchorScale = 1 - 1 / effectiveScale
         this.applyPanPixels(
-          -(common.finiteNumber(value.anchor.x, 'Zoom anchor X') - width / 2) *
-            (1 - effectiveScale),
-          -(common.finiteNumber(value.anchor.y, 'Zoom anchor Y') - height / 2) *
-            (1 - effectiveScale))
+          (common.finiteNumber(value.anchor.x, 'Zoom anchor X') - width / 2) *
+            anchorScale,
+          (common.finiteNumber(value.anchor.y, 'Zoom anchor Y') - height / 2) *
+            anchorScale)
       }
     }
     this.camera.yawRadians = wrapRadians(this.camera.yawRadians +
@@ -943,24 +1023,19 @@ class TerraGlobeRuntime {
   }
 
   zoomBy(scale, options) {
-    const value = common.finiteNumber(scale, 'Zoom scale')
-    common.invariant(value > 0, 'Zoom scale must be positive')
     this.cancelAnimation()
-    const previous = this.camera.distance
-    const limits = this.rangeLimits()
-    this.camera.distance = common.clamp(previous * value,
-      limits.minimum, limits.maximum)
+    const effectiveScale = this.applyZoomScale(scale, 'Zoom scale')
     const anchor = options && options.anchor
     if (anchor) {
       const dpr = Math.max(1, this.budget.devicePixelRatio || 1)
       const width = this.budget.physicalWidth / dpr
       const height = this.budget.physicalHeight / dpr
-      const effectiveScale = this.camera.distance / previous
+      const anchorScale = 1 - 1 / effectiveScale
       this.applyPanPixels(
-        -(common.finiteNumber(anchor.x, 'Zoom anchor X') - width / 2) *
-          (1 - effectiveScale),
-        -(common.finiteNumber(anchor.y, 'Zoom anchor Y') - height / 2) *
-          (1 - effectiveScale))
+        (common.finiteNumber(anchor.x, 'Zoom anchor X') - width / 2) *
+          anchorScale,
+        (common.finiteNumber(anchor.y, 'Zoom anchor Y') - height / 2) *
+          anchorScale)
     }
     this.refresh()
   }
@@ -1046,9 +1121,7 @@ class TerraGlobeRuntime {
   applyCamera(change) {
     const value = change || {}
     if (value.zoomScale !== undefined) {
-      common.finiteNumber(value.zoomScale, 'Zoom scale')
-      this.camera.distance = common.clamp(this.camera.distance * value.zoomScale,
-        this.manifest.radius * 1.001, this.manifest.radius * 20)
+      this.applyZoomScale(value.zoomScale, 'Zoom scale')
     }
     if (value.tiltDelta !== undefined) {
       this.camera.tiltRadians = common.clamp(
@@ -1105,6 +1178,20 @@ class TerraGlobeRuntime {
     this.camera.tiltRadians = 0
     this.camera.yawRadians = 0
     this.refresh()
+  }
+
+  setInteractionActive(active) {
+    if (this.renderer && typeof this.renderer.setInteractionActive === 'function') {
+      this.renderer.setInteractionActive(active)
+      this.publishState()
+    }
+  }
+
+  setDebugRendering(options) {
+    if (this.renderer && typeof this.renderer.setDebugOptions === 'function') {
+      this.renderer.setDebugOptions(options)
+      this.publishState()
+    }
   }
 
   refresh() {
@@ -1199,7 +1286,7 @@ class TerraGlobeRuntime {
   syncTerrainRequests(requests) {
     const desired = new Set()
     this.desiredRequests.clear()
-    requests.forEach((request) => {
+    orderTerrainRequests(requests).forEach((request) => {
       const key = common.patchKeyString(request.kind, request.key)
       desired.add(key)
       this.desiredRequests.set(key, request)
@@ -1222,7 +1309,8 @@ class TerraGlobeRuntime {
   }
 
   enqueueTerrainRequest(key, request) {
-    this.scheduler.enqueue(key, () => this.startTerrainRequest(key, request))
+    this.scheduler.enqueue(key, () => this.startTerrainRequest(key, request),
+      terrainRequestPriority(request))
   }
 
   startTerrainRequest(key, request) {
@@ -1303,7 +1391,8 @@ class TerraGlobeRuntime {
         x: tile.column,
         y: tile.row
       })
-    common.invariant(/^https:\/\//.test(url), 'Texture URL must use HTTPS')
+    common.invariant(common.isAllowedResourceUrl(url),
+      'Texture URL must use HTTPS or loopback HTTP')
     return url
   }
 
@@ -1618,7 +1707,9 @@ module.exports = {
   TerraPlanarRuntime,
   defaultCamera,
   geographicCamera,
+  orderTerrainRequests,
   planarCamera,
   parseJsonResponse,
+  terrainRequestPriority,
   requestWithWx
 }

@@ -117,6 +117,11 @@ class TerraInteractionController {
     this.requireActiveRuntime()
     const pointers = normalizePointers(packet && packet.pointers)
     const timeMs = finite(packet && packet.timeMs, 'Interaction time')
+    const requestedMode = packet && packet.mode
+    if (requestedMode !== undefined && requestedMode !== 'move' &&
+      requestedMode !== 'look') {
+      throw new Error('Interaction packet mode must be move or look')
+    }
     if (!pointers.length) {
       throw new Error('Interaction begin requires at least one pointer')
     }
@@ -128,7 +133,8 @@ class TerraInteractionController {
     }
     this.active = {
       ids: pointers.map((pointer) => pointer.id),
-      semantic: pointers.length === 2 ? 'pinch' : this.options.mode,
+      semantic: pointers.length === 2 ? 'pinch' :
+        (requestedMode || this.options.mode),
       startPointers: pointers,
       lastPointers: pointers,
       startedAt: timeMs,

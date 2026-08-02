@@ -130,7 +130,7 @@ async function expressionValue(connection, expression) {
   return result.value
 }
 
-async function stopBrowser(child, connection) {
+async function stopBrowser(child, connection, childClosed) {
   if (connection) {
     try {
       await connection.call('Browser.close', {}, 1500)
@@ -138,11 +138,48 @@ async function stopBrowser(child, connection) {
       // The browser may close the socket before acknowledging Browser.close.
     }
   }
-  const exited = await Promise.race([
-    new Promise((resolve) => child.once('exit', () => resolve(true))),
-    delay(2000).then(() => false)
+  if (child.exitCode === null) {
+    let exited = await Promise.race([
+      new Promise((resolve) => child.once('exit', () => resolve(true))),
+      delay(3000).then(() => false)
+    ])
+    if (!exited && child.exitCode === null) {
+      child.kill()
+      exited = await Promise.race([
+        new Promise((resolve) => child.once('exit', () => resolve(true))),
+        delay(3000).then(() => false)
+      ])
+    }
+    if (!exited && child.exitCode === null) {
+      throw new Error('Chromium process did not stop')
+    }
+  }
+  const closed = await Promise.race([
+    childClosed.then(() => true),
+    delay(3000).then(() => false)
   ])
-  if (!exited && child.exitCode === null) child.kill()
+  if (!closed) {
+    throw new Error('Chromium process handles did not close')
+  }
+}
+
+async function removeBrowserProfile(profile) {
+  let lastError = null
+  for (let attempt = 0; attempt < 30; ++attempt) {
+    try {
+      fs.rmSync(profile, {
+        recursive: true,
+        force: true,
+        maxRetries: 3,
+        retryDelay: 100
+      })
+    } catch (error) {
+      lastError = error
+    }
+    if (!fs.existsSync(profile)) return
+    await delay(Math.min(100 + attempt * 50, 1000))
+  }
+  throw lastError || new Error(`Browser profile cleanup failed: ${profile}`)
 }
 
 async function main() {
@@ -152,7 +189,7 @@ async function main() {
   const targetUrl = required(options, 'url')
   const domOutput = required(options, 'dom-output')
   const logOutput = required(options, 'log-output')
-  const timeoutMilliseconds = Number(options.timeout || 45) * 1000
+  const timeoutMilliseconds = Number(options.timeout || 120) * 1000
   const width = Number(options.width || 1280)
   const height = Number(options.height || 1000)
   const port = await availablePort()
@@ -175,6 +212,7 @@ async function main() {
     '--remote-allow-origins=*',
     targetUrl
   ], { stdio: ['ignore', 'ignore', log], windowsHide: true })
+  const childClosed = new Promise((resolve) => child.once('close', resolve))
   const deadline = Date.now() + timeoutMilliseconds
   let connection = null
   try {
@@ -184,24 +222,70 @@ async function main() {
     await connection.call('Runtime.enable')
     let status = ''
     while (Date.now() < deadline) {
-      status = await expressionValue(connection,
-        "document.documentElement.dataset.terraStatus || ''")
+      try {
+        status = await expressionValue(connection,
+          "document.documentElement ? (document.documentElement.dataset.terraStatus || '') : ''")
+      } catch (error) {
+        if (!/execution context/i.test(error.message || String(error))) {
+          throw error
+        }
+        status = ''
+      }
       if (status === 'passed' || status === 'failed') break
       if (child.exitCode !== null) {
         throw new Error(`Chromium exited before evidence completed: ${child.exitCode}`)
       }
       await delay(100)
     }
-    if (status !== 'passed' && status !== 'failed') {
-      throw new Error('Evidence page did not reach a terminal state')
-    }
+    const terminal = status === 'passed' || status === 'failed'
     const dom = await expressionValue(connection,
       "'<!DOCTYPE html>\\n' + document.documentElement.outerHTML")
     fs.writeFileSync(domOutput, dom, 'utf8')
+    let screenshotError = null
+    if (options['screenshot-output']) {
+      try {
+        await connection.call('Page.enable')
+        const screenshot = await connection.call('Page.captureScreenshot', {
+          format: 'png',
+          fromSurface: true,
+          captureBeyondViewport: false
+        }, 30000)
+        fs.writeFileSync(options['screenshot-output'],
+          Buffer.from(screenshot.data, 'base64'))
+      } catch (error) {
+        screenshotError = error
+      }
+    }
+    if (!terminal) {
+      throw new Error('Evidence page did not reach a terminal state')
+    }
+    if (screenshotError) throw screenshotError
+    if (status === 'failed') throw new Error('Evidence page reported failure')
   } finally {
-    await stopBrowser(child, connection)
-    if (connection) connection.close()
-    fs.closeSync(log)
+    let cleanupError = null
+    try {
+      await stopBrowser(child, connection, childClosed)
+    } catch (error) {
+      cleanupError = error
+    }
+    if (connection) {
+      try {
+        connection.close()
+      } catch (error) {
+        if (!cleanupError) cleanupError = error
+      }
+    }
+    try {
+      fs.closeSync(log)
+    } catch (error) {
+      if (!cleanupError) cleanupError = error
+    }
+    try {
+      await removeBrowserProfile(profile)
+    } catch (error) {
+      if (!cleanupError) cleanupError = error
+    }
+    if (cleanupError) throw cleanupError
   }
 }
 

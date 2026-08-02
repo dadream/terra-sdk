@@ -6,6 +6,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 namespace terra {
@@ -46,6 +47,33 @@ struct lod_cut {
   std::vector<std::size_t> leaf_count_by_level;
   std::vector<lod_patch> patches;
   std::vector<lod_record_request> record_requests;
+};
+
+struct lod_resource_state {
+  std::vector<lod_detail_key> available_roots;
+  std::vector<lod_detail_key> available_details;
+  std::vector<lod_detail_key> unavailable_details;
+};
+
+class cylindrical_lod_controller {
+ public:
+  cylindrical_lod_controller();
+  ~cylindrical_lod_controller();
+
+  cylindrical_lod_controller(const cylindrical_lod_controller&) = delete;
+  cylindrical_lod_controller& operator=(
+      const cylindrical_lod_controller&) = delete;
+
+  void clear();
+  void configure(double radius, std::uint32_t patch_dimension,
+                 std::size_t maximum_level = 40U,
+                 std::size_t maximum_node_count = 65536U);
+  lod_cut update(float threshold, const camera_snapshot& camera,
+                 const lod_resource_state& resources);
+
+ private:
+  struct implementation;
+  std::unique_ptr<implementation> implementation_;
 };
 
 lod_cut select_procedural_cylindrical_lod(

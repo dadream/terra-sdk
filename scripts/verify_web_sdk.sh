@@ -20,13 +20,33 @@ case "${OUTPUT_DIR}" in
     ;;
 esac
 
+remove_browser_profile() {
+  if [ -z "${BROWSER_PROFILE}" ] || [ ! -e "${BROWSER_PROFILE}" ]; then
+    return 0
+  fi
+  for _ in $(seq 1 30); do
+    rm -rf "${BROWSER_PROFILE}" >/dev/null 2>&1 || true
+    if [ ! -e "${BROWSER_PROFILE}" ]; then
+      return 0
+    fi
+    sleep 0.1
+  done
+  echo "Cleanup failed; browser profile remains: ${BROWSER_PROFILE}" >&2
+  return 1
+}
+
 cleanup() {
+  local status=0
   if [ -n "${SERVER_PID}" ]; then
     kill "${SERVER_PID}" >/dev/null 2>&1 || true
+    wait "${SERVER_PID}" >/dev/null 2>&1 || true
+    if kill -0 "${SERVER_PID}" 2>/dev/null; then
+      echo "Cleanup failed; Web SDK server remains: ${SERVER_PID}" >&2
+      status=1
+    fi
   fi
-  if [ -n "${BROWSER_PROFILE}" ] && [ -d "${BROWSER_PROFILE}" ]; then
-    rm -rf "${BROWSER_PROFILE}" >/dev/null 2>&1 || true
-  fi
+  remove_browser_profile || status=1
+  return "${status}"
 }
 trap cleanup EXIT
 
@@ -148,3 +168,8 @@ fi
 python3 "${ROOT_DIR}/scripts/check_web_sdk_evidence.py" \
   "${OUTPUT_DIR}/browser_dom.html" \
   "${OUTPUT_DIR}"
+
+cleanup
+SERVER_PID=
+BROWSER_PROFILE=
+printf 'Web SDK verification passed; all test resources stopped.\n'

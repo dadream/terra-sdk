@@ -218,6 +218,33 @@ async function createRuntime(options) {
   return { runtime, renderer }
 }
 
+function testTerrainRequestOrdering() {
+  const fine = {
+    kind: runtimeModule.REQUEST_DETAIL,
+    key: { level: 8, i: 1, j: 2, k: 3 }
+  }
+  const root = {
+    kind: runtimeModule.REQUEST_ROOT,
+    key: { level: 0, i: 4, j: 5, k: 6 }
+  }
+  const coarse = {
+    kind: runtimeModule.REQUEST_DETAIL,
+    key: { level: 1, i: 7, j: 8, k: 9 }
+  }
+  const sameLevel = {
+    kind: runtimeModule.REQUEST_DETAIL,
+    key: { level: 1, i: 10, j: 11, k: 12 }
+  }
+  const requests = [fine, sameLevel, root, coarse]
+  assert.deepStrictEqual(runtimeModule.orderTerrainRequests(requests),
+    [root, fine, sameLevel, coarse])
+  assert.deepStrictEqual(requests, [fine, sameLevel, root, coarse])
+  assert(runtimeModule.terrainRequestPriority(root) >
+    runtimeModule.terrainRequestPriority(coarse))
+  assert.strictEqual(runtimeModule.terrainRequestPriority(coarse),
+    runtimeModule.terrainRequestPriority(fine))
+}
+
 function testGeographicCamera() {
   const target = {
     longitudeDegrees: 116.4074,
@@ -334,10 +361,79 @@ async function testSuccessfulLoadAndControls() {
   result.runtime.resize({ width: 1600, height: 900, devicePixelRatio: 2 })
   assert.strictEqual(result.runtime.scheduler.maximumConcurrent, 3)
   assert(result.renderer.budgets.length >= 2)
+  assert.strictEqual(result.runtime.maximumTextureRequests, 4)
+  assert.strictEqual(result.renderer.options.maximumTextureRequests, 3)
+  assert.strictEqual(result.renderer.budgets[
+    result.renderer.budgets.length - 1].maximumTextureRequests, 3)
   assert.strictEqual(result.runtime.retryFailed(), false)
   result.runtime.destroy()
   assert.strictEqual(abi.destroyed, true)
   assert.strictEqual(result.renderer.destroyed, true)
+}
+
+async function testCloseRangePanUsesSurfaceScale() {
+  const abi = new FakeAbi()
+  const result = await createRuntime({
+    abi,
+    request() {
+      return { promise: Promise.resolve(response(payload())), abort() {} }
+    }
+  })
+  await settle(4)
+  const radius = result.runtime.manifest.radius
+  result.runtime.setView({
+    schema: 'terra.view-state.v1',
+    mode: 'globe',
+    target: {
+      longitudeDegrees: 120.6,
+      latitudeDegrees: 31.3,
+      heightMeters: 0
+    },
+    rangeMeters: radius + 15000,
+    headingDegrees: 0,
+    tiltDegrees: 0
+  })
+  const before = result.runtime.getView()
+  result.runtime.panBy({ xPixels: 96, yPixels: 40 })
+  const after = result.runtime.getView()
+  const longitudeDelta = Math.abs(after.target.longitudeDegrees -
+    before.target.longitudeDegrees)
+  const latitudeDelta = Math.abs(after.target.latitudeDegrees -
+    before.target.latitudeDegrees)
+  assert(longitudeDelta > 0.005)
+  assert(longitudeDelta < 0.05)
+  assert(latitudeDelta > 0.001)
+  assert(latitudeDelta < 0.05)
+  assert.strictEqual(after.rangeMeters, before.rangeMeters)
+
+  result.runtime.setView({
+    schema: 'terra.view-state.v1',
+    mode: 'globe',
+    target: before.target,
+    rangeMeters: radius + 15000,
+    headingDegrees: 0,
+    tiltDegrees: 0
+  })
+  const zoomTarget = result.runtime.getView()
+  result.runtime.zoomBy(1.25, { anchor: { x: 960, y: 360 } })
+  const zoomedOut = result.runtime.getView()
+  assert(Math.abs((zoomedOut.rangeMeters - radius) - 18750) < 0.000001)
+  assert(Math.abs(zoomedOut.target.longitudeDegrees -
+    zoomTarget.target.longitudeDegrees) < 0.02)
+  result.runtime.zoomBy(0.8, { anchor: { x: 960, y: 360 } })
+  const zoomedBack = result.runtime.getView()
+  assert(Math.abs((zoomedBack.rangeMeters - radius) - 15000) < 0.000001)
+  assert(Math.abs(zoomedBack.target.longitudeDegrees -
+    zoomTarget.target.longitudeDegrees) < 0.000001)
+
+  result.runtime.applyInteraction({ zoomScale: 2 })
+  assert(Math.abs((result.runtime.getView().rangeMeters - radius) -
+    30000) < 0.000001)
+  result.runtime.applyCamera({ zoomScale: 0.5 })
+  assert(Math.abs((result.runtime.getView().rangeMeters - radius) -
+    15000) < 0.000001)
+  assert.throws(() => result.runtime.zoomBy(0), /must be positive/)
+  result.runtime.destroy()
 }
 
 async function testFailureRecovery() {
@@ -367,6 +463,34 @@ async function testFailureRecovery() {
   assert.deepStrictEqual(abi.retryRecords[0], recordRequest)
   assert.strictEqual(abi.submissions.length, 1)
   assert.strictEqual(result.runtime.state().terrain.failedRequestCount, 0)
+  result.runtime.destroy()
+}
+
+async function testTransientFailureIsRetried() {
+  const abi = new FakeAbi()
+  const bytes = payload()
+  let attempts = 0
+  const result = await createRuntime({
+    abi,
+    maximumTerrainRetries: 1,
+    terrainRetryDelayMs: 0,
+    request() {
+      attempts += 1
+      return {
+        promise: attempts === 1
+          ? Promise.reject(new Error('transient'))
+          : Promise.resolve(response(bytes)),
+        abort() {}
+      }
+    }
+  })
+  await settle(8)
+  assert.strictEqual(attempts, 2)
+  assert.strictEqual(abi.submissions.length, 1)
+  assert.strictEqual(abi.failures.length, 0)
+  assert.strictEqual(result.runtime.state().terrain.failedRequestCount, 0)
+  assert(result.runtime.state().diagnostics.some((entry) =>
+    entry.kind === 'terrain_retry'))
   result.runtime.destroy()
 }
 
@@ -496,9 +620,12 @@ async function testWxCancellation() {
 }
 
 async function main() {
+  testTerrainRequestOrdering()
   testGeographicCamera()
   await testSuccessfulLoadAndControls()
+  await testCloseRangePanUsesSurfaceScale()
   await testFailureRecovery()
+  await testTransientFailureIsRetried()
   await testSparseNotFoundIsNotRetried()
   await testTiandituProfile()
   await testPublicImageryAndLifecycle()

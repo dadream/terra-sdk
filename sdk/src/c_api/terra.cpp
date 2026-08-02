@@ -51,6 +51,7 @@ struct terra_context {
   std::vector<std::uint16_t> index_buffer;
   terra_frame_v1 frame{};
   terra_stats_v1 stats{};
+  terra::frame::cylindrical_lod_controller globe_lod;
   mutable std::string last_error;
 };
 
@@ -235,7 +236,11 @@ terra_status map_hierarchy_status(terra::codec::hierarchy_status status) {
 }
 
 terra_status build_render_buffers(
-    terra_context& context, const terra::frame::lod_cut& cut) {
+    terra_context& context, const terra::frame::lod_cut& cut,
+    std::uint32_t& expected_draw_count,
+    std::uint32_t& omitted_draw_count,
+    std::uint32_t& coverage_draw_count,
+    std::uint32_t& coverage_complete) {
   using height_map = std::map<terra_patch_key_v1,
                               terra::codec::height_diamond,
                               patch_key_less>;
@@ -243,6 +248,10 @@ terra_status build_render_buffers(
   context.draw_ranges.clear();
   context.positions.clear();
   context.texture_uv.clear();
+  expected_draw_count = 0U;
+  omitted_draw_count = 0U;
+  coverage_draw_count = 0U;
+  coverage_complete = 0U;
 
   for (const terra::frame::lod_record_request& request :
        cut.record_requests) {
@@ -333,77 +342,94 @@ terra_status build_render_buffers(
       static_cast<int>(context.manifest.texture_level_zero_rows),
       static_cast<int>(context.manifest.texture_matrix_level_offset),
       static_cast<int>(context.manifest.texture_maximum_level));
+  const auto append_surface =
+      [&](const terra::frame::lod_patch& patch, std::uint8_t fragment,
+          const terra::codec::height_fragment& fragment_heights,
+          std::uint32_t flags) -> terra_status {
+    terra::frame::patch_surface_mesh mesh;
+    const terra::frame::surface_mesh_status mesh_status =
+        context.manifest.transform == TERRA_TRANSFORM_PLANAR
+            ? terra::frame::make_planar_patch_surface(
+                  patch, fragment, fragment_heights,
+                  context.manifest.height_scale_factor,
+                  terra::core::bounds2d(
+                      terra::core::vector2d{{context.manifest.minimum_u,
+                                             context.manifest.minimum_v}},
+                      terra::core::vector2d{{context.manifest.maximum_u,
+                                             context.manifest.maximum_v}}),
+                  planar_texture_selector, mesh)
+            : terra::frame::make_cylindrical_patch_surface(
+                  patch, fragment, fragment_heights,
+                  context.manifest.height_scale_factor,
+                  context.manifest.radius, selector, mesh);
+    if (mesh_status != terra::frame::surface_mesh_status::ok) {
+      const terra_status status =
+          mesh_status == terra::frame::surface_mesh_status::resource_limit
+              ? TERRA_STATUS_RESOURCE_LIMIT
+              : TERRA_STATUS_INTERNAL_ERROR;
+      return fail(&context, status,
+                  terra::frame::surface_mesh_status_message(mesh_status));
+    }
+
+    const std::size_t first_vertex = context.positions.size() / 3U;
+    const std::size_t vertex_count = mesh.positions_xyz.size() / 3U;
+    if (first_vertex > UINT32_MAX || vertex_count > UINT32_MAX ||
+        context.index_buffer.size() > UINT32_MAX) {
+      return fail(&context, TERRA_STATUS_RESOURCE_LIMIT,
+                  "render buffer exceeds the C ABI range");
+    }
+    terra_draw_range_v1 range{};
+    range.struct_size = sizeof(terra_draw_range_v1);
+    range.fragment = fragment;
+    range.key = to_key(patch);
+    range.texture.level =
+        static_cast<std::uint32_t>(mesh.texture_tile.level);
+    range.texture.matrix = mesh.texture_tile.matrix;
+    range.texture.row = mesh.texture_tile.row;
+    range.texture.column = mesh.texture_tile.column;
+    range.first_vertex = static_cast<std::uint32_t>(first_vertex);
+    range.vertex_count = static_cast<std::uint32_t>(vertex_count);
+    range.first_index = 0U;
+    range.index_count =
+        static_cast<std::uint32_t>(context.index_buffer.size());
+    std::copy(mesh.origin.begin(), mesh.origin.end(), range.origin);
+    range.flags = flags;
+    context.draw_ranges.push_back(range);
+    context.positions.insert(context.positions.end(),
+                             mesh.positions_xyz.begin(),
+                             mesh.positions_xyz.end());
+    context.texture_uv.insert(context.texture_uv.end(),
+                              mesh.texture_uv.begin(),
+                              mesh.texture_uv.end());
+    return TERRA_STATUS_OK;
+  };
+
   for (const terra::frame::lod_patch& patch : cut.patches) {
     if (!patch.visible) {
       continue;
     }
     const terra_patch_key_v1 key = to_key(patch);
     const height_map::const_iterator height = heights.find(key);
-    if (height == heights.end()) {
-      continue;
-    }
     for (std::uint8_t fragment = 0U; fragment < 2U; ++fragment) {
-      if (!patch.has_fragment(fragment) ||
-          !height->second.has_fragment(fragment)) {
+      if (!patch.has_fragment(fragment)) {
         continue;
       }
-      terra::frame::patch_surface_mesh mesh;
-      const terra::frame::surface_mesh_status mesh_status =
-          context.manifest.transform == TERRA_TRANSFORM_PLANAR
-              ? terra::frame::make_planar_patch_surface(
-                    patch, fragment, height->second.fragments[fragment],
-                    context.manifest.height_scale_factor,
-                    terra::core::bounds2d(
-                        terra::core::vector2d{{context.manifest.minimum_u,
-                                               context.manifest.minimum_v}},
-                        terra::core::vector2d{{context.manifest.maximum_u,
-                                               context.manifest.maximum_v}}),
-                    planar_texture_selector,
-                    mesh)
-              : terra::frame::make_cylindrical_patch_surface(
-                    patch, fragment, height->second.fragments[fragment],
-                    context.manifest.height_scale_factor,
-                    context.manifest.radius, selector, mesh);
-      if (mesh_status != terra::frame::surface_mesh_status::ok) {
-        const terra_status status =
-            mesh_status == terra::frame::surface_mesh_status::resource_limit
-                ? TERRA_STATUS_RESOURCE_LIMIT
-                : TERRA_STATUS_INTERNAL_ERROR;
-        return fail(&context, status,
-                    terra::frame::surface_mesh_status_message(mesh_status));
+      ++expected_draw_count;
+      if (height == heights.end() ||
+          !height->second.has_fragment(fragment)) {
+        ++omitted_draw_count;
+        continue;
       }
-
-      const std::size_t first_vertex = context.positions.size() / 3U;
-      const std::size_t vertex_count = mesh.positions_xyz.size() / 3U;
-      if (first_vertex > UINT32_MAX || vertex_count > UINT32_MAX ||
-          context.index_buffer.size() > UINT32_MAX) {
-        return fail(&context, TERRA_STATUS_RESOURCE_LIMIT,
-                    "render buffer exceeds the C ABI range");
+      const terra_status status = append_surface(
+          patch, fragment, height->second.fragments[fragment],
+          TERRA_DRAW_FLAG_NONE);
+      if (status != TERRA_STATUS_OK) {
+        return status;
       }
-      terra_draw_range_v1 range{};
-      range.struct_size = sizeof(terra_draw_range_v1);
-      range.fragment = fragment;
-      range.key = key;
-      range.texture.level =
-          static_cast<std::uint32_t>(mesh.texture_tile.level);
-      range.texture.matrix = mesh.texture_tile.matrix;
-      range.texture.row = mesh.texture_tile.row;
-      range.texture.column = mesh.texture_tile.column;
-      range.first_vertex = static_cast<std::uint32_t>(first_vertex);
-      range.vertex_count = static_cast<std::uint32_t>(vertex_count);
-      range.first_index = 0U;
-      range.index_count =
-          static_cast<std::uint32_t>(context.index_buffer.size());
-      std::copy(mesh.origin.begin(), mesh.origin.end(), range.origin);
-      context.draw_ranges.push_back(range);
-      context.positions.insert(
-          context.positions.end(),
-          mesh.positions_xyz.begin(), mesh.positions_xyz.end());
-      context.texture_uv.insert(
-          context.texture_uv.end(),
-          mesh.texture_uv.begin(), mesh.texture_uv.end());
     }
   }
+  coverage_complete =
+      expected_draw_count > 0U && omitted_draw_count == 0U ? 1U : 0U;
   if (context.draw_ranges.size() > UINT32_MAX ||
       context.positions.size() > UINT32_MAX ||
       context.texture_uv.size() > UINT32_MAX ||
@@ -427,6 +453,7 @@ void reset_runtime_state(terra_context& context) {
   context.planar_target_y = 0.0;
   context.planar_target_set = false;
   context.planar_level = 0U;
+  context.globe_lod.clear();
   context.loaded_records.clear();
   context.failed_records.clear();
   context.requests.clear();
@@ -619,6 +646,9 @@ terra_status terra_load_manifest(terra_context* context,
                   terra::frame::mesh_index_status_message(index_status));
     }
     context->manifest = input;
+    if (input.transform == TERRA_TRANSFORM_CYLINDRICAL) {
+      context->globe_lod.configure(input.radius, input.patch_dimension);
+    }
     context->manifest_loaded = true;
     return succeed(context);
   }
@@ -883,6 +913,7 @@ terra_status terra_update(terra_context* context, float lod_threshold) {
   TERRA_C_API_TRY {
     terra::frame::camera_snapshot snapshot;
     terra::frame::lod_cut cut;
+    std::size_t active_record_request_count = 0U;
     if (context->manifest.transform == TERRA_TRANSFORM_PLANAR) {
       const terra::core::bounds2d bounds(
           terra::core::vector2d{{context->manifest.minimum_u,
@@ -911,6 +942,7 @@ terra_status terra_update(terra_context* context, float lod_threshold) {
       snapshot = camera.snapshot();
       cut = terra::frame::select_fixed_planar_lod(
           context->manifest.patch_dimension, context->planar_level);
+      active_record_request_count = cut.record_requests.size();
     } else {
       terra::frame::globe_camera camera(
           static_cast<float>(context->manifest.radius),
@@ -933,19 +965,50 @@ terra_status terra_update(terra_context* context, float lod_threshold) {
         camera.rotate_yaw_radians(context->camera.yaw_radians);
       }
       snapshot = camera.snapshot();
-      std::vector<terra::frame::lod_detail_key> unavailable_details;
-      unavailable_details.reserve(context->failed_records.size());
-      for (const terra_request_v1& failed : context->failed_records) {
-        if (failed.kind == TERRA_REQUEST_DETAIL) {
-          terra::frame::lod_detail_key unavailable;
-          unavailable.level = failed.key.level;
-          unavailable.id = {{failed.key.i, failed.key.j, failed.key.k}};
-          unavailable_details.push_back(unavailable);
+      terra::frame::lod_resource_state resources;
+      resources.available_roots.reserve(context->loaded_records.size());
+      resources.available_details.reserve(context->loaded_records.size());
+      resources.unavailable_details.reserve(
+          context->failed_records.size());
+      for (const terra_loaded_record& record : context->loaded_records) {
+        terra::frame::lod_detail_key available;
+        available.level = record.key.level;
+        available.id = {{record.key.i, record.key.j, record.key.k}};
+        if (record.kind == TERRA_REQUEST_ROOT) {
+          resources.available_roots.push_back(available);
+        } else if (record.kind == TERRA_REQUEST_DETAIL) {
+          resources.available_details.push_back(available);
         }
       }
-      cut = terra::frame::select_procedural_cylindrical_lod(
-          context->manifest.radius, context->manifest.patch_dimension,
-          lod_threshold, snapshot, 40U, 65536U, unavailable_details);
+      for (const terra_request_v1& failed : context->failed_records) {
+        if (failed.kind != TERRA_REQUEST_DETAIL) {
+          continue;
+        }
+        terra::frame::lod_detail_key unavailable;
+        unavailable.level = failed.key.level;
+        unavailable.id = {{failed.key.i, failed.key.j, failed.key.k}};
+        resources.unavailable_details.push_back(unavailable);
+      }
+      cut = context->globe_lod.update(lod_threshold, snapshot, resources);
+      active_record_request_count = cut.record_requests.size();
+      const terra::frame::lod_cut prefetch =
+          terra::frame::select_procedural_cylindrical_lod(
+              context->manifest.radius,
+              context->manifest.patch_dimension, lod_threshold, snapshot,
+              40U, 65536U, resources.unavailable_details);
+      for (const terra::frame::lod_record_request& request :
+           prefetch.record_requests) {
+        const auto duplicate = std::find_if(
+            cut.record_requests.begin(), cut.record_requests.end(),
+            [&request](const terra::frame::lod_record_request& current) {
+              return current.kind == request.kind &&
+                     current.patch.level == request.patch.level &&
+                     current.patch.id == request.patch.id;
+            });
+        if (duplicate == cut.record_requests.end()) {
+          cut.record_requests.push_back(request);
+        }
+      }
     }
     if (!cut.complete) {
       return fail(context, TERRA_STATUS_RESOURCE_LIMIT,
@@ -966,8 +1029,43 @@ terra_status terra_update(terra_context* context, float lod_threshold) {
       decision.priority = patch.priority;
       context->patches.push_back(decision);
     }
-    for (const terra::frame::lod_record_request& record :
-         cut.record_requests) {
+    struct scheduled_record {
+      const terra::frame::lod_record_request* record = nullptr;
+      bool active = false;
+      std::size_t order = 0U;
+    };
+    std::vector<scheduled_record> schedule;
+    schedule.reserve(cut.record_requests.size());
+    for (std::size_t index = 0U; index < cut.record_requests.size();
+         ++index) {
+      scheduled_record entry;
+      entry.record = &cut.record_requests[index];
+      entry.active = index < active_record_request_count;
+      entry.order = index;
+      schedule.push_back(entry);
+    }
+    std::stable_sort(
+        schedule.begin(), schedule.end(),
+        [](const scheduled_record& left, const scheduled_record& right) {
+          const bool left_root =
+              left.record->kind == terra::frame::lod_record_kind::root;
+          const bool right_root =
+              right.record->kind == terra::frame::lod_record_kind::root;
+          if (left_root != right_root) {
+            return left_root;
+          }
+          if (left.active != right.active) {
+            return left.active;
+          }
+          if (left.record->patch.priority !=
+              right.record->patch.priority) {
+            return left.record->patch.priority >
+                   right.record->patch.priority;
+          }
+          return left.order < right.order;
+        });
+    for (const scheduled_record& scheduled : schedule) {
+      const terra::frame::lod_record_request& record = *scheduled.record;
       terra_request_v1 request{};
       request.struct_size = sizeof(terra_request_v1);
       request.kind =
@@ -981,7 +1079,13 @@ terra_status terra_update(terra_context* context, float lod_threshold) {
         context->requests.push_back(request);
       }
     }
-    const terra_status render_status = build_render_buffers(*context, cut);
+    std::uint32_t expected_draw_count = 0U;
+    std::uint32_t omitted_draw_count = 0U;
+    std::uint32_t coverage_draw_count = 0U;
+    std::uint32_t coverage_complete = 0U;
+    const terra_status render_status = build_render_buffers(
+        *context, cut, expected_draw_count, omitted_draw_count,
+        coverage_draw_count, coverage_complete);
     if (render_status != TERRA_STATUS_OK) {
       return render_status;
     }
@@ -1012,6 +1116,10 @@ terra_status terra_update(terra_context* context, float lod_threshold) {
         static_cast<std::uint32_t>(context->positions.size());
     context->frame.texture_float_count =
         static_cast<std::uint32_t>(context->texture_uv.size());
+    context->frame.expected_draw_count = expected_draw_count;
+    context->frame.omitted_draw_count = omitted_draw_count;
+    context->frame.coverage_draw_count = coverage_draw_count;
+    context->frame.coverage_complete = coverage_complete;
 
     ++context->stats.update_count;
     context->stats.current_patch_count = context->frame.patch_count;
