@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; object-src 'none'; base-uri 'self'">
+  <title>Quickstart | Terra SDK</title><link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="site-header"><a class="brand" href="/">Terra SDK</a><nav aria-label="Primary navigation"><a href="/demo/globe/">Globe Demo</a><a href="/demo/planar/">Planar Demo</a><a href="/services/">Services</a><a class="nav-command" href="https://github.com/dadream/terra-sdk">GitHub</a></nav></header>
+  <main class="page-main">
+    <section class="page-hero"><p class="eyebrow">Quickstart</p><h1>Integrate the verified package boundary</h1><p>Start from a tagged archive rather than copying source modules. The release contains complete examples, CMake metadata, runtime declarations, checksums, and notices.</p></section>
+    <section class="content-band prose">
+      <h2>Native C++14</h2>
+      <p>Extract the native archive and point CMake at its installed package directory.</p>
+      <pre><code>tar -xzf terra-sdk-0.1.0-native.tar.gz
+cmake -S my-app -B build \
+  -DTerraSdk_DIR="$PWD/terra-sdk-0.1.0-native/lib64/cmake/TerraSdk"
+cmake --build build</code></pre>
+      <pre><code>find_package(TerraSdk 0.1 CONFIG REQUIRED)
+target_link_libraries(my_app PRIVATE Terra::core Terra::frame)
+target_compile_features(my_app PRIVATE cxx_std_14)</code></pre>
+      <p>Use <code>Terra::c_api</code> for the stable C boundary or <code>Terra::codec</code> for repository decoding. Working C and C++ consumers are installed under <code>share/doc/TerraSdk/examples</code>.</p>
+
+      <h2>Web and Mini Program</h2>
+      <p>The portable archive contains <code>wasm/terra_sdk.wasm</code>, CommonJS runtime modules in <code>utils/</code>, and <code>terra_viewer.d.ts</code>. The host creates the Wasm module, supplies a canvas and request adapter, then constructs <code>TerraViewer</code>.</p>
+      <pre><code>const viewer = await TerraViewer.create({
+  mode: 'globe',
+  canvas,
+  serviceOrigin: 'https://your-terrain.example',
+  manifestPath: '/terra/v1/datasets/globe/manifest',
+  terraModule,
+  request,
+  imagery,
+  viewport: { width, height, devicePixelRatio }
+})</code></pre>
+      <p>Bind pointer or touch events through <code>viewer.interaction</code>, use <code>viewer.camera</code> for deterministic controls, and call <code>viewer.resize</code>, <code>pause</code>, <code>resume</code>, and <code>destroy</code> with the host lifecycle.</p>
+
+      <h2>Verify the download</h2>
+      <pre><code>sha256sum -c SHA256SUMS</code></pre>
+      <p>Read <code>release_manifest.json</code> for ABI and package identity and the SPDX JSON inventory for release checksums and licensing context.</p>
+      <a class="primary-command" href="/downloads/">Download v0.1.0</a>
+    </section>
+  </main>
+  <footer><a class="brand" href="/">Terra SDK</a><p>Package-first integration with observable runtime state.</p><div><a href="/license/">License</a><a href="https://github.com/dadream/terra-sdk">GitHub</a></div></footer>
+</body>
+</html>

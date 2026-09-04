@@ -1,0 +1,50 @@
+{
+  "schema": "terra.lighthouse.data-manifest.v1",
+  "source_prefix": "terra-testdata/datasets/",
+  "files": [
+    {
+      "path": "datasets/ps-1k/v1/terrain/terrain.xml",
+      "bytes": 251,
+      "sha256": "05ec8a6e27527a20ded254ea7f301b026dd829a19bff5966a83e7a977c97e1d3"
+    },
+    {
+      "path": "datasets/ps-1k/v1/terrain/terrain.root",
+      "bytes": 131072,
+      "sha256": "d5cc9fbe554282ebcfd6d4f11e6f319a45e4e4bfdad45ecc386899db04f04a1e"
+    },
+    {
+      "path": "datasets/ps-1k/v1/terrain/terrain.data",
+      "bytes": 1769472,
+      "sha256": "d47f85a5a906a00d9d9ff4fe02b288c687df4af40063eab8580bee6f83e88a3e"
+    },
+    {
+      "path": "datasets/globe/v1/terrain/global_srtm_tol2.xml",
+      "bytes": 223,
+      "sha256": "1f8ee139c8b9af02a8b429f02c7f5f865df81cc4dbc4b89c2a2f2ad2031fb656"
+    },
+    {
+      "path": "datasets/globe/v1/terrain/global_srtm_tol2.root",
+      "bytes": 12288,
+      "sha256": "b64a80eba5840d526f1f3a51e1c5f6231fd1b02d2e7a6cb0fe1fd163cf7c896d"
+    },
+    {
+      "path": "datasets/globe/v1/terrain/global_srtm_tol2.data",
+      "bytes": 859361280,
+      "sha256": "4ea92dde3e23f5d2cf6e106da7c885d9c554694ad8af7cb95c86b3c37eddd3c3"
+    }
+  ],
+  "collections": [
+    {
+      "path": "datasets/ps-1k/v1/imagery/ps-1k",
+      "extension": ".jpg",
+      "files": 21,
+      "bytes": 320222
+    },
+    {
+      "path": "datasets/globe/v1/imagery/blue-marble",
+      "extension": ".jpg",
+      "files": 43684,
+      "bytes": 204882626
+    }
+  ]
+}

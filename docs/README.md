@@ -12,6 +12,8 @@
 - `SDK_MINIPROGRAM_ROADMAP.md`: staged SDK and mini-program delivery plan.
 - `SDK_RELEASE.md`: package surfaces, compatibility policy, release gate, and
   final manual acceptance handoff.
+- `PRODUCT_SITE_RELEASE.md`: tag publishing, product-site build, temporary IP
+  access, Lighthouse deployment, and bounded online verification.
 - `SDK_PRODUCT_DEFINITION.md`: developer product positioning, SDK/service
   boundary, default-provider offer, reference applications, licensing, and
   product-release criteria.

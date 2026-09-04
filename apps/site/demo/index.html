@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en" data-terra-status="starting">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; connect-src 'self'; worker-src 'none'; object-src 'none'; base-uri 'self'">
+  <title>Terra __TERRA_DEMO_MODE__ Demo</title>
+  <link rel="stylesheet" href="/demo/styles.css">
+</head>
+<body data-mode="__TERRA_DEMO_MODE__">
+  <main class="viewer-shell" aria-label="Terra __TERRA_DEMO_MODE__ viewer">
+    <canvas id="terra-canvas"></canvas>
+    <header class="viewer-header">
+      <a class="viewer-brand" href="/" target="_top">Terra SDK</a>
+      <span id="mode-label">__TERRA_DEMO_MODE__</span>
+      <span id="runtime-status" role="status">Initializing</span>
+      <code id="frame-status">frame -</code>
+    </header>
+    <div class="viewer-tools" aria-label="Terrain controls">
+      <div class="segmented" role="group" aria-label="Pointer mode">
+        <button id="mode-move" type="button" aria-pressed="true">Move</button>
+        <button id="mode-look" type="button" aria-pressed="false">Look</button>
+      </div>
+      <div class="tool-group" role="group" aria-label="Pan controls">
+        <button id="pan-left" type="button" title="Pan left" aria-label="Pan left">←</button>
+        <button id="pan-up" type="button" title="Pan up" aria-label="Pan up">↑</button>
+        <button id="pan-down" type="button" title="Pan down" aria-label="Pan down">↓</button>
+        <button id="pan-right" type="button" title="Pan right" aria-label="Pan right">→</button>
+      </div>
+      <div class="tool-group" role="group" aria-label="Zoom controls">
+        <button id="zoom-out" type="button" title="Zoom out" aria-label="Zoom out">−</button>
+        <button id="zoom-in" type="button" title="Zoom in" aria-label="Zoom in">+</button>
+      </div>
+      <div class="tool-group" role="group" aria-label="View controls">
+        <button id="top-down" type="button" title="Top-down view">Top</button>
+        <button id="tilt-45" type="button" title="45 degree view">45</button>
+        <button id="rotate-left" type="button" title="Rotate counterclockwise" aria-label="Rotate counterclockwise">↺</button>
+        <button id="rotate-right" type="button" title="Rotate clockwise" aria-label="Rotate clockwise">↻</button>
+        <button id="north-up" type="button" title="North up">N</button>
+      </div>
+      <button id="reset-view" type="button" title="Reset view">Globe</button>
+      <button id="debug-toggle" type="button" aria-pressed="false" title="Toggle diagnostics">Debug</button>
+      <label class="imagery-control" for="imagery-profile">
+        <span>Imagery</span>
+        <select id="imagery-profile">
+          <option value="blue-marble">Blue Marble</option>
+          <option value="tianditu-img-c">Tianditu</option>
+        </select>
+      </label>
+    </div>
+    <pre id="debug-panel" class="debug-panel" hidden></pre>
+    <div id="error-banner" class="error-banner" role="alert" hidden></div>
+    <div id="attribution" class="attribution"></div>
+  </main>
+  <script src="/assets/terra_browser_bundle.js"></script>
+  <script src="/demo/app.js"></script>
+</body>
+</html>

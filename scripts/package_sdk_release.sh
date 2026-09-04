@@ -196,5 +196,11 @@ for example_build_log in \
   fi
 done
 
+python3 "${ROOT_DIR}/scripts/generate_sdk_release_sbom.py" \
+  --root "${ROOT_DIR}" \
+  --release-dir "${RELEASE_DIR}" \
+  --version "${SDK_VERSION}"
+
 echo "Terra SDK ${SDK_VERSION} release packages verified."
 echo "Release manifest: ${RELEASE_DIR}/release_manifest.json"
+echo "SPDX inventory: ${RELEASE_DIR}/terra-sdk-${SDK_VERSION}.spdx.json"

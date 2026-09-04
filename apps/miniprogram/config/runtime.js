@@ -3,10 +3,9 @@ module.exports = {
   cloudbaseEnvId: 'shunlu-api-test-d9fvhxfy3199a35a',
   cloudbaseGlobeTerrainService: 'terra-terrain-globe',
   cloudbasePlanarTerrainService: 'terra-terrain-1k',
-  imageryServiceOrigin:
-    'https://terra-imagery-277006-4-1254147477.sh.run.tcloudbase.com',
-  terrainServiceOrigin: '',
-  planarServiceOrigin: '',
+  imageryServiceOrigin: 'https://terra.tapirs.top',
+  terrainServiceOrigin: 'https://terra.tapirs.top',
+  planarServiceOrigin: 'https://terra.tapirs.top',
   planarManifestPath: '/terra/v1/datasets/ps-1k/manifest',
   planarTextureId: 'ps-1k',
   planarLevel: 1,

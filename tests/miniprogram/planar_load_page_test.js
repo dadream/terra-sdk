@@ -1,4 +1,5 @@
 const assert = require('assert')
+const runtime = require('../../apps/miniprogram/config/runtime')
 const probe = require('../../apps/miniprogram/utils/terra_planar_load_probe')
 
 let pageDefinition = null
@@ -64,12 +65,18 @@ async function testFailure() {
 }
 
 async function testMissingOrigin() {
+  const configuredOrigin = runtime.planarServiceOrigin
   global.wx.getStorageSync = () => ''
-  const current = page()
-  current.runProbe()
-  assert.strictEqual(current.data.status, 'Planar data load failed')
-  assert.strictEqual(current.data.summary,
-    'Planar service origin is not configured')
+  runtime.planarServiceOrigin = ''
+  try {
+    const current = page()
+    current.runProbe()
+    assert.strictEqual(current.data.status, 'Planar data load failed')
+    assert.strictEqual(current.data.summary,
+      'Planar service origin is not configured')
+  } finally {
+    runtime.planarServiceOrigin = configuredOrigin
+  }
 }
 
 async function main() {

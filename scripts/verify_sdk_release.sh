@@ -37,6 +37,8 @@ run_step "Web SDK evidence gate" \
   env WEB_SDK_SKIP_WASM_GATE=1 bash "${ROOT_DIR}/scripts/verify_web_sdk.sh"
 run_step "SDK release package gate" \
   bash "${ROOT_DIR}/scripts/package_sdk_release.sh"
+run_step "product site package gate" \
+  bash "${ROOT_DIR}/scripts/verify_product_site.sh"
 # Every code-producing gate validates its own compiler-only build log. The
 # aggregate release log also contains non-compiler Docker infrastructure output.
 

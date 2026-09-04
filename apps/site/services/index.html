@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; object-src 'none'; base-uri 'self'">
+  <title>Evaluation Services | Terra SDK</title><link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="site-header"><a class="brand" href="/">Terra SDK</a><nav aria-label="Primary navigation"><a href="/demo/globe/">Globe Demo</a><a href="/demo/planar/">Planar Demo</a><a href="/docs/quickstart/">Quickstart</a><a class="nav-command" href="https://github.com/dadream/terra-sdk">GitHub</a></nav></header>
+  <main class="page-main">
+    <section class="page-hero"><p class="eyebrow">Public evaluation infrastructure</p><h1>Terrain and imagery services</h1><p>Use these endpoints to evaluate Terra SDK without provisioning a repository. The service is best-effort test infrastructure and has no production availability or retention SLA.</p></section>
+    <section class="content-band">
+      <div class="content-grid">
+        <article class="content-card"><p class="package-kind">Planar terrain</p><h2>PS 1k</h2><p>CBDAM terrain repository and matching tiled imagery.</p><p class="endpoint">/terra/v1/datasets/ps-1k/manifest</p><p class="endpoint">/terra/v1/imagery/ps-1k/{z}/{x}/{y}.jpg</p><a class="text-command" href="/demo/planar/">Open planar demo →</a></article>
+        <article class="content-card"><p class="package-kind">Globe terrain</p><h2>Global geodetic</h2><p>SRTM-derived CBDAM records for global terrain evaluation.</p><p class="endpoint">/terra/v1/datasets/globe/manifest</p><p class="endpoint">/terra/v1/datasets/globe/patches/{level}/{x}/{y}</p><a class="text-command" href="/demo/globe/">Open globe demo →</a></article>
+        <article class="content-card"><p class="package-kind">Open imagery</p><h2>NASA Blue Marble</h2><p>Global imagery used as the default public globe profile.</p><p class="endpoint">/terra/v1/imagery/blue-marble/{z}/{x}/{y}.jpg</p><p>Attribution: Imagery: NASA Blue Marble.</p></article>
+        <article class="content-card"><p class="package-kind">Proxied imagery</p><h2>Tianditu img-c</h2><p>The server keeps its credential private and caches successful tiles. Applications must preserve the visible Tianditu attribution and comply with provider terms.</p><p class="endpoint">/terra/v1/imagery/tianditu/img-c/{z}/{x}/{y}.jpg</p><p>Attribution: © 天地图.</p></article>
+      </div>
+      <div class="prose">
+        <h2>Origins during filing</h2>
+        <p>The temporary pre-filing origin is <code>http://49.233.185.96</code>. After the domain filing block is removed, use <code>https://terra.tapirs.top</code>. The browser demos use same-origin URLs, so no SDK security policy is weakened for temporary HTTP access.</p>
+        <h2>Responsible use</h2>
+        <p>Do not bulk-download the public test datasets, use the endpoints as a CDN, or embed provider credentials. For production, deploy your own terrain service and imagery policy. Automated tests must stop all polling and close their browser contexts when validation completes.</p>
+      </div>
+    </section>
+  </main>
+  <footer><a class="brand" href="/">Terra SDK</a><p>Reference infrastructure for SDK evaluation.</p><div><a href="/license/">License</a><a href="https://github.com/dadream/terra-sdk">GitHub</a></div></footer>
+</body>
+</html>

@@ -13,6 +13,7 @@
 /apps/miniprogram/wasm/terra_sdk_wasm_manifest.json
 /testdata/miniprogram/evidence/local/
 /deploy/cloudbase/cos-uploader/node_modules/
+/deploy/lighthouse/.env
 __pycache__/
 *.pyc
 *.swp
