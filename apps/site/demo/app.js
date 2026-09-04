@@ -43,6 +43,22 @@
     canvas.createImage = () => {
       const image = new Image()
       image.decoding = 'async'
+      if (publicHttp) {
+        const descriptor = Object.getOwnPropertyDescriptor(
+          window.HTMLImageElement.prototype, 'src')
+        if (!descriptor || typeof descriptor.get !== 'function' ||
+            typeof descriptor.set !== 'function') {
+          throw new Error('Browser image URL adapter is unavailable')
+        }
+        Object.defineProperty(image, 'src', {
+          configurable: true,
+          enumerable: descriptor.enumerable,
+          get() { return descriptor.get.call(image) },
+          set(value) {
+            descriptor.set.call(image, rewriteLoopbackUrl(value))
+          }
+        })
+      }
       return image
     }
   }
@@ -77,21 +93,14 @@
     return { promise, abort: () => controller.abort() }
   }
 
-  function makeSameOrigin(source) {
-    if (!publicHttp) return source
-    const original = source.resolveTile
-    const resolveTile = (tile) => rewriteLoopbackUrl(original(tile))
-    return Object.assign({}, source, { resolveTile, urlForTile: resolveTile })
-  }
-
   function imageryProfile(name) {
     if (!isGlobe) {
-      return makeSameOrigin(sdk.imagery.resolvePlanarImageryProfile(sdkOrigin))
+      return sdk.imagery.resolvePlanarImageryProfile(sdkOrigin)
     }
     const supported = name === 'tianditu-img-c'
       ? 'tianditu-img-c' : 'blue-marble'
-    return makeSameOrigin(sdk.imagery.resolveImageryProfile(
-      supported, '', supported, sdkOrigin))
+    return sdk.imagery.resolveImageryProfile(
+      supported, '', supported, sdkOrigin)
   }
 
   async function instantiateWasm() {

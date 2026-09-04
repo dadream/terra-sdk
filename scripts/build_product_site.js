@@ -1,3 +1,4 @@
+const crypto = require('crypto')
 const fs = require('fs')
 const path = require('path')
 
@@ -104,19 +105,26 @@ const copies = [
 ]
 copies.forEach(([source, destination]) => copyFile(source, destination))
 
+const bundlePath = path.join(output, 'assets', 'terra_browser_bundle.js')
+fs.writeFileSync(bundlePath, browserBundle(), 'utf8')
+const assetRevision = crypto.createHash('sha256')
+  .update(fs.readFileSync(path.join(output, 'demo/app.js')))
+  .update(fs.readFileSync(bundlePath))
+  .digest('hex').slice(0, 12)
+
 const template = fs.readFileSync(
   path.join(root, 'apps/site/demo/index.html'), 'utf8')
 for (const mode of ['globe', 'planar']) {
   const destination = path.join(output, 'demo', mode, 'index.html')
   fs.mkdirSync(path.dirname(destination), { recursive: true })
-  fs.writeFileSync(destination,
-    template.split('__TERRA_DEMO_MODE__').join(mode), 'utf8')
+  const rendered = template
+    .split('__TERRA_DEMO_MODE__').join(mode)
+    .split('__TERRA_ASSET_REVISION__').join(assetRevision)
+  fs.writeFileSync(destination, rendered, 'utf8')
 }
 fs.writeFileSync(path.join(output, 'demo', 'index.html'),
   '<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" ' +
   'content="0;url=/demo/globe/"><title>Terra Demo</title>\n', 'utf8')
-fs.writeFileSync(path.join(output, 'assets', 'terra_browser_bundle.js'),
-  browserBundle(), 'utf8')
 
 const version = cmakeVersion()
 const releasePath = path.join(root, 'workspace_old/package/release',

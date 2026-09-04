@@ -55,5 +55,32 @@ if (!bundle.includes('global.TerraWebSdk') || bundle.length < 100000) {
 if (fs.statSync(path.join(output, 'assets/terra_sdk.wasm')).size < 10000) {
   throw new Error('Terra Wasm artifact is incomplete')
 }
+const demo = fs.readFileSync(path.join(output, 'demo/app.js'), 'utf8')
+if (!demo.includes('Object.getOwnPropertyDescriptor') ||
+    !demo.includes('descriptor.set.call(image, rewriteLoopbackUrl(value))')) {
+  throw new Error('Product demo is missing its public HTTP image URL adapter')
+}
+if (demo.includes('makeSameOrigin')) {
+  throw new Error('Product demo rewrites imagery URLs before SDK validation')
+}
+const revisions = []
+for (const mode of ['globe', 'planar']) {
+  const html = fs.readFileSync(
+    path.join(output, 'demo', mode, 'index.html'), 'utf8')
+  const bundleMatch =
+    /src="\/assets\/terra_browser_bundle\.js\?rev=([0-9a-f]{12})"/.exec(html)
+  const appMatch =
+    /src="\/demo\/app\.js\?rev=([0-9a-f]{12})"/.exec(html)
+  if (!bundleMatch || !appMatch) {
+    throw new Error(`${mode} demo is missing versioned runtime assets`)
+  }
+  if (bundleMatch[1] !== appMatch[1]) {
+    throw new Error(`${mode} demo runtime asset revisions do not match`)
+  }
+  revisions.push(bundleMatch[1])
+}
+if (new Set(revisions).size !== 1) {
+  throw new Error('Globe and planar demos use different runtime revisions')
+}
 
 console.log(`Terra SDK product site verified for ${release.tag}.`)
