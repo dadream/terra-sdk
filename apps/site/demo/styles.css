@@ -65,6 +65,10 @@ button:hover, select:hover { border-color: #87a497; }
 button[aria-pressed="true"] { color: #06100c; border-color: var(--green); background: var(--green); }
 .imagery-control { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; }
 .imagery-control select { min-width: 132px; }
+.language-switcher { display: flex; flex: 0 0 auto; }
+.language-switcher button { min-width: 42px; padding: 0 8px; font-size: 12px; }
+.language-switcher button:first-child { border-radius: 4px 0 0 4px; }
+.language-switcher button:last-child { margin-left: -1px; border-radius: 0 4px 4px 0; }
 
 .debug-panel {
   top: 136px;

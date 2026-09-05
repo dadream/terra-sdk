@@ -1,30 +1,31 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="color-scheme" content="dark">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; object-src 'none'; base-uri 'self'">
-  <title>Evaluation Services | Terra SDK</title><link rel="stylesheet" href="/styles.css">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; object-src 'none'; base-uri 'self'">
+  <title data-i18n="services.title">评估服务 | Terra SDK</title><link rel="stylesheet" href="/styles.css?rev=__TERRA_ASSET_REVISION__">
 </head>
 <body>
-  <header class="site-header"><a class="brand" href="/">Terra SDK</a><nav aria-label="Primary navigation"><a href="/demo/globe/">Globe Demo</a><a href="/demo/planar/">Planar Demo</a><a href="/docs/quickstart/">Quickstart</a><a class="nav-command" href="https://github.com/dadream/terra-sdk">GitHub</a></nav></header>
+  <header class="site-header"><a class="brand" href="/">Terra SDK</a><nav data-i18n-aria-label="nav.primary" aria-label="主导航"><a data-i18n="nav.globe" href="/demo/globe/">球面演示</a><a data-i18n="nav.planar" href="/demo/planar/">平面演示</a><a data-i18n="nav.quickstart" href="/docs/quickstart/">快速开始</a><a class="nav-command" href="https://github.com/dadream/terra-sdk">GitHub</a></nav></header>
   <main class="page-main">
-    <section class="page-hero"><p class="eyebrow">Public evaluation infrastructure</p><h1>Terrain and imagery services</h1><p>Use these endpoints to evaluate Terra SDK without provisioning a repository. The service is best-effort test infrastructure and has no production availability or retention SLA.</p></section>
+    <section class="page-hero"><p class="eyebrow" data-i18n="services.eyebrow">公开评估基础设施</p><h1 data-i18n="services.heading">地形与影像服务</h1><p data-i18n="services.intro">使用这些端点即可评估 Terra SDK，无需自行部署数据仓库。服务为尽力而为的测试基础设施，不提供生产可用性或数据保留 SLA。</p></section>
     <section class="content-band">
       <div class="content-grid">
-        <article class="content-card"><p class="package-kind">Planar terrain</p><h2>PS 1k</h2><p>CBDAM terrain repository and matching tiled imagery.</p><p class="endpoint">/terra/v1/datasets/ps-1k/manifest</p><p class="endpoint">/terra/v1/imagery/ps-1k/{z}/{x}/{y}.jpg</p><a class="text-command" href="/demo/planar/">Open planar demo →</a></article>
-        <article class="content-card"><p class="package-kind">Globe terrain</p><h2>Global geodetic</h2><p>SRTM-derived CBDAM records for global terrain evaluation.</p><p class="endpoint">/terra/v1/datasets/globe/manifest</p><p class="endpoint">/terra/v1/datasets/globe/patches/{level}/{x}/{y}</p><a class="text-command" href="/demo/globe/">Open globe demo →</a></article>
-        <article class="content-card"><p class="package-kind">Open imagery</p><h2>NASA Blue Marble</h2><p>Global imagery used as the default public globe profile.</p><p class="endpoint">/terra/v1/imagery/blue-marble/{z}/{x}/{y}.jpg</p><p>Attribution: Imagery: NASA Blue Marble.</p></article>
-        <article class="content-card"><p class="package-kind">Proxied imagery</p><h2>Tianditu img-c</h2><p>The server keeps its credential private and caches successful tiles. Applications must preserve the visible Tianditu attribution and comply with provider terms.</p><p class="endpoint">/terra/v1/imagery/tianditu/img-c/{z}/{x}/{y}.jpg</p><p>Attribution: © 天地图.</p></article>
+        <article class="content-card"><p class="package-kind" data-i18n="services.planar.kind">平面地形</p><h2>PS 1k</h2><p data-i18n="services.planar.body">CBDAM 地形仓库及配套分块影像。</p><p class="endpoint">/terra/v1/datasets/ps-1k/manifest</p><p class="endpoint">/terra/v1/imagery/ps-1k/{z}/{x}/{y}.jpg</p><a class="text-command" data-i18n="services.planar.action" href="/demo/planar/">打开平面演示 →</a></article>
+        <article class="content-card"><p class="package-kind" data-i18n="services.globe.kind">球面地形</p><h2 data-i18n="services.globe.title">全球大地坐标</h2><p data-i18n="services.globe.body">由 SRTM 派生的 CBDAM 记录，用于全球地形评估。</p><p class="endpoint">/terra/v1/datasets/globe/manifest</p><p class="endpoint">/terra/v1/datasets/globe/patches/{level}/{x}/{y}</p><a class="text-command" data-i18n="services.globe.action" href="/demo/globe/">打开球面演示 →</a></article>
+        <article class="content-card"><p class="package-kind" data-i18n="services.open.kind">开放影像</p><h2>NASA Blue Marble</h2><p data-i18n="services.blue.body">公开球面配置默认使用的全球影像。</p><p class="endpoint">/terra/v1/imagery/blue-marble/{z}/{x}/{y}.jpg</p><p data-i18n="services.attribution.blue">版权标识：影像：NASA Blue Marble。</p></article>
+        <article class="content-card"><p class="package-kind" data-i18n="services.proxy.kind">代理影像</p><h2>Tianditu img-c</h2><p data-i18n="services.tianditu.body">服务端保护访问凭据并缓存成功瓦片。应用必须保留可见的天地图版权标识，并遵守服务商条款。</p><p class="endpoint">/terra/v1/imagery/tianditu/img-c/{z}/{x}/{y}.jpg</p><p data-i18n="services.attribution.tianditu">版权标识：© 天地图。</p><a class="text-command" data-i18n="services.tianditu.action" href="/demo/globe/?imagery=tianditu-img-c">使用天地图打开球面演示 →</a></article>
       </div>
       <div class="prose">
-        <h2>Origins during filing</h2>
-        <p>The temporary pre-filing origin is <code>http://49.233.185.96</code>. After the domain filing block is removed, use <code>https://terra.tapirs.top</code>. The browser demos use same-origin URLs, so no SDK security policy is weakened for temporary HTTP access.</p>
-        <h2>Responsible use</h2>
-        <p>Do not bulk-download the public test datasets, use the endpoints as a CDN, or embed provider credentials. For production, deploy your own terrain service and imagery policy. Automated tests must stop all polling and close their browser contexts when validation completes.</p>
+        <h2 data-i18n="services.origins.title">备案期间的访问地址</h2>
+        <p data-i18n="services.origins.body">备案完成前使用临时地址 http://49.233.185.96；域名解除拦截后使用 https://terra.tapirs.top。浏览器演示采用同源 URL，不会为临时 HTTP 访问降低 SDK 安全策略。</p>
+        <h2 data-i18n="services.use.title">合理使用</h2>
+        <p data-i18n="services.use.body">请勿批量下载公开测试数据、将端点作为 CDN 使用或嵌入服务商凭据。生产环境应部署独立的地形服务和影像策略。自动化测试结束时必须停止轮询并关闭浏览器上下文。</p>
       </div>
     </section>
   </main>
-  <footer><a class="brand" href="/">Terra SDK</a><p>Reference infrastructure for SDK evaluation.</p><div><a href="/license/">License</a><a href="https://github.com/dadream/terra-sdk">GitHub</a></div></footer>
+  <footer><a class="brand" href="/">Terra SDK</a><p data-i18n="services.footer">用于 SDK 评估的参考基础设施。</p><div><a data-i18n="nav.license" href="/license/">协议</a><a href="https://github.com/dadream/terra-sdk">GitHub</a></div></footer>
+  <script src="/site.js?rev=__TERRA_ASSET_REVISION__"></script>
 </body>
 </html>

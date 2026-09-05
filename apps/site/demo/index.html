@@ -1,51 +1,51 @@
 <!doctype html>
-<html lang="en" data-terra-status="starting">
+<html lang="zh-CN" data-terra-status="starting">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
   <meta name="color-scheme" content="dark">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; connect-src 'self'; worker-src 'none'; object-src 'none'; base-uri 'self'">
-  <title>Terra __TERRA_DEMO_MODE__ Demo</title>
-  <link rel="stylesheet" href="/demo/styles.css">
+  <title data-i18n="demo.title.__TERRA_DEMO_MODE__">Terra 地形演示</title>
+  <link rel="stylesheet" href="/demo/styles.css?rev=__TERRA_ASSET_REVISION__">
 </head>
 <body data-mode="__TERRA_DEMO_MODE__">
-  <main class="viewer-shell" aria-label="Terra __TERRA_DEMO_MODE__ viewer">
+  <main class="viewer-shell" data-i18n-aria-label="demo.viewer.__TERRA_DEMO_MODE__" aria-label="Terra 地形查看器">
     <canvas id="terra-canvas"></canvas>
     <header class="viewer-header">
       <a class="viewer-brand" href="/" target="_top">Terra SDK</a>
       <span id="mode-label">__TERRA_DEMO_MODE__</span>
-      <span id="runtime-status" role="status">Initializing</span>
-      <code id="frame-status">frame -</code>
+      <span id="runtime-status" role="status">初始化中</span>
+      <code id="frame-status">帧 -</code>
     </header>
-    <div class="viewer-tools" aria-label="Terrain controls">
-      <div class="segmented" role="group" aria-label="Pointer mode">
-        <button id="mode-move" type="button" aria-pressed="true">Move</button>
-        <button id="mode-look" type="button" aria-pressed="false">Look</button>
+    <div class="viewer-tools" data-i18n-aria-label="demo.controls" aria-label="地形控制">
+      <div class="segmented" role="group" data-i18n-aria-label="demo.pointer" aria-label="指针模式">
+        <button id="mode-move" data-i18n="demo.move" type="button" aria-pressed="true">平移</button>
+        <button id="mode-look" data-i18n="demo.look" type="button" aria-pressed="false">视角</button>
       </div>
-      <div class="tool-group" role="group" aria-label="Pan controls">
-        <button id="pan-left" type="button" title="Pan left" aria-label="Pan left">←</button>
-        <button id="pan-up" type="button" title="Pan up" aria-label="Pan up">↑</button>
-        <button id="pan-down" type="button" title="Pan down" aria-label="Pan down">↓</button>
-        <button id="pan-right" type="button" title="Pan right" aria-label="Pan right">→</button>
+      <div class="tool-group" role="group" data-i18n-aria-label="demo.pan" aria-label="平移控制">
+        <button id="pan-left" type="button" data-i18n-title="demo.pan.left" data-i18n-aria-label="demo.pan.left" title="向左平移" aria-label="向左平移">←</button>
+        <button id="pan-up" type="button" data-i18n-title="demo.pan.up" data-i18n-aria-label="demo.pan.up" title="向上平移" aria-label="向上平移">↑</button>
+        <button id="pan-down" type="button" data-i18n-title="demo.pan.down" data-i18n-aria-label="demo.pan.down" title="向下平移" aria-label="向下平移">↓</button>
+        <button id="pan-right" type="button" data-i18n-title="demo.pan.right" data-i18n-aria-label="demo.pan.right" title="向右平移" aria-label="向右平移">→</button>
       </div>
-      <div class="tool-group" role="group" aria-label="Zoom controls">
-        <button id="zoom-out" type="button" title="Zoom out" aria-label="Zoom out">−</button>
-        <button id="zoom-in" type="button" title="Zoom in" aria-label="Zoom in">+</button>
+      <div class="tool-group" role="group" data-i18n-aria-label="demo.zoom" aria-label="缩放控制">
+        <button id="zoom-out" type="button" data-i18n-title="demo.zoom.out" data-i18n-aria-label="demo.zoom.out" title="缩小" aria-label="缩小">−</button>
+        <button id="zoom-in" type="button" data-i18n-title="demo.zoom.in" data-i18n-aria-label="demo.zoom.in" title="放大" aria-label="放大">+</button>
       </div>
-      <div class="tool-group" role="group" aria-label="View controls">
-        <button id="top-down" type="button" title="Top-down view">Top</button>
-        <button id="tilt-45" type="button" title="45 degree view">45</button>
-        <button id="rotate-left" type="button" title="Rotate counterclockwise" aria-label="Rotate counterclockwise">↺</button>
-        <button id="rotate-right" type="button" title="Rotate clockwise" aria-label="Rotate clockwise">↻</button>
-        <button id="north-up" type="button" title="North up">N</button>
+      <div class="tool-group" role="group" data-i18n-aria-label="demo.view" aria-label="视角控制">
+        <button id="top-down" data-i18n="demo.top" data-i18n-title="demo.top" type="button" title="俯视">俯视</button>
+        <button id="tilt-45" type="button" title="45°">45°</button>
+        <button id="rotate-left" type="button" data-i18n-title="demo.rotate.left" data-i18n-aria-label="demo.rotate.left" title="逆时针旋转" aria-label="逆时针旋转">↺</button>
+        <button id="rotate-right" type="button" data-i18n-title="demo.rotate.right" data-i18n-aria-label="demo.rotate.right" title="顺时针旋转" aria-label="顺时针旋转">↻</button>
+        <button id="north-up" type="button" data-i18n-title="demo.north" title="北向上">N</button>
       </div>
-      <button id="reset-view" type="button" title="Reset view">Globe</button>
-      <button id="debug-toggle" type="button" aria-pressed="false" title="Toggle diagnostics">Debug</button>
+      <button id="reset-view" data-i18n-title="demo.globe" type="button" title="全球">全球</button>
+      <button id="debug-toggle" data-i18n="demo.debug" data-i18n-title="demo.toggleDebug" type="button" aria-pressed="false" title="切换诊断信息">调试</button>
       <label class="imagery-control" for="imagery-profile">
-        <span>Imagery</span>
+        <span data-i18n="demo.imagery">影像</span>
         <select id="imagery-profile">
           <option value="blue-marble">Blue Marble</option>
-          <option value="tianditu-img-c">Tianditu</option>
+          <option data-i18n="demo.tianditu" value="tianditu-img-c">天地图</option>
         </select>
       </label>
     </div>
@@ -53,6 +53,7 @@
     <div id="error-banner" class="error-banner" role="alert" hidden></div>
     <div id="attribution" class="attribution"></div>
   </main>
+  <script src="/site.js?rev=__TERRA_ASSET_REVISION__"></script>
   <script src="/assets/terra_browser_bundle.js?rev=__TERRA_ASSET_REVISION__"></script>
   <script src="/demo/app.js?rev=__TERRA_ASSET_REVISION__"></script>
 </body>

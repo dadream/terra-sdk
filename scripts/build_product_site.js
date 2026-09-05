@@ -108,9 +108,26 @@ copies.forEach(([source, destination]) => copyFile(source, destination))
 const bundlePath = path.join(output, 'assets', 'terra_browser_bundle.js')
 fs.writeFileSync(bundlePath, browserBundle(), 'utf8')
 const assetRevision = crypto.createHash('sha256')
+  .update(fs.readFileSync(path.join(output, 'site.js')))
+  .update(fs.readFileSync(path.join(output, 'styles.css')))
   .update(fs.readFileSync(path.join(output, 'demo/app.js')))
+  .update(fs.readFileSync(path.join(output, 'demo/styles.css')))
   .update(fs.readFileSync(bundlePath))
   .digest('hex').slice(0, 12)
+
+const localizedPages = [
+  'index.html',
+  'services/index.html',
+  'docs/quickstart/index.html',
+  'license/index.html',
+  'downloads/index.html'
+]
+for (const relativePath of localizedPages) {
+  const destination = path.join(output, relativePath)
+  const rendered = fs.readFileSync(destination, 'utf8')
+    .split('__TERRA_ASSET_REVISION__').join(assetRevision)
+  fs.writeFileSync(destination, rendered, 'utf8')
+}
 
 const template = fs.readFileSync(
   path.join(root, 'apps/site/demo/index.html'), 'utf8')

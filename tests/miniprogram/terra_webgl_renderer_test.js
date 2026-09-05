@@ -1022,6 +1022,54 @@ async function main() {
   await settle()
   assert.strictEqual(renderer.textures.cache.has('2/2/3/7'), true)
 
+  renderer.textures.prefetchAncestors = true
+  const sourceGeneration = renderer.textures.generation
+  let invalidSourceTiles = 0
+  renderer.setImagerySource({
+    kind: 'global-geodetic',
+    matrix_level_offset: 1,
+    maximum_level: 17,
+    level_zero_columns: 2,
+    level_zero_rows: 1,
+    tile_size: 256
+  }, (tile) => {
+    if (tile.matrix !== tile.level + 1) {
+      invalidSourceTiles += 1
+      throw new Error('New imagery source received an invalid matrix')
+    }
+    return `https://new.example/${tile.matrix}/${tile.column}/${tile.row}.jpg`
+  })
+  assert.strictEqual(renderer.textures.generation, sourceGeneration + 1)
+  assert.strictEqual(renderer.textures.cache.has('2/2/3/7'), false)
+  assert.deepStrictEqual(renderer.textures.configuredRootTiles, [
+    { level: 0, matrix: 1, row: 0, column: 0 },
+    { level: 0, matrix: 1, row: 0, column: 1 }
+  ])
+  await settle()
+  assert.strictEqual(invalidSourceTiles, 0)
+  assert.strictEqual(renderer.stats().textures.rootDesired, 2)
+  assert.strictEqual(renderer.stats().textures.failed, 0)
+  assert(canvas.images.slice(7).some((image) =>
+    image.src === 'https://new.example/1/0/0.jpg'))
+
+  renderer.setImagerySource({
+    kind: 'global-geodetic',
+    matrix_level_offset: 0,
+    maximum_level: 7,
+    level_zero_columns: 2,
+    level_zero_rows: 1,
+    tile_size: 256
+  }, (tile) => {
+    assert.strictEqual(tile.matrix, tile.level)
+    return `https://original.example/${tile.matrix}/` +
+      `${tile.column}/${tile.row}.jpg`
+  })
+  await settle()
+  assert.strictEqual(renderer.stats().textures.rootDesired, 2)
+  assert.strictEqual(renderer.stats().textures.failed, 0)
+  assert(canvas.images.some((image) =>
+    image.src === 'https://original.example/0/0/0.jpg'))
+
   let prevented = false
   canvas.emit('webglcontextlost', {
     preventDefault() {

@@ -2,6 +2,7 @@
   'use strict'
 
   const sdk = window.TerraWebSdk
+  const i18n = window.TerraSiteI18n
   const canvas = document.getElementById('terra-canvas')
   const mode = document.body.dataset.mode
   const isGlobe = mode === 'globe'
@@ -33,9 +34,30 @@
     destroyed: false
   }
 
+  function text(key) {
+    return i18n ? i18n.t(key) : key
+  }
+
+  function updateStaticLabels() {
+    elements.mode.textContent = isGlobe
+      ? text('demo.globe') : text('demo.planar')
+    const resetLabel = text(isGlobe ? 'demo.globe' : 'demo.reset')
+    elements.reset.textContent = resetLabel
+    elements.reset.title = resetLabel
+    elements.reset.setAttribute('aria-label', resetLabel)
+    if (!state.viewer) {
+      elements.runtime.textContent = document.documentElement.dataset.terraStatus === 'failed'
+        ? text('demo.status.failed') : text('demo.status.initializing')
+      elements.frame.textContent = `${text('demo.frame')} -`
+    }
+  }
+
   document.body.dataset.embed = embedded ? 'true' : 'false'
-  elements.mode.textContent = isGlobe ? 'Globe' : 'Planar 1k'
-  if (!isGlobe) elements.reset.textContent = 'Reset'
+  updateStaticLabels()
+  window.addEventListener('terra-language-change', () => {
+    updateStaticLabels()
+    diagnostics()
+  })
 
   function installCanvasAdapter() {
     canvas.requestAnimationFrame = (callback) =>
@@ -177,9 +199,15 @@
     elements.imagery.addEventListener('change', () => {
       if (!state.viewer || !isGlobe) return
       try {
-        const imagery = imageryProfile(elements.imagery.value)
+        const name = elements.imagery.value
+        const imagery = imageryProfile(name)
+        elements.error.hidden = true
+        elements.runtime.textContent = text('demo.status.loading')
         state.viewer.imagery.setSource(imagery)
         elements.attribution.textContent = imagery.attribution
+        const url = new URL(window.location.href)
+        url.searchParams.set('imagery', name)
+        window.history.replaceState(null, '', url)
       } catch (error) {
         showError(error)
       }
@@ -255,16 +283,19 @@
     const transition = renderer.transition || {}
     const view = current.view || {}
     const target = view.target || {}
-    elements.frame.textContent = `frame ${frame.sequence || 0} · patches ` +
-      `${frame.loadedRecordCount || 0} · draws ${frame.drawCount || 0} · ` +
-      `textures ${textures.entries || 0}`
+    elements.frame.textContent = `${text('demo.frame')} ${frame.sequence || 0} · ` +
+      `${text('demo.patches')} ${frame.loadedRecordCount || 0} · ` +
+      `${text('demo.draws')} ${frame.drawCount || 0} · ` +
+      `${text('demo.textures')} ${textures.entries || 0}`
     const coverageReady = Boolean(textures.coverageReady) &&
       transition.coverageComplete !== false
     const pending = (current.terrain && current.terrain.active || 0) +
       (current.terrain && current.terrain.queued || 0) +
       (textures.active || 0) + (textures.queued || 0)
     elements.runtime.textContent = current.error
-      ? 'Error' : (coverageReady && pending === 0 ? 'Ready' : 'Loading')
+      ? text('demo.status.failed')
+      : (coverageReady && pending === 0
+          ? text('demo.status.ready') : text('demo.status.loading'))
     if (coverageReady && frame.drawCount > 0) {
       document.documentElement.dataset.terraStatus = 'ready'
     }
@@ -272,14 +303,38 @@
       ? `${number(target.longitudeDegrees, 5)}, ${number(target.latitudeDegrees, 5)}`
       : `${number(target.x, 2)}, ${number(target.y, 2)}`
     elements.debug.textContent = [
-      `mode ${mode} transport ${publicHttp ? 'same-origin IP adapter' : 'direct'}`,
-      `target ${targetText}`,
-      `range ${number(view.rangeMeters, 1)}m tilt ${number(view.tiltDegrees, 1)} heading ${number(view.headingDegrees, 1)}`,
-      `terrain ${frame.loadedRecordCount || 0} records ${frame.failedRecordCount || 0} failed requests ${current.terrain ? current.terrain.active : 0}/${current.terrain ? current.terrain.queued : 0}`,
-      `geometry expected ${transition.expectedGeometry || 0} missing ${transition.pendingGeometry || 0} omitted ${transition.omittedGeometry || 0} coverage ${transition.coverageComplete ? 'ready' : 'loading'}`,
-      `imagery ${textures.state || '-'} roots ${textures.cachedRoots || 0}/${textures.rootDesired || 0} requests ${textures.active || 0}/${textures.queued || 0} failed ${textures.failed || 0}`,
-      `imagery target ${number(quality.targetPixelError, 2)}px resolved ${number(quality.resolvedMaxPixelError, 2)}px exact ${number((quality.targetCoverage || 0) * 100, 1)}%`,
-      `texture cache ${textures.entries || 0}/${textures.capacity || 0} presentation ${textures.presentationTiles || 0} fallback ${quality.fallbackCount || 0} missing ${quality.missingCount || 0}`
+      `${text('demo.debug.modeLabel')} ${mode} ${text('demo.debug.transport')} ` +
+        `${publicHttp ? text('demo.debug.ipAdapter') : text('demo.debug.direct')}`,
+      `${text('demo.debug.target')} ${targetText}`,
+      `${text('demo.debug.range')} ${number(view.rangeMeters, 1)}m ` +
+        `${text('demo.debug.tilt')} ${number(view.tiltDegrees, 1)} ` +
+        `${text('demo.debug.heading')} ${number(view.headingDegrees, 1)}`,
+      `${text('demo.debug.terrain')} ${frame.loadedRecordCount || 0} ` +
+        `${text('demo.debug.records')} ${frame.failedRecordCount || 0} ` +
+        `${text('demo.debug.failed')} ${text('demo.debug.requests')} ` +
+        `${current.terrain ? current.terrain.active : 0}/` +
+        `${current.terrain ? current.terrain.queued : 0}`,
+      `${text('demo.debug.geometry')} ${text('demo.debug.expected')} ` +
+        `${transition.expectedGeometry || 0} ${text('demo.debug.missing')} ` +
+        `${transition.pendingGeometry || 0} ${text('demo.debug.omitted')} ` +
+        `${transition.omittedGeometry || 0} ${text('demo.debug.coverage')} ` +
+        `${transition.coverageComplete ? text('demo.status.ready') : text('demo.debug.loading')}`,
+      `${text('demo.imagery')} ${textures.state || '-'} ` +
+        `${text('demo.debug.roots')} ${textures.cachedRoots || 0}/` +
+        `${textures.rootDesired || 0} ${text('demo.debug.requests')} ` +
+        `${textures.active || 0}/${textures.queued || 0} ` +
+        `${text('demo.debug.failed')} ${textures.failed || 0}`,
+      `${text('demo.debug.imageryTarget')} ` +
+        `${number(quality.targetPixelError, 2)}px ` +
+        `${text('demo.debug.resolved')} ` +
+        `${number(quality.resolvedMaxPixelError, 2)}px ` +
+        `${text('demo.debug.exact')} ` +
+        `${number((quality.targetCoverage || 0) * 100, 1)}%`,
+      `${text('demo.debug.cache')} ${textures.entries || 0}/` +
+        `${textures.capacity || 0} ${text('demo.debug.presentation')} ` +
+        `${textures.presentationTiles || 0} ${text('demo.debug.fallback')} ` +
+        `${quality.fallbackCount || 0} ${text('demo.debug.missing')} ` +
+        `${quality.missingCount || 0}`
     ].join('\n')
   }
 
@@ -289,7 +344,7 @@
       : String(error)
     elements.error.hidden = false
     elements.error.textContent = message
-    elements.runtime.textContent = 'Failed'
+    elements.runtime.textContent = text('demo.status.failed')
     document.documentElement.dataset.terraStatus = 'failed'
   }
 

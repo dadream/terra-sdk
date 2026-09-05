@@ -1,26 +1,27 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="color-scheme" content="dark">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; object-src 'none'; base-uri 'self'">
-  <title>Licensing | Terra SDK</title><link rel="stylesheet" href="/styles.css">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; object-src 'none'; base-uri 'self'">
+  <title data-i18n="license.title">许可协议 | Terra SDK</title><link rel="stylesheet" href="/styles.css?rev=__TERRA_ASSET_REVISION__">
 </head>
 <body>
-  <header class="site-header"><a class="brand" href="/">Terra SDK</a><nav aria-label="Primary navigation"><a href="/docs/quickstart/">Quickstart</a><a href="/services/">Services</a><a href="/downloads/">Downloads</a><a class="nav-command" href="https://github.com/dadream/terra-sdk">GitHub</a></nav></header>
+  <header class="site-header"><a class="brand" href="/">Terra SDK</a><nav data-i18n-aria-label="nav.primary" aria-label="主导航"><a data-i18n="nav.quickstart" href="/docs/quickstart/">快速开始</a><a data-i18n="nav.services" href="/services/">服务</a><a data-i18n="nav.downloads" href="/downloads/">下载</a><a class="nav-command" href="https://github.com/dadream/terra-sdk">GitHub</a></nav></header>
   <main class="page-main">
-    <section class="page-hero"><p class="eyebrow">Licensing</p><h1>A multi-license codebase, documented per release</h1><p>Terra SDK is not presented as a single-license or all-MIT distribution. Review the exact notices shipped in the archive before redistribution or commercial use.</p></section>
+    <section class="page-hero"><p class="eyebrow" data-i18n="license.eyebrow">许可协议</p><h1 data-i18n="license.heading">多协议代码库，每次 Release 均有明确记录</h1><p data-i18n="license.intro">Terra SDK 不以单一协议或全 MIT 发行。重新分发或商业使用前，请检查归档中随附的准确许可声明。</p></section>
     <section class="content-band prose">
-      <h2>Authoritative files</h2>
-      <p>The repository and both SDK packages include <code>LICENSE</code>, <code>NOTICE</code>, <code>spacelib/COPYING</code>, and <code>ratman/LICENSE</code>. Those files, not this summary, define the applicable terms.</p>
-      <h2>Release evidence</h2>
-      <p>Each tagged release publishes deterministic archive checksums, <code>release_manifest.json</code>, and an SPDX 2.3 JSON inventory. The SPDX inventory records package identity and checksums; it intentionally uses <code>NOASSERTION</code> where a component-wide conclusion has not been established.</p>
-      <h2>Hosted data and imagery</h2>
-      <p>Terrain datasets and hosted imagery are evaluation infrastructure and are not part of the SDK archives. NASA Blue Marble and Tianditu have their own source and attribution requirements. Applications using Tianditu must display <strong>© 天地图</strong> and follow the provider's current terms.</p>
-      <h2>No service warranty</h2>
-      <p>The public endpoints and Developer Preview packages are supplied for engineering evaluation without a production service-level commitment. Security, availability, data rights, and provider credentials remain application-owner responsibilities.</p>
+      <h2 data-i18n="license.files.title">权威文件</h2>
+      <p data-i18n="license.files.body">代码仓库及两个 SDK 软件包都包含 LICENSE、NOTICE、spacelib/COPYING 和 ratman/LICENSE。适用条款由这些文件而非本摘要定义。</p>
+      <h2 data-i18n="license.evidence.title">Release 证据</h2>
+      <p data-i18n="license.evidence.body">每个带 Tag 的 Release 都发布确定性归档校验和、release_manifest.json 与 SPDX 2.3 JSON 清单。SPDX 清单记录包身份和校验和；尚未形成组件级结论的位置会明确使用 NOASSERTION。</p>
+      <h2 data-i18n="license.data.title">托管数据与影像</h2>
+      <p data-i18n="license.data.body">地形数据集和托管影像属于评估基础设施，不包含在 SDK 归档中。NASA Blue Marble 与天地图各自有来源和版权要求；使用天地图的应用必须显示 © 天地图，并遵守服务商当前条款。</p>
+      <h2 data-i18n="license.warranty.title">无服务保证</h2>
+      <p data-i18n="license.warranty.body">公开端点与开发者预览软件包仅供工程评估，不承诺生产服务等级。安全、可用性、数据权利和服务商凭据由应用所有者负责。</p>
     </section>
   </main>
-  <footer><a class="brand" href="/">Terra SDK</a><p>Review the notices included in each archive.</p><div><a href="/downloads/">Downloads</a><a href="https://github.com/dadream/terra-sdk">GitHub</a></div></footer>
+  <footer><a class="brand" href="/">Terra SDK</a><p data-i18n="license.footer">请检查每个归档中随附的许可声明。</p><div><a data-i18n="nav.downloads" href="/downloads/">下载</a><a href="https://github.com/dadream/terra-sdk">GitHub</a></div></footer>
+  <script src="/site.js?rev=__TERRA_ASSET_REVISION__"></script>
 </body>
 </html>

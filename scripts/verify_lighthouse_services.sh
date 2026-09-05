@@ -77,8 +77,11 @@ GLOBE_PATCH_BYTES=$(fetch_binary globe.patch \
   /terra/v1/datasets/globe/patches/-134217728/134217728/-134217728)
 fetch_jpeg planar-tile /terra/v1/imagery/ps-1k/2/3/0.jpg
 fetch_jpeg blue-marble-tile /terra/v1/imagery/blue-marble/7/210/35.jpg
+fetch_jpeg tianditu-root-tile /terra/v1/imagery/tianditu/img-c/0/0/0.jpg
+fetch_jpeg tianditu-beijing-tile /terra/v1/imagery/tianditu/img-c/10/1686/285.jpg
 
 grep -q '<h1 id="hero-title">Terra SDK</h1>' "${OUTPUT_DIR}/home.html"
+grep -q '<html lang="zh-CN">' "${OUTPUT_DIR}/home.html"
 grep -q 'data-mode="globe"' "${OUTPUT_DIR}/globe-demo.html"
 grep -q 'data-mode="planar"' "${OUTPUT_DIR}/planar-demo.html"
 grep -q 'global.TerraWebSdk' "${OUTPUT_DIR}/browser-bundle.js"

@@ -1,18 +1,18 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="color-scheme" content="dark">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; object-src 'none'; base-uri 'self'">
-  <title>Quickstart | Terra SDK</title><link rel="stylesheet" href="/styles.css">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; object-src 'none'; base-uri 'self'">
+  <title data-i18n="quickstart.title">快速开始 | Terra SDK</title><link rel="stylesheet" href="/styles.css?rev=__TERRA_ASSET_REVISION__">
 </head>
 <body>
-  <header class="site-header"><a class="brand" href="/">Terra SDK</a><nav aria-label="Primary navigation"><a href="/demo/globe/">Globe Demo</a><a href="/demo/planar/">Planar Demo</a><a href="/services/">Services</a><a class="nav-command" href="https://github.com/dadream/terra-sdk">GitHub</a></nav></header>
+  <header class="site-header"><a class="brand" href="/">Terra SDK</a><nav data-i18n-aria-label="nav.primary" aria-label="主导航"><a data-i18n="nav.globe" href="/demo/globe/">球面演示</a><a data-i18n="nav.planar" href="/demo/planar/">平面演示</a><a data-i18n="nav.services" href="/services/">服务</a><a class="nav-command" href="https://github.com/dadream/terra-sdk">GitHub</a></nav></header>
   <main class="page-main">
-    <section class="page-hero"><p class="eyebrow">Quickstart</p><h1>Integrate the verified package boundary</h1><p>Start from a tagged archive rather than copying source modules. The release contains complete examples, CMake metadata, runtime declarations, checksums, and notices.</p></section>
+    <section class="page-hero"><p class="eyebrow" data-i18n="quickstart.eyebrow">快速开始</p><h1 data-i18n="quickstart.heading">集成经过验证的软件包边界</h1><p data-i18n="quickstart.intro">请从带 Tag 的归档开始，而不是复制源代码模块。Release 包含完整示例、CMake 元数据、运行时声明、校验和及许可声明。</p></section>
     <section class="content-band prose">
       <h2>Native C++14</h2>
-      <p>Extract the native archive and point CMake at its installed package directory.</p>
+      <p data-i18n="quickstart.native.intro">解压原生归档，并让 CMake 指向其安装包目录。</p>
       <pre><code>tar -xzf terra-sdk-0.1.0-native.tar.gz
 cmake -S my-app -B build \
   -DTerraSdk_DIR="$PWD/terra-sdk-0.1.0-native/lib64/cmake/TerraSdk"
@@ -20,10 +20,10 @@ cmake --build build</code></pre>
       <pre><code>find_package(TerraSdk 0.1 CONFIG REQUIRED)
 target_link_libraries(my_app PRIVATE Terra::core Terra::frame)
 target_compile_features(my_app PRIVATE cxx_std_14)</code></pre>
-      <p>Use <code>Terra::c_api</code> for the stable C boundary or <code>Terra::codec</code> for repository decoding. Working C and C++ consumers are installed under <code>share/doc/TerraSdk/examples</code>.</p>
+      <p data-i18n="quickstart.native.body">稳定的 C 边界使用 Terra::c_api，仓库解码使用 Terra::codec。可运行的 C 与 C++ 消费端示例安装在 share/doc/TerraSdk/examples。</p>
 
-      <h2>Web and Mini Program</h2>
-      <p>The portable archive contains <code>wasm/terra_sdk.wasm</code>, CommonJS runtime modules in <code>utils/</code>, and <code>terra_viewer.d.ts</code>. The host creates the Wasm module, supplies a canvas and request adapter, then constructs <code>TerraViewer</code>.</p>
+      <h2 data-i18n="quickstart.web.title">Web 与小程序</h2>
+      <p data-i18n="quickstart.web.intro">跨端归档包含 wasm/terra_sdk.wasm、utils/ 中的 CommonJS 运行时模块和 terra_viewer.d.ts。宿主创建 Wasm 模块，提供 Canvas 与请求适配器，然后构造 TerraViewer。</p>
       <pre><code>const viewer = await TerraViewer.create({
   mode: 'globe',
   canvas,
@@ -34,14 +34,15 @@ target_compile_features(my_app PRIVATE cxx_std_14)</code></pre>
   imagery,
   viewport: { width, height, devicePixelRatio }
 })</code></pre>
-      <p>Bind pointer or touch events through <code>viewer.interaction</code>, use <code>viewer.camera</code> for deterministic controls, and call <code>viewer.resize</code>, <code>pause</code>, <code>resume</code>, and <code>destroy</code> with the host lifecycle.</p>
+      <p data-i18n="quickstart.web.body">通过 viewer.interaction 绑定指针或触控事件；通过 viewer.camera 提供确定性控制；并将 viewer.resize、pause、resume 与 destroy 接入宿主生命周期。</p>
 
-      <h2>Verify the download</h2>
+      <h2 data-i18n="quickstart.verify.title">验证下载内容</h2>
       <pre><code>sha256sum -c SHA256SUMS</code></pre>
-      <p>Read <code>release_manifest.json</code> for ABI and package identity and the SPDX JSON inventory for release checksums and licensing context.</p>
-      <a class="primary-command" href="/downloads/">Download v0.1.0</a>
+      <p data-i18n="quickstart.verify.body">release_manifest.json 提供 ABI 与包身份，SPDX JSON 清单提供 Release 校验和与许可上下文。</p>
+      <a class="primary-command" data-i18n="quickstart.download" href="/downloads/">下载 v0.1.0</a>
     </section>
   </main>
-  <footer><a class="brand" href="/">Terra SDK</a><p>Package-first integration with observable runtime state.</p><div><a href="/license/">License</a><a href="https://github.com/dadream/terra-sdk">GitHub</a></div></footer>
+  <footer><a class="brand" href="/">Terra SDK</a><p data-i18n="quickstart.footer">以软件包为起点，通过可观测运行时状态完成集成。</p><div><a data-i18n="nav.license" href="/license/">协议</a><a href="https://github.com/dadream/terra-sdk">GitHub</a></div></footer>
+  <script src="/site.js?rev=__TERRA_ASSET_REVISION__"></script>
 </body>
 </html>

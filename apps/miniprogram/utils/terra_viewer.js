@@ -471,7 +471,11 @@ class TerraViewer {
       this.runtime.manifest.texture.kind = source.tileScheme
     }
     this.runtime.manifest.texture.maximum_level = maximumLevel
-    if (this.runtime.renderer && this.runtime.renderer.textures) {
+    if (this.runtime.renderer &&
+      typeof this.runtime.renderer.setImagerySource === 'function') {
+      this.runtime.renderer.setImagerySource(
+        this.runtime.manifest.texture, source.resolveTile)
+    } else if (this.runtime.renderer && this.runtime.renderer.textures) {
       this.runtime.renderer.textures.clear()
     }
     this.runtime.refresh()

@@ -15,10 +15,14 @@ class FakeRenderer {
   constructor() {
     this.overlays = []
     this.textureClears = 0
+    this.imagerySources = []
     this.textures = { clear: () => { this.textureClears += 1 } }
   }
 
   setOverlays(value) { this.overlays.push(value) }
+  setImagerySource(descriptor, resolveTile) {
+    this.imagerySources.push({ descriptor, resolveTile })
+  }
 }
 
 class FakePlanarRuntime {
@@ -204,15 +208,21 @@ function testPoisRouteAndSurface() {
   assert.strictEqual(viewer.getState().featureCount, 2)
   assert.strictEqual(viewer.getState().routeId, 'route')
 
+  const replacementResolver = () => 'https://tiles.example/planar.png'
   viewer.imagery.setSource({
     id: 'replacement',
     tileScheme: 'planar-single',
     minimumLevel: 0,
     maximumLevel: 0,
     attribution: 'Example imagery',
-    resolveTile: () => 'https://tiles.example/planar.png'
+    resolveTile: replacementResolver
   })
-  assert.strictEqual(runtime.renderer.textureClears, 1)
+  assert.strictEqual(runtime.renderer.textureClears, 0)
+  assert.strictEqual(runtime.renderer.imagerySources.length, 1)
+  assert.strictEqual(runtime.renderer.imagerySources[0].descriptor.id,
+    'replacement')
+  assert.strictEqual(runtime.renderer.imagerySources[0].resolveTile,
+    replacementResolver)
   assert.strictEqual(runtime.manifest.texture.id, 'replacement')
   assert.strictEqual(viewer.getState().imageryAttribution, 'Example imagery')
   assert.throws(() => viewer.imagery.setSource({ id: 'broken' }),

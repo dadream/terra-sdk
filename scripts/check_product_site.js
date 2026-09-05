@@ -47,6 +47,53 @@ for (const href of ['/demo/globe/', '/demo/planar/', '/docs/quickstart/',
     throw new Error(`Home page is missing ${href}`)
   }
 }
+const localizedPages = [
+  'index.html',
+  'demo/globe/index.html',
+  'demo/planar/index.html',
+  'services/index.html',
+  'docs/quickstart/index.html',
+  'license/index.html',
+  'downloads/index.html'
+]
+const siteScript = fs.readFileSync(path.join(output, 'site.js'), 'utf8')
+const catalogKeys = new Set(Array.from(
+  siteScript.matchAll(/^    '([^']+)': \[/gm), (match) => match[1]))
+if (!siteScript.includes("const storageKey = 'terra.siteLanguage'") ||
+    !siteScript.includes("value === 'en' ? 'en' : 'zh-CN'")) {
+  throw new Error('Product site language state does not default to Chinese')
+}
+const localizedRevisions = []
+for (const relativePath of localizedPages) {
+  const html = fs.readFileSync(path.join(output, relativePath), 'utf8')
+  if (!html.includes('<html lang="zh-CN"') ||
+      !html.includes('src="/site.js')) {
+    throw new Error(`${relativePath} is missing Chinese-first localization`)
+  }
+  const referencedKeys = Array.from(html.matchAll(
+    /data-i18n(?:-(?:title|aria-label|content))?="([^"]+)"/g),
+  (match) => match[1])
+  for (const key of referencedKeys) {
+    if (!catalogKeys.has(key)) {
+      throw new Error(`${relativePath} references unknown i18n key ${key}`)
+    }
+  }
+  const siteMatch = /src="\/site\.js\?rev=([0-9a-f]{12})"/.exec(html)
+  const styleMatch = /href="\/(?:demo\/)?styles\.css\?rev=([0-9a-f]{12})"/.exec(html)
+  if (!siteMatch || !styleMatch || siteMatch[1] !== styleMatch[1]) {
+    throw new Error(`${relativePath} is missing versioned site assets`)
+  }
+  localizedRevisions.push(siteMatch[1])
+}
+if (new Set(localizedRevisions).size !== 1) {
+  throw new Error('Localized pages use different site asset revisions')
+}
+const services = fs.readFileSync(
+  path.join(output, 'services/index.html'), 'utf8')
+if (!services.includes(
+  'href="/demo/globe/?imagery=tianditu-img-c"')) {
+  throw new Error('Services page is missing its Tianditu demo entry point')
+}
 const bundle = fs.readFileSync(
   path.join(output, 'assets/terra_browser_bundle.js'), 'utf8')
 if (!bundle.includes('global.TerraWebSdk') || bundle.length < 100000) {
@@ -63,6 +110,13 @@ if (!demo.includes('Object.getOwnPropertyDescriptor') ||
 if (demo.includes('makeSameOrigin')) {
   throw new Error('Product demo rewrites imagery URLs before SDK validation')
 }
+if (!demo.includes("url.searchParams.set('imagery', name)") ||
+    !demo.includes("window.history.replaceState(null, '', url)")) {
+  throw new Error('Product demo does not preserve the selected imagery profile')
+}
+if (!demo.includes("const resetLabel = text(isGlobe ? 'demo.globe' : 'demo.reset')")) {
+  throw new Error('Product demo does not localize its dynamic reset control')
+}
 const revisions = []
 for (const mode of ['globe', 'planar']) {
   const html = fs.readFileSync(
@@ -71,10 +125,16 @@ for (const mode of ['globe', 'planar']) {
     /src="\/assets\/terra_browser_bundle\.js\?rev=([0-9a-f]{12})"/.exec(html)
   const appMatch =
     /src="\/demo\/app\.js\?rev=([0-9a-f]{12})"/.exec(html)
-  if (!bundleMatch || !appMatch) {
+  const siteMatch =
+    /src="\/site\.js\?rev=([0-9a-f]{12})"/.exec(html)
+  const styleMatch =
+    /href="\/demo\/styles\.css\?rev=([0-9a-f]{12})"/.exec(html)
+  if (!bundleMatch || !appMatch || !siteMatch || !styleMatch) {
     throw new Error(`${mode} demo is missing versioned runtime assets`)
   }
-  if (bundleMatch[1] !== appMatch[1]) {
+  if (bundleMatch[1] !== appMatch[1] ||
+      bundleMatch[1] !== siteMatch[1] ||
+      bundleMatch[1] !== styleMatch[1]) {
     throw new Error(`${mode} demo runtime asset revisions do not match`)
   }
   revisions.push(bundleMatch[1])

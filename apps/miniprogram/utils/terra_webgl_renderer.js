@@ -703,9 +703,6 @@ class TextureStore {
   constructor(renderer, options) {
     this.renderer = renderer
     this.canvas = renderer.canvas
-    common.invariant(typeof options.urlForTile === 'function',
-      'Texture URL resolver is required')
-    this.urlForTile = options.urlForTile
     this.onDiagnostic = options.onDiagnostic || (() => {})
     this.scheduler = new common.RequestScheduler(options.maximumConcurrent || 3)
     this.protectedKeys = new Set()
@@ -740,16 +737,7 @@ class TextureStore {
     this.retries = new Map()
     this.failed = new Map()
     this.prefetchAncestors = options.prefetchAncestors !== false
-    this.coverageTiles = Array.isArray(options.coverageTiles)
-      ? options.coverageTiles.slice() : []
-    this.coverageKeys = new Set(this.coverageTiles.map((tile) =>
-      common.textureKeyString(tile)))
-    const rootLevel = this.coverageTiles.reduce((result, tile) =>
-      Math.min(result, tile.level), Number.POSITIVE_INFINITY)
-    this.configuredRootTiles = this.coverageTiles.filter((tile) =>
-      tile.level === rootLevel)
-    this.configuredRootKeys = new Set(this.configuredRootTiles.map((tile) =>
-      common.textureKeyString(tile)))
+    this.configureSource(options.urlForTile, options.coverageTiles)
     this.retryTimers = new Map()
     this.retainedUntil = new Map()
     this.staleRequestGraceMs = options.staleRequestGraceMs === undefined
@@ -765,6 +753,27 @@ class TextureStore {
     this.advanceTimer = null
     this.frameUsage = { exact: 0, fallback: 0, missing: 0 }
     this.generation = 0
+  }
+
+  configureSource(urlForTile, coverageTiles) {
+    common.invariant(typeof urlForTile === 'function',
+      'Texture URL resolver is required')
+    this.urlForTile = urlForTile
+    this.coverageTiles = Array.isArray(coverageTiles)
+      ? coverageTiles.slice() : []
+    this.coverageKeys = new Set(this.coverageTiles.map((tile) =>
+      common.textureKeyString(tile)))
+    const rootLevel = this.coverageTiles.reduce((result, tile) =>
+      Math.min(result, tile.level), Number.POSITIVE_INFINITY)
+    this.configuredRootTiles = this.coverageTiles.filter((tile) =>
+      tile.level === rootLevel)
+    this.configuredRootKeys = new Set(this.configuredRootTiles.map((tile) =>
+      common.textureKeyString(tile)))
+  }
+
+  setSource(urlForTile, coverageTiles) {
+    this.clear()
+    this.configureSource(urlForTile, coverageTiles)
   }
 
   cacheCapacity() {
@@ -1601,20 +1610,45 @@ class TerraWebGlRenderer {
     this.requestRender()
   }
 
+  setImagerySource(textureDescriptor, urlForTile) {
+    common.invariant(textureDescriptor &&
+      typeof urlForTile === 'function',
+      'Imagery texture descriptor and URL resolver are required')
+    this.options.textureDescriptor = textureDescriptor
+    this.options.urlForTile = urlForTile
+    this.textures.setSource(urlForTile,
+      globalCoverageTextureTiles(textureDescriptor))
+    this.displaySurface = null
+    this.rebuildImageryDraws()
+    this.requestRender()
+  }
+
   rebuildImageryDraws() {
     if (!this.current) return
-    this.geometryCoverageDraws = this.current.draws.filter((draw) =>
+    const descriptor = this.options.textureDescriptor
+    const matrixLevelOffset = Number.isInteger(
+      descriptor && descriptor.matrix_level_offset)
+      ? descriptor.matrix_level_offset : 0
+    const sourceDraws = this.current.draws.map((draw) => {
+      if (!draw.texture) return draw
+      const matrix = draw.texture.level + matrixLevelOffset
+      if (draw.texture.matrix === matrix) return draw
+      return Object.assign({}, draw, {
+        texture: Object.assign({}, draw.texture, { matrix })
+      })
+    })
+    this.geometryCoverageDraws = sourceDraws.filter((draw) =>
       (draw.flags & DRAW_FLAG_COVERAGE) !== 0)
       .map((draw) => Object.assign({}, draw, {
         imageryCoverageDraw: true,
         imageryClipCell: false
       }))
-    const result = refineImageryDraws(this.current.frame, this.current.draws,
+    const result = refineImageryDraws(this.current.frame, sourceDraws,
       this.current.positions, this.current.textureUv, {
         width: this.canvas.width,
         height: this.canvas.height,
         devicePixelRatio: this.options.devicePixelRatio || 1
-      }, this.options.textureDescriptor, {
+      }, descriptor, {
         targetPixelError: this.interactionActive
           ? (this.options.interactionImageryPixelError || 2.5)
           : (this.options.imageryPixelError || 1.25),

@@ -1,121 +1,114 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="color-scheme" content="dark">
-  <meta name="description" content="Terra SDK is a lightweight C++14 and WebAssembly terrain visualization runtime for native, Web, and WeChat Mini Program applications.">
+  <meta name="description" data-i18n-content="home.description" content="Terra SDK 是面向原生、Web 和微信小程序的轻量级 C++14 与 WebAssembly 地形可视化运行时。">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; script-src 'self'; style-src 'self'; connect-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
-  <title>Terra SDK | Lightweight terrain visualization</title>
-  <link rel="stylesheet" href="/styles.css">
+  <title data-i18n="home.title">Terra SDK | 轻量级地形可视化</title>
+  <link rel="stylesheet" href="/styles.css?rev=__TERRA_ASSET_REVISION__">
 </head>
 <body>
   <header class="site-header">
-    <a class="brand" href="/" aria-label="Terra SDK home">Terra SDK</a>
-    <nav aria-label="Primary navigation">
-      <a href="#capabilities">Features</a>
-      <a href="/docs/quickstart/">Quickstart</a>
-      <a href="/services/">Services</a>
-      <a href="/downloads/">Downloads</a>
+    <a class="brand" data-i18n-aria-label="nav.home" href="/" aria-label="Terra SDK 首页">Terra SDK</a>
+    <nav data-i18n-aria-label="nav.primary" aria-label="主导航">
+      <a data-i18n="nav.features" href="#capabilities">功能</a>
+      <a data-i18n="nav.quickstart" href="/docs/quickstart/">快速开始</a>
+      <a data-i18n="nav.services" href="/services/">服务</a>
+      <a data-i18n="nav.downloads" href="/downloads/">下载</a>
       <a class="nav-command" href="https://github.com/dadream/terra-sdk">GitHub</a>
     </nav>
   </header>
 
   <main>
     <section class="hero" aria-labelledby="hero-title">
-      <iframe src="/demo/globe/?embed=1" title="Interactive Terra SDK globe" loading="eager"></iframe>
+      <iframe src="/demo/globe/?embed=1" data-i18n-title="home.hero.frameTitle" title="Terra SDK 交互式地球" loading="eager"></iframe>
       <div class="hero-shade" aria-hidden="true"></div>
       <div class="hero-copy">
         <p class="eyebrow">C++14 · C ABI · WebAssembly · WebGL</p>
         <h1 id="hero-title">Terra SDK</h1>
-        <p class="hero-summary">A compact terrain runtime that carries one CBDAM core from native applications to the Web and WeChat Mini Programs.</p>
+        <p class="hero-summary" data-i18n="home.hero.summary">紧凑的地形运行时，让同一套 CBDAM 核心从原生应用运行到 Web 与微信小程序。</p>
         <div class="hero-actions">
-          <a class="primary-command" href="/demo/globe/">Explore globe</a>
-          <a class="secondary-command" href="/demo/planar/">Open planar demo</a>
+          <a class="primary-command" data-i18n="home.hero.globe" href="/demo/globe/">体验球面地形</a>
+          <a class="secondary-command" data-i18n="home.hero.planar" href="/demo/planar/">打开平面演示</a>
         </div>
-        <p class="release-line">Developer Preview <strong data-release-version>0.1.0</strong></p>
+        <p class="release-line"><span data-i18n="common.developerPreview">开发者预览版</span> <strong data-release-version>0.1.0</strong></p>
       </div>
     </section>
 
     <section id="capabilities" class="band capabilities" aria-labelledby="capabilities-title">
       <div class="section-heading">
-        <p class="eyebrow">One runtime, three surfaces</p>
-        <h2 id="capabilities-title">Terrain detail where the viewport needs it</h2>
-        <p>CBDAM refinement, hierarchical imagery, and deterministic camera state remain platform-neutral. Applications supply only rendering, transport, and interaction adapters.</p>
+        <p class="eyebrow" data-i18n="home.cap.eyebrow">一套运行时，三类终端</p>
+        <h2 id="capabilities-title" data-i18n="home.cap.title">只在视口需要的位置呈现地形细节</h2>
+        <p data-i18n="home.cap.body">CBDAM 细化、层级影像和确定性相机状态保持平台无关；应用只需提供渲染、传输和交互适配器。</p>
       </div>
       <div class="feature-grid">
-        <article><span>01</span><h3>Planar and globe</h3><p>Use the same public viewer facade for local terrain repositories and global geodetic datasets.</p></article>
-        <article><span>02</span><h3>Progressive imagery</h3><p>Root-first coverage and bounded refinement keep the surface visible while sharper tiles arrive.</p></article>
-        <article><span>03</span><h3>Portable core</h3><p>C++14 libraries and a versioned C ABI avoid Qt, OpenGL, network, and operating-system dependencies.</p></article>
-        <article><span>04</span><h3>Observable behavior</h3><p>Structured camera, terrain, texture, cache, and frame state make integration failures diagnosable.</p></article>
+        <article><span>01</span><h3 data-i18n="home.cap.planar.title">平面与球面</h3><p data-i18n="home.cap.planar.body">使用同一套公开 Viewer 门面加载本地地形仓库与全球大地坐标数据集。</p></article>
+        <article><span>02</span><h3 data-i18n="home.cap.imagery.title">渐进式影像</h3><p data-i18n="home.cap.imagery.body">根节点优先覆盖和有界细化，让更清晰的瓦片到达前地表始终可见。</p></article>
+        <article><span>03</span><h3 data-i18n="home.cap.core.title">可移植核心</h3><p data-i18n="home.cap.core.body">C++14 库与版本化 C ABI 不依赖 Qt、OpenGL、网络和操作系统。</p></article>
+        <article><span>04</span><h3 data-i18n="home.cap.observe.title">可观测行为</h3><p data-i18n="home.cap.observe.body">结构化相机、地形、纹理、缓存和帧状态，让集成问题可诊断。</p></article>
       </div>
     </section>
 
     <section class="band packages" aria-labelledby="packages-title">
       <div class="section-heading compact">
-        <p class="eyebrow">Release artifacts</p>
-        <h2 id="packages-title">Choose the host. Keep the model.</h2>
+        <p class="eyebrow" data-i18n="home.packages.eyebrow">Release 产物</p>
+        <h2 id="packages-title" data-i18n="home.packages.title">选择宿主，保持统一模型</h2>
       </div>
       <div class="package-grid">
         <article class="package-card">
-          <p class="package-kind">Native</p>
-          <h3>C++14 and C ABI</h3>
-          <p>Static core, codec, frame, and C API libraries with CMake package metadata and working C/C++ examples.</p>
-          <a data-release-asset="native" href="/downloads/">Download native package</a>
+          <p class="package-kind" data-i18n="home.packages.native.kind">原生</p>
+          <h3 data-i18n="home.packages.native.title">C++14 与 C ABI</h3>
+          <p data-i18n="home.packages.native.body">包含静态核心、编解码、帧和 C API 库，以及 CMake 包元数据与可运行的 C/C++ 示例。</p>
+          <a data-release-asset="native" data-i18n="home.packages.native.action" href="/downloads/">下载原生包</a>
         </article>
         <article class="package-card">
-          <p class="package-kind">Portable UI</p>
-          <h3>Web and Mini Program</h3>
-          <p>WebAssembly core, WebGL renderer, interaction runtime, CommonJS modules, and TypeScript declarations.</p>
-          <a data-release-asset="miniprogram" href="/downloads/">Download Web package</a>
+          <p class="package-kind" data-i18n="home.packages.web.kind">跨端 UI</p>
+          <h3 data-i18n="home.packages.web.title">Web 与小程序</h3>
+          <p data-i18n="home.packages.web.body">包含 WebAssembly 核心、WebGL 渲染器、交互运行时、CommonJS 模块和 TypeScript 声明。</p>
+          <a data-release-asset="miniprogram" data-i18n="home.packages.web.action" href="/downloads/">下载 Web 包</a>
         </article>
       </div>
     </section>
 
     <section class="band workflow" aria-labelledby="workflow-title">
-      <div class="section-heading compact">
-        <p class="eyebrow">Integration path</p>
-        <h2 id="workflow-title">From package to first frame</h2>
-      </div>
+      <div class="section-heading compact"><p class="eyebrow" data-i18n="home.workflow.eyebrow">集成路径</p><h2 id="workflow-title" data-i18n="home.workflow.title">从软件包到第一帧</h2></div>
       <ol class="steps">
-        <li><strong>Load</strong><span>Choose a dataset manifest and an imagery profile.</span></li>
-        <li><strong>Create</strong><span>Instantiate the ABI and pass the host canvas and request adapter.</span></li>
-        <li><strong>Control</strong><span>Use camera, interaction, POI, route, and lifecycle APIs.</span></li>
-        <li><strong>Observe</strong><span>Gate readiness with structured state instead of timing guesses.</span></li>
+        <li><strong data-i18n="home.workflow.load">加载</strong><span data-i18n="home.workflow.load.body">选择数据集清单和影像配置。</span></li>
+        <li><strong data-i18n="home.workflow.create">创建</strong><span data-i18n="home.workflow.create.body">实例化 ABI，并传入宿主 Canvas 与请求适配器。</span></li>
+        <li><strong data-i18n="home.workflow.control">控制</strong><span data-i18n="home.workflow.control.body">使用相机、交互、POI、路线和生命周期 API。</span></li>
+        <li><strong data-i18n="home.workflow.observe">观测</strong><span data-i18n="home.workflow.observe.body">通过结构化状态判断就绪，而不是猜测等待时间。</span></li>
       </ol>
-      <a class="text-command" href="/docs/quickstart/">Read the quickstart →</a>
+      <a class="text-command" data-i18n="home.workflow.action" href="/docs/quickstart/">阅读快速开始 →</a>
     </section>
 
     <section class="band public-services" aria-labelledby="services-title">
       <div class="service-copy">
-        <p class="eyebrow">Evaluation infrastructure</p>
-        <h2 id="services-title">Public terrain and imagery endpoints</h2>
-        <p>The hosted 1k planar terrain, global terrain, Blue Marble, and Tianditu proxy endpoints are available for SDK evaluation. They are reference services, not a production SLA.</p>
-        <a class="secondary-command" href="/services/">View service endpoints</a>
+        <p class="eyebrow" data-i18n="home.services.eyebrow">评估基础设施</p>
+        <h2 id="services-title" data-i18n="home.services.title">公开地形与影像端点</h2>
+        <p data-i18n="home.services.body">托管的 1k 平面地形、全球地形、Blue Marble 与天地图代理可用于 SDK 评估。这些是参考服务，不提供生产 SLA。</p>
+        <a class="secondary-command" data-i18n="home.services.action" href="/services/">查看服务端点</a>
       </div>
       <dl class="service-facts">
-        <div><dt>Terrain</dt><dd>PS 1k + global geodetic</dd></div>
-        <div><dt>Imagery</dt><dd>PS tiles + NASA Blue Marble</dd></div>
-        <div><dt>Proxy</dt><dd>Tianditu image tiles with attribution</dd></div>
+        <div><dt data-i18n="home.services.terrain">地形</dt><dd data-i18n="home.services.terrain.value">PS 1k + 全球大地坐标</dd></div>
+        <div><dt data-i18n="home.services.imagery">影像</dt><dd data-i18n="home.services.imagery.value">PS 分块 + NASA Blue Marble</dd></div>
+        <div><dt data-i18n="home.services.proxy">代理</dt><dd data-i18n="home.services.proxy.value">带版权标识的天地图影像瓦片</dd></div>
       </dl>
     </section>
 
     <section class="band open-source" aria-labelledby="open-title">
-      <p class="eyebrow">Open source direction</p>
-      <h2 id="open-title">Inspect the package boundary before you adopt it.</h2>
-      <p>Terra SDK is a multi-license codebase. Every release includes upstream notices, package inventories, checksums, and an SPDX 2.3 release record.</p>
+      <p class="eyebrow" data-i18n="home.open.eyebrow">开源方向</p>
+      <h2 id="open-title" data-i18n="home.open.title">采用之前，先检查软件包边界。</h2>
+      <p data-i18n="home.open.body">Terra SDK 是多协议代码库。每个 Release 都包含上游声明、包清单、校验和与 SPDX 2.3 发布记录。</p>
       <div class="inline-actions">
-        <a class="primary-command" data-release-url href="/downloads/">Get v0.1.0</a>
-        <a class="text-command" href="/license/">Review licensing →</a>
+        <a class="primary-command" data-release-url data-i18n="home.open.get" href="/downloads/">获取 v0.1.0</a>
+        <a class="text-command" data-i18n="home.open.license" href="/license/">查看许可协议 →</a>
       </div>
     </section>
   </main>
 
-  <footer>
-    <a class="brand" href="/">Terra SDK</a>
-    <p>Lightweight terrain visualization for native, Web, and Mini Program hosts.</p>
-    <div><a href="https://github.com/dadream/terra-sdk">GitHub</a><a href="/license/">License</a></div>
-  </footer>
-  <script src="/site.js"></script>
+  <footer><a class="brand" href="/">Terra SDK</a><p data-i18n="common.footer">面向原生、Web 和微信小程序的轻量级地形可视化。</p><div><a href="https://github.com/dadream/terra-sdk">GitHub</a><a data-i18n="nav.license" href="/license/">协议</a></div></footer>
+  <script src="/site.js?rev=__TERRA_ASSET_REVISION__"></script>
 </body>
 </html>
