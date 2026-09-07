@@ -14,6 +14,7 @@ const RADIANS_TO_DEGREES = 180 / Math.PI
 const MIN_TILT_RADIANS = -80 * DEGREES_TO_RADIANS
 const MAX_TILT_RADIANS = 0
 const ANIMATION_LOD_INTERVAL_MS = 200
+const DEFAULT_CAMERA_SETTLE_DELAY_MS = 80
 
 const ABI_LAYOUT = {
   manifest: 128,
@@ -707,6 +708,10 @@ class TerraGlobeRuntime {
       terrainPixelError: this.terrainPixelError,
       verticalFovRadians: this.fovRadians
     }
+    this.cameraSettleDelayMs = this.options.cameraSettleDelayMs === undefined
+      ? DEFAULT_CAMERA_SETTLE_DELAY_MS
+      : common.clamp(common.finiteNumber(
+        this.options.cameraSettleDelayMs, 'Camera settle delay'), 0, 500)
     this.serviceOrigin = this.options.serviceOrigin || ''
     this.request = this.options.request || requestWithWx
     this.maximumTerrainRequests = Number.isInteger(
@@ -726,14 +731,14 @@ class TerraGlobeRuntime {
       : Math.max(0, common.finiteNumber(this.options.terrainRetryDelayMs,
         'Terrain retry delay'))
     this.atmosphere = normalizeAtmosphereOptions(this.options.atmosphere)
+    this.desiredRequests = new Map()
+    this.retries = new Map()
+    this.failedRequests = new Map()
     this.recordCache = new common.LruCache({
       maximumEntries: this.options.maximumRecordEntries || 256,
       maximumBytes: this.options.recordCacheBytes || 8 * 1024 * 1024
     })
     this.scheduler = new common.RequestScheduler(this.maximumTerrainRequests)
-    this.desiredRequests = new Map()
-    this.retries = new Map()
-    this.failedRequests = new Map()
     this.diagnosticTimes = new Map()
     this.diagnostics = []
     this.refreshPending = false
@@ -750,6 +755,7 @@ class TerraGlobeRuntime {
     this.lastSurface = null
     this.lastError = ''
     this.cameraAnimation = null
+    this.cameraRefreshTimer = null
     this.interactionActive = false
     this.cameraPreviewDirty = false
     this.performanceStats = {
@@ -1201,12 +1207,42 @@ class TerraGlobeRuntime {
     this.refresh()
   }
 
+  cancelCameraRefresh() {
+    if (this.cameraRefreshTimer === null) {
+      return
+    }
+    clearTimeout(this.cameraRefreshTimer)
+    this.cameraRefreshTimer = null
+  }
+
+  scheduleCameraRefresh() {
+    if (this.destroyed || this.paused) {
+      this.cameraPreviewDirty = true
+      this.refreshPending = true
+      return
+    }
+    if (!this.previewCamera()) {
+      this.refresh()
+      return
+    }
+    this.cancelCameraRefresh()
+    this.cameraRefreshTimer = setTimeout(() => {
+      this.cameraRefreshTimer = null
+      if (this.destroyed) return
+      if (this.paused || this.interactionActive) {
+        this.refreshPending = true
+        return
+      }
+      this.refresh()
+    }, this.cameraSettleDelayMs)
+  }
+
   panBy(change) {
     const value = change || {}
     this.cancelAnimation()
     this.applyPanPixels(common.finiteNumber(value.xPixels, 'Pan X'),
       common.finiteNumber(value.yPixels, 'Pan Y'))
-    this.refresh()
+    this.scheduleCameraRefresh()
   }
 
   zoomBy(scale, options) {
@@ -1224,7 +1260,7 @@ class TerraGlobeRuntime {
         (common.finiteNumber(anchor.y, 'Zoom anchor Y') - height / 2) *
           anchorScale)
     }
-    this.refresh()
+    this.scheduleCameraRefresh()
   }
 
   orbitBy(change) {
@@ -1236,13 +1272,16 @@ class TerraGlobeRuntime {
     this.camera.tiltRadians = common.clamp(this.camera.tiltRadians -
       common.finiteNumber(value.tiltDegrees || 0, 'Tilt delta') *
         DEGREES_TO_RADIANS, MIN_TILT_RADIANS, MAX_TILT_RADIANS)
-    this.refresh()
+    this.scheduleCameraRefresh()
   }
 
   setTilt(tiltDegrees) {
-    const view = this.getView()
-    view.tiltDegrees = common.finiteNumber(tiltDegrees, 'Tilt')
-    this.setView(view)
+    const value = common.finiteNumber(tiltDegrees, 'Tilt')
+    common.invariant(value >= 0 && value <= 80,
+      'Tilt is outside [0, 80]')
+    this.cancelAnimation()
+    this.camera.tiltRadians = -value * DEGREES_TO_RADIANS
+    this.scheduleCameraRefresh()
   }
 
   reset() {
@@ -1320,7 +1359,7 @@ class TerraGlobeRuntime {
       this.camera.yawRadians = wrapRadians(this.camera.yawRadians +
         common.finiteNumber(value.yawDelta, 'Yaw delta'))
     }
-    this.refresh()
+    this.scheduleCameraRefresh()
   }
 
   setTiltRadians(value) {
@@ -1334,17 +1373,17 @@ class TerraGlobeRuntime {
   rotateYaw(delta) {
     this.camera.yawRadians = wrapRadians(this.camera.yawRadians +
       common.finiteNumber(delta, 'Yaw'))
-    this.refresh()
+    this.scheduleCameraRefresh()
   }
 
   topDown() {
     this.camera.tiltRadians = 0
-    this.refresh()
+    this.scheduleCameraRefresh()
   }
 
   northUp() {
     this.camera.yawRadians = 0
-    this.refresh()
+    this.scheduleCameraRefresh()
   }
 
   focusInitialTarget(distanceScale) {
@@ -1411,6 +1450,7 @@ class TerraGlobeRuntime {
     const settleRefresh = !next &&
       (this.cameraPreviewDirty || this.refreshPending)
     if (settleRefresh) {
+      this.cancelCameraRefresh()
       this.cameraPreviewDirty = false
       this.scheduleSettledRefresh()
       return
@@ -1429,6 +1469,7 @@ class TerraGlobeRuntime {
     if (this.destroyed) {
       return
     }
+    this.cancelCameraRefresh()
     if (this.paused) {
       this.refreshPending = true
       return
@@ -1772,6 +1813,7 @@ class TerraGlobeRuntime {
 
   destroy() {
     this.cancelAnimation()
+    this.cancelCameraRefresh()
     this.destroyed = true
     this.scheduler.clear()
     this.recordCache.clear()

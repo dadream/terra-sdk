@@ -422,13 +422,80 @@ int main(int argc, char** argv) {
                    TERRA_STATUS_OK, "set globe target");
     require_status(terra_set_camera(context, &camera), TERRA_STATUS_OK,
                    "set camera");
-    require_status(terra_update(context, 0.005F), TERRA_STATUS_OK,
-                   "camera update");
+    require_status(terra_update(context, 1.0F), TERRA_STATUS_OK,
+                   "camera coarsen update");
     frame.struct_size = sizeof(frame);
     require_status(terra_get_frame(context, &frame), TERRA_STATUS_OK,
                    "get camera frame");
     require(frame.sequence == 4U && frame.decisions_complete == 1U,
             "camera frame state changed");
+
+    stats.struct_size = sizeof(stats);
+    require_status(terra_get_stats(context, &stats), TERRA_STATUS_OK,
+                   "get stats after terrain coarsening");
+    require(stats.loaded_patch_count == 2U &&
+                stats.decoded_value_count == 8450U,
+            "coarsened terrain records remain in the SDK working set");
+
+    terra_context* coverage_context = terra_create();
+    require(coverage_context != nullptr, "coverage terra_create failed");
+    require_status(terra_load_manifest(coverage_context, &manifest),
+                   TERRA_STATUS_OK, "load coverage manifest");
+    require_status(terra_set_viewport(coverage_context, &viewport),
+                   TERRA_STATUS_OK, "set coverage viewport");
+    require_status(terra_update(coverage_context, 0.005F),
+                   TERRA_STATUS_OK, "select coverage roots");
+    std::size_t coverage_request_count = 0U;
+    require_status(terra_get_requests(coverage_context, nullptr, 0U,
+                                      &coverage_request_count),
+                   TERRA_STATUS_BUFFER_TOO_SMALL,
+                   "coverage request sizing");
+    std::vector<terra_request_v1> coverage_requests(
+        coverage_request_count);
+    require_status(terra_get_requests(
+                       coverage_context, coverage_requests.data(),
+                       coverage_requests.size(), &coverage_request_count),
+                   TERRA_STATUS_OK, "get coverage requests");
+    std::size_t submitted_roots = 0U;
+    for (const terra_request_v1& request : coverage_requests) {
+      if (request.kind != TERRA_REQUEST_ROOT) {
+        continue;
+      }
+      require_status(terra_submit_record(
+                         coverage_context, request.kind, &request.key,
+                         root_record.data(), root_record.size()),
+                     TERRA_STATUS_OK, "submit coverage root");
+      ++submitted_roots;
+    }
+    require(submitted_roots == 8U, "coverage root count changed");
+    require_status(terra_update(coverage_context, 0.005F),
+                   TERRA_STATUS_OK, "build global coverage");
+    terra_frame_v1 coverage_frame{};
+    coverage_frame.struct_size = sizeof(coverage_frame);
+    require_status(terra_get_frame(coverage_context, &coverage_frame),
+                   TERRA_STATUS_OK, "get global coverage frame");
+    std::size_t coverage_range_count = 0U;
+    require_status(terra_get_draw_ranges(
+                       coverage_context, nullptr, 0U,
+                       &coverage_range_count),
+                   TERRA_STATUS_BUFFER_TOO_SMALL,
+                   "coverage range sizing");
+    std::vector<terra_draw_range_v1> coverage_ranges(
+        coverage_range_count);
+    require_status(terra_get_draw_ranges(
+                       coverage_context, coverage_ranges.data(),
+                       coverage_ranges.size(), &coverage_range_count),
+                   TERRA_STATUS_OK, "get global coverage ranges");
+    require(coverage_frame.coverage_complete == 1U &&
+                coverage_frame.coverage_draw_count == 16U &&
+                std::count_if(
+                    coverage_ranges.begin(), coverage_ranges.end(),
+                    [](const terra_draw_range_v1& draw) {
+                      return draw.flags == TERRA_DRAW_FLAG_COVERAGE &&
+                             draw.key.level == 0U;
+                    }) == 16,
+            "global root coverage is incomplete");
+    terra_destroy(coverage_context);
 
     terra_destroy(context);
     void* memory = terra_alloc(64U);

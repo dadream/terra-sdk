@@ -301,6 +301,7 @@ async function testSuccessfulLoadAndControls() {
   const result = await createRuntime({
     abi,
     initialTarget,
+    cameraSettleDelayMs: 5,
     request(options) {
       requests.push(options)
       return { promise: Promise.resolve(response(bytes)), abort() {} }
@@ -363,6 +364,20 @@ async function testSuccessfulLoadAndControls() {
   assert.strictEqual(result.renderer.frames.length, previewFrameCount + 1)
   assert.deepStrictEqual(result.renderer.interactionStates, [true, false])
   assert(result.runtime.state().performance.fullUpdate.count > 0)
+
+  const debouncedUpdates = abi.updateCount
+  const debouncedSnapshots = abi.cameraSnapshotCount
+  for (let index = 0; index < 12; ++index) {
+    result.runtime.zoomBy(index % 2 === 0 ? 0.98 : 1.02)
+  }
+  assert.strictEqual(abi.updateCount, debouncedUpdates)
+  assert.strictEqual(abi.cameraSnapshotCount, debouncedSnapshots + 12)
+  assert.strictEqual(result.runtime.cameraPreviewDirty, true)
+  await new Promise((resolve) => setTimeout(resolve, 20))
+  await settle(2)
+  assert.strictEqual(abi.updateCount, debouncedUpdates + 1)
+  assert.strictEqual(result.runtime.cameraRefreshTimer, null)
+  assert.strictEqual(result.runtime.cameraPreviewDirty, false)
 
   const atomicUpdates = abi.updateCount
   result.runtime.setView({

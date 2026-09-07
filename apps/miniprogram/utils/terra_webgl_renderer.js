@@ -1900,7 +1900,9 @@ class TerraWebGlRenderer {
         imageryCoverageDraw: true,
         imageryClipCell: false
       }))
-    const result = refineImageryDraws(this.current.frame, sourceDraws,
+    const targetDraws = sourceDraws.filter((draw) =>
+      (draw.flags & DRAW_FLAG_COVERAGE) === 0)
+    const result = refineImageryDraws(this.current.frame, targetDraws,
       this.current.positions, this.current.textureUv, {
         width: this.canvas.width,
         height: this.canvas.height,
@@ -1970,8 +1972,13 @@ class TerraWebGlRenderer {
   currentGeometryReady() {
     if (!this.current || this.current.draws.length === 0) return false
     if (this.geometryCoverageDraws.length > 0) {
+      if (!this.displaySurface) {
+        return this.currentGeometryCoverageReady() &&
+          this.missingCurrentCoverageGeometryCount() === 0
+      }
       return this.currentGeometryCoverageReady() &&
-        this.missingCurrentCoverageGeometryCount() === 0
+        this.missingCurrentGeometryCount() === 0 &&
+        this.omittedCurrentGeometryCount() === 0
     }
     return this.missingCurrentGeometryCount() === 0 &&
       this.omittedCurrentGeometryCount() === 0
@@ -2106,11 +2113,14 @@ class TerraWebGlRenderer {
     gl.activeTexture(gl.TEXTURE0)
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer)
     this.textures.beginFrame()
+    const geometryCoverageDraws = surface.geometryCoverageDraws || []
+    const targetTerrainDraws = this.mode === 'texture'
+      ? (surface.coverageDraws || []).concat(surface.renderDraws)
+      : surface.current.draws.filter((draw) =>
+        (draw.flags & DRAW_FLAG_COVERAGE) === 0)
     let submitted = 0
-    const terrainDraws = this.mode === 'texture'
-      ? (surface.geometryCoverageDraws || []).concat(
-        surface.coverageDraws || [], surface.renderDraws)
-      : surface.current.draws
+    const terrainDraws = geometryCoverageDraws.concat(targetTerrainDraws)
+    const coverageDrawCount = geometryCoverageDraws.length
     let maximumResolvedError = 0
     let fallbackCount = 0
     let missingCount = 0
@@ -2118,6 +2128,9 @@ class TerraWebGlRenderer {
     let maximumResolvedLevel = Number.NEGATIVE_INFINITY
     for (let index = 0; index < terrainDraws.length; ++index) {
       const draw = terrainDraws[index]
+      if (coverageDrawCount > 0 && index === coverageDrawCount) {
+        gl.clear(gl.DEPTH_BUFFER_BIT)
+      }
       const geometry = this.geometry.get(draw.geometryKey)
       if (!geometry || !geometry.positionBuffer || !geometry.uvBuffer) {
         continue

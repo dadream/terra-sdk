@@ -907,7 +907,7 @@ async function main() {
   transitionRenderer.processUploads = () => {}
   transitionRenderer.render()
   assert.strictEqual(
-    transitionRenderer.stats().transition.displayingPreviousFrame, false)
+    transitionRenderer.stats().transition.displayingPreviousFrame, true)
   assert.strictEqual(
     transitionRenderer.stats().transition.coverageGeometry, 1)
   assert.strictEqual(
@@ -923,7 +923,41 @@ async function main() {
   assert.strictEqual(
     transitionRenderer.stats().quality.geometryTargetComplete, false)
   assert.strictEqual(
-    transitionRenderer.stats().quality.sourceDrawCount, 2)
+    transitionRenderer.stats().quality.sourceDrawCount, 1)
+  const drawCallsBeforeCoveredRender = transitionGl.calls.filter((call) =>
+    call.name === 'drawElements').length
+  transitionRenderer.setInteractionActive(true)
+  transitionRenderer.setCameraFrame({
+    cameraPosition: [1000, 2000, 3000],
+    projectionView: frame().projectionView
+  })
+  const previousRenderStats = transitionRenderer.render()
+  assert.strictEqual(previousRenderStats.submitted, 1)
+  assert.strictEqual(transitionGl.calls.filter((call) =>
+    call.name === 'drawElements').length, drawCallsBeforeCoveredRender + 1)
+  assert.strictEqual(
+    transitionRenderer.stats().transition.displayingPreviousFrame, true)
+  transitionRenderer.processUploads = originalProcessUploads
+  const incompleteRenderStats = transitionRenderer.render()
+  assert.strictEqual(incompleteRenderStats.submitted, 1)
+  assert.strictEqual(
+    transitionRenderer.stats().transition.displayingPreviousFrame, true)
+  assert.strictEqual(
+    transitionRenderer.stats().transition.pendingGeometry, 0)
+  const completeGeometryFrame = Object.assign({}, coveredGeometryFrame, {
+    expectedDrawCount: 1,
+    omittedDrawCount: 0
+  })
+  transitionRenderer.setFrame(completeGeometryFrame,
+    [rootCoverageDraw, pendingDetailDraw], coveredPositions,
+    coveredUv, indices)
+  const promotedRenderStats = transitionRenderer.render()
+  assert.strictEqual(promotedRenderStats.submitted, 2)
+  assert.strictEqual(
+    transitionRenderer.stats().transition.displayingPreviousFrame, false)
+  assert(transitionGl.calls.some((call) =>
+    call.name === 'clear' &&
+    call.args[0] === transitionGl.DEPTH_BUFFER_BIT))
   transitionRenderer.destroy()
   await settle()
 

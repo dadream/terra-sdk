@@ -19,6 +19,7 @@
 #include <exception>
 #include <map>
 #include <new>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -207,6 +208,50 @@ terra_patch_key_v1 to_key(const terra::frame::lod_patch& patch) {
   result.j = patch.id[1];
   result.k = patch.id[2];
   return result;
+}
+
+struct active_record_key {
+  std::uint32_t kind = 0U;
+  terra_patch_key_v1 key{};
+};
+
+struct active_record_key_less {
+  bool operator()(const active_record_key& left,
+                  const active_record_key& right) const {
+    if (left.kind != right.kind) {
+      return left.kind < right.kind;
+    }
+    return patch_key_less()(left.key, right.key);
+  }
+};
+
+void prune_inactive_records(terra_context& context,
+                            const terra::frame::lod_cut& cut) {
+  std::set<active_record_key, active_record_key_less> active;
+  for (const terra::frame::lod_record_request& request :
+       cut.record_requests) {
+    active_record_key key;
+    key.kind = request.kind == terra::frame::lod_record_kind::root
+                   ? TERRA_REQUEST_ROOT
+                   : TERRA_REQUEST_DETAIL;
+    key.key = to_key(request.patch);
+    active.insert(key);
+  }
+  context.loaded_records.erase(
+      std::remove_if(
+          context.loaded_records.begin(), context.loaded_records.end(),
+          [&active](const terra_loaded_record& record) {
+            active_record_key key;
+            key.kind = record.kind;
+            key.key = record.key;
+            return active.find(key) == active.end();
+          }),
+      context.loaded_records.end());
+  context.stats.loaded_patch_count = context.loaded_records.size();
+  context.stats.decoded_value_count = 0U;
+  for (const terra_loaded_record& record : context.loaded_records) {
+    context.stats.decoded_value_count += record.values.values.size();
+  }
 }
 
 terra::core::grid_diamond to_diamond(
@@ -405,6 +450,43 @@ terra_status build_render_buffers(
     return TERRA_STATUS_OK;
   };
 
+  if (context.manifest.transform == TERRA_TRANSFORM_CYLINDRICAL) {
+    const std::uint32_t required_coverage_draw_count =
+        static_cast<std::uint32_t>(
+            terra::core::cylindrical_roots().size() * 2U);
+    std::uint32_t expected_coverage_draw_count = 0U;
+    for (const terra::frame::lod_record_request& request :
+         cut.record_requests) {
+      if (request.kind != terra::frame::lod_record_kind::root) {
+        continue;
+      }
+      const terra_patch_key_v1 key = to_key(request.patch);
+      const height_map::const_iterator height = heights.find(key);
+      for (std::uint8_t fragment = 0U; fragment < 2U; ++fragment) {
+        if (!request.patch.has_fragment(fragment)) {
+          continue;
+        }
+        ++expected_coverage_draw_count;
+        if (height == heights.end() ||
+            !height->second.has_fragment(fragment)) {
+          continue;
+        }
+        const terra_status status = append_surface(
+            request.patch, fragment, height->second.fragments[fragment],
+            TERRA_DRAW_FLAG_COVERAGE);
+        if (status != TERRA_STATUS_OK) {
+          return status;
+        }
+        ++coverage_draw_count;
+      }
+    }
+    coverage_complete =
+        expected_coverage_draw_count == required_coverage_draw_count &&
+                coverage_draw_count == expected_coverage_draw_count
+            ? 1U
+            : 0U;
+  }
+
   for (const terra::frame::lod_patch& patch : cut.patches) {
     if (!patch.visible) {
       continue;
@@ -429,8 +511,10 @@ terra_status build_render_buffers(
       }
     }
   }
-  coverage_complete =
-      expected_draw_count > 0U && omitted_draw_count == 0U ? 1U : 0U;
+  if (context.manifest.transform == TERRA_TRANSFORM_PLANAR) {
+    coverage_complete =
+        expected_draw_count > 0U && omitted_draw_count == 0U ? 1U : 0U;
+  }
   if (context.draw_ranges.size() > UINT32_MAX ||
       context.positions.size() > UINT32_MAX ||
       context.texture_uv.size() > UINT32_MAX ||
@@ -1182,6 +1266,7 @@ terra_status terra_update(terra_context* context, float lod_threshold) {
     if (render_status != TERRA_STATUS_OK) {
       return render_status;
     }
+    prune_inactive_records(*context, cut);
 
     context->frame = terra_frame_v1{};
     context->frame.struct_size = sizeof(terra_frame_v1);
