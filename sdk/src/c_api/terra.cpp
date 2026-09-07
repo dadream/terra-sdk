@@ -2,6 +2,7 @@
 
 #include <terra/codec/cbdam_height.hpp>
 #include <terra/codec/cbdam_hierarchy.hpp>
+#include <terra/core/atmosphere.hpp>
 #include <terra/core/grid.hpp>
 #include <terra/core/metadata.hpp>
 #include <terra/core/wmts.hpp>
@@ -562,6 +563,73 @@ std::uint32_t terra_sizeof_frame_v1(void) {
 
 std::uint32_t terra_sizeof_stats_v1(void) {
   return static_cast<std::uint32_t>(sizeof(terra_stats_v1));
+}
+
+std::uint32_t terra_sizeof_atmosphere_parameters_v1(void) {
+  return static_cast<std::uint32_t>(
+      sizeof(terra_atmosphere_parameters_v1));
+}
+
+std::uint32_t terra_sizeof_atmosphere_result_v1(void) {
+  return static_cast<std::uint32_t>(sizeof(terra_atmosphere_result_v1));
+}
+
+terra_status terra_compute_atmosphere(
+    const terra_atmosphere_parameters_v1* parameters,
+    terra_atmosphere_result_v1* result,
+    std::uint8_t* rgba,
+    std::uint32_t rgba_capacity) {
+  if (!valid_input(parameters) || !valid_input(result) ||
+      parameters->flags != 0U ||
+      !std::isfinite(parameters->sun_azimuth_degrees) ||
+      !std::isfinite(parameters->sun_zenith_degrees) ||
+      !std::isfinite(parameters->turbidity) ||
+      !std::isfinite(parameters->exposure) ||
+      parameters->sun_zenith_degrees < 0.0F ||
+      parameters->sun_zenith_degrees > 120.0F ||
+      parameters->turbidity < 1.0F || parameters->turbidity > 20.0F ||
+      parameters->exposure <= 0.0F || parameters->exposure > 8.0F ||
+      parameters->texture_width == 0U ||
+      parameters->texture_width > 2048U ||
+      parameters->texture_height == 0U ||
+      parameters->texture_height > 512U) {
+    return TERRA_STATUS_INVALID_ARGUMENT;
+  }
+
+  TERRA_C_API_TRY {
+    terra::core::atmosphere_parameters input;
+    input.sun_azimuth_degrees = parameters->sun_azimuth_degrees;
+    input.sun_zenith_degrees = parameters->sun_zenith_degrees;
+    input.turbidity = parameters->turbidity;
+    input.exposure = parameters->exposure;
+    input.texture_width = parameters->texture_width;
+    input.texture_height = parameters->texture_height;
+    const terra::core::atmosphere_result output =
+        terra::core::compute_atmosphere(input);
+
+    terra_atmosphere_result_v1 value{};
+    value.struct_size = sizeof(value);
+    value.texture_width = output.texture_width;
+    value.texture_height = output.texture_height;
+    value.sun_visible = output.sun_visible ? 1U : 0U;
+    for (std::size_t index = 0U; index < 3U; ++index) {
+      value.sun_direction[index] = output.sun_direction[index];
+      value.ambient_color[index] = output.ambient_color[index];
+      value.diffuse_color[index] = output.diffuse_color[index];
+      value.fog_color[index] = output.fog_color[index];
+    }
+    value.sea_level_fog_density = output.sea_level_fog_density;
+    value.required_rgba_bytes =
+        static_cast<std::uint32_t>(output.rgba.size());
+    *result = value;
+
+    if (rgba == nullptr || rgba_capacity < value.required_rgba_bytes) {
+      return TERRA_STATUS_BUFFER_TOO_SMALL;
+    }
+    std::copy(output.rgba.begin(), output.rgba.end(), rgba);
+    return TERRA_STATUS_OK;
+  }
+  TERRA_C_API_CATCH(nullptr, "unable to compute atmosphere")
 }
 
 terra_context* terra_create(void) {

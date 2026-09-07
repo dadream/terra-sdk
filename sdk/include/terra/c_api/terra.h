@@ -158,6 +158,30 @@ typedef struct terra_stats_v1 {
   uint64_t last_sequence;
 } terra_stats_v1;
 
+typedef struct terra_atmosphere_parameters_v1 {
+  uint32_t struct_size;
+  uint32_t flags;
+  float sun_azimuth_degrees;
+  float sun_zenith_degrees;
+  float turbidity;
+  float exposure;
+  uint32_t texture_width;
+  uint32_t texture_height;
+} terra_atmosphere_parameters_v1;
+
+typedef struct terra_atmosphere_result_v1 {
+  uint32_t struct_size;
+  uint32_t texture_width;
+  uint32_t texture_height;
+  uint32_t sun_visible;
+  float sun_direction[3];
+  float ambient_color[3];
+  float diffuse_color[3];
+  float fog_color[3];
+  float sea_level_fog_density;
+  uint32_t required_rgba_bytes;
+} terra_atmosphere_result_v1;
+
 uint32_t terra_abi_version(void);
 uint32_t terra_sizeof_manifest_v1(void);
 uint32_t terra_sizeof_viewport_v1(void);
@@ -169,6 +193,14 @@ uint32_t terra_sizeof_patch_decision_v1(void);
 uint32_t terra_sizeof_draw_range_v1(void);
 uint32_t terra_sizeof_frame_v1(void);
 uint32_t terra_sizeof_stats_v1(void);
+uint32_t terra_sizeof_atmosphere_parameters_v1(void);
+uint32_t terra_sizeof_atmosphere_result_v1(void);
+
+terra_status terra_compute_atmosphere(
+    const terra_atmosphere_parameters_v1* parameters,
+    terra_atmosphere_result_v1* result,
+    uint8_t* rgba,
+    uint32_t rgba_capacity);
 
 terra_context* terra_create(void);
 void terra_destroy(terra_context* context);

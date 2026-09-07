@@ -157,6 +157,14 @@ footer div { display: flex; gap: 20px; }
 .prose h2:first-child { margin-top: 0; }
 .prose pre { overflow-x: auto; padding: 20px; border: 1px solid var(--line); border-radius: 6px; background: #050706; color: #d8e8de; line-height: 1.6; }
 .prose code { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+.quickstart-content { max-width: none; }
+.quickstart-content > :not(pre) { max-width: 900px; }
+.quickstart-content > pre {
+  width: 100%;
+  max-width: var(--max);
+  overscroll-behavior-inline: contain;
+}
+.quickstart-content > pre code { display: block; min-width: max-content; }
 .checksum { display: block; overflow-wrap: anywhere; margin-top: 10px; color: #637168; font-size: 12px; }
 
 @media (max-width: 900px) {
@@ -188,4 +196,5 @@ footer div { display: flex; gap: 20px; }
   .steps strong { margin-top: 26px; }
   .package-card { padding: 25px; }
   .service-facts div { grid-template-columns: 90px 1fr; }
+  .quickstart-content > pre { padding: 16px; font-size: 13px; }
 }

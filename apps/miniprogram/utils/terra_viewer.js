@@ -294,6 +294,12 @@ class TerraViewer {
     this.imagery = {
       setSource: (source) => this.setImagerySource(source)
     }
+    this.environment = {
+      getAtmosphere: () => this.runtime.getAtmosphere(),
+      setAtmosphere: (options) => viewerCall(
+        'invalid_atmosphere_options', () =>
+          this.runtime.setAtmosphere(options))
+    }
     this.debug = {
       setRendering: (options) => viewerCall('invalid_debug_options', () =>
         this.runtime.setDebugRendering(options))

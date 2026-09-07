@@ -15,14 +15,18 @@ const VERTEX_SHADER = [
   'uniform float u_clip_cell;',
   'uniform float u_debug_mode;',
   'uniform float u_texture_state;',
+  'uniform float u_fog_density;',
   'varying mediump vec2 v_cell_uv;',
   'varying mediump vec2 v_uv;',
   'varying mediump float v_height;',
+  'varying mediump float v_fog_visibility;',
   'void main() {',
-  '  gl_Position = u_projection_view * vec4(a_position + u_origin, 1.0);',
+  '  vec3 relativePosition = a_position + u_origin;',
+  '  gl_Position = u_projection_view * vec4(relativePosition, 1.0);',
   '  v_cell_uv = a_uv * u_cell_uv_scale + u_cell_uv_offset;',
   '  v_uv = v_cell_uv * u_uv_scale + u_uv_offset;',
   '  v_height = a_position.z + u_height_origin;',
+  '  v_fog_visibility = exp(-u_fog_density * length(relativePosition));',
   '}'
 ].join('\n')
 
@@ -34,9 +38,11 @@ const FRAGMENT_SHADER = [
   'uniform float u_clip_cell;',
   'uniform float u_debug_mode;',
   'uniform float u_texture_state;',
+  'uniform vec3 u_fog_color;',
   'varying mediump vec2 v_cell_uv;',
   'varying mediump vec2 v_uv;',
   'varying mediump float v_height;',
+  'varying mediump float v_fog_visibility;',
   'void main() {',
   '  if (u_render_mode > 0.5) {',
   '    float value = clamp((v_height - u_height_range.x) /',
@@ -60,6 +66,65 @@ const FRAGMENT_SHADER = [
   '    }',
   '    gl_FragColor = color;',
   '  }',
+  '  gl_FragColor.rgb = mix(u_fog_color, gl_FragColor.rgb,',
+  '    clamp(v_fog_visibility, 0.0, 1.0));',
+  '}'
+].join('\n')
+
+const ATMOSPHERE_VERTEX_SHADER = [
+  'attribute vec2 a_clip_position;',
+  'varying highp vec2 v_clip_position;',
+  'void main() {',
+  '  v_clip_position = a_clip_position;',
+  '  gl_Position = vec4(a_clip_position, 1.0, 1.0);',
+  '}'
+].join('\n')
+
+const ATMOSPHERE_FRAGMENT_SHADER = [
+  'precision highp float;',
+  'uniform mat4 u_inverse_projection_view;',
+  'uniform vec3 u_camera_scaled;',
+  'uniform vec3 u_east;',
+  'uniform vec3 u_north;',
+  'uniform vec3 u_up;',
+  'uniform vec3 u_sun_direction;',
+  'uniform float u_sun_visible;',
+  'uniform sampler2D u_sky_texture;',
+  'varying highp vec2 v_clip_position;',
+  'void main() {',
+  '  vec4 nearPoint = u_inverse_projection_view *',
+  '    vec4(v_clip_position, -1.0, 1.0);',
+  '  vec4 farPoint = u_inverse_projection_view *',
+  '    vec4(v_clip_position, 1.0, 1.0);',
+  '  vec3 nearWorld = nearPoint.xyz / nearPoint.w;',
+  '  vec3 farWorld = farPoint.xyz / farPoint.w;',
+  '  vec3 ray = normalize(farWorld - nearWorld);',
+  '  vec3 localRay = vec3(dot(ray, u_east), dot(ray, u_north),',
+  '    dot(ray, u_up));',
+  '  float azimuth = fract(atan(localRay.x, localRay.y) /',
+  '    6.28318530718 + 1.0);',
+  '  float zenith = clamp(acos(clamp(localRay.z, -1.0, 1.0)) /',
+  '    1.57079632679, 0.0, 1.0);',
+  '  vec3 sky = texture2D(u_sky_texture, vec2(azimuth, zenith)).rgb;',
+  '  float cameraRadius = length(u_camera_scaled);',
+  '  float shellRadius = 1.025;',
+  '  float rayOffset = dot(u_camera_scaled, ray);',
+  '  float closestRadius = sqrt(max(0.0, dot(u_camera_scaled,',
+  '    u_camera_scaled) - rayOffset * rayOffset));',
+  '  float discriminant = rayOffset * rayOffset -',
+  '    (dot(u_camera_scaled, u_camera_scaled) - shellRadius * shellRadius);',
+  '  float exitDistance = -rayOffset + sqrt(max(0.0, discriminant));',
+  '  float intersects = step(0.0, discriminant) * step(0.0, exitDistance);',
+  '  float limb = pow(clamp((shellRadius - closestRadius) /',
+  '    (shellRadius - 1.0), 0.0, 1.0), 0.35);',
+  '  float atmosphere = cameraRadius <= shellRadius ? 1.0 : intersects * limb;',
+  '  vec3 color = mix(vec3(0.003, 0.007, 0.016), sky, atmosphere);',
+  '  vec3 sunWorld = normalize(u_sun_direction.x * u_east +',
+  '    u_sun_direction.y * u_north + u_sun_direction.z * u_up);',
+  '  float sun = smoothstep(0.99982, 0.99994, dot(ray, sunWorld)) *',
+  '    u_sun_visible;',
+  '  color = mix(color, vec3(1.0, 0.92, 0.72), sun);',
+  '  gl_FragColor = vec4(color, 1.0);',
   '}'
 ].join('\n')
 
@@ -127,6 +192,26 @@ function createOverlayProgram(gl) {
   return program
 }
 
+function createAtmosphereProgram(gl) {
+  const vertex = createShader(gl, gl.VERTEX_SHADER,
+    ATMOSPHERE_VERTEX_SHADER)
+  const fragment = createShader(gl, gl.FRAGMENT_SHADER,
+    ATMOSPHERE_FRAGMENT_SHADER)
+  const program = gl.createProgram()
+  gl.attachShader(program, vertex)
+  gl.attachShader(program, fragment)
+  gl.linkProgram(program)
+  gl.deleteShader(vertex)
+  gl.deleteShader(fragment)
+  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+    const message = gl.getProgramInfoLog(program) ||
+      'WebGL atmosphere program link failed'
+    gl.deleteProgram(program)
+    throw new Error(message)
+  }
+  return program
+}
+
 function colorComponents(value, opacity) {
   const match = /^#([0-9a-f]{6})$/i.exec(value || '')
   const color = match ? parseInt(match[1], 16) : 0x2f7de1
@@ -136,6 +221,80 @@ function colorComponents(value, opacity) {
     (color & 255) / 255,
     opacity === undefined ? 1 : common.clamp(opacity, 0, 1)
   ]
+}
+
+function invertMatrix4(value) {
+  const rows = []
+  for (let row = 0; row < 4; ++row) {
+    rows[row] = []
+    for (let column = 0; column < 4; ++column) {
+      rows[row][column] = value[column * 4 + row]
+    }
+    for (let column = 0; column < 4; ++column) {
+      rows[row][column + 4] = row === column ? 1 : 0
+    }
+  }
+  for (let column = 0; column < 4; ++column) {
+    let pivot = column
+    for (let row = column + 1; row < 4; ++row) {
+      if (Math.abs(rows[row][column]) > Math.abs(rows[pivot][column])) {
+        pivot = row
+      }
+    }
+    common.invariant(Math.abs(rows[pivot][column]) > 1e-12,
+      'Projection-view matrix is singular')
+    const swap = rows[column]
+    rows[column] = rows[pivot]
+    rows[pivot] = swap
+    const scale = rows[column][column]
+    for (let index = 0; index < 8; ++index) {
+      rows[column][index] /= scale
+    }
+    for (let row = 0; row < 4; ++row) {
+      if (row === column) continue
+      const factor = rows[row][column]
+      for (let index = 0; index < 8; ++index) {
+        rows[row][index] -= factor * rows[column][index]
+      }
+    }
+  }
+  const result = new Float32Array(16)
+  for (let row = 0; row < 4; ++row) {
+    for (let column = 0; column < 4; ++column) {
+      result[column * 4 + row] = rows[row][column + 4]
+    }
+  }
+  return result
+}
+
+function normalized(value) {
+  const length = Math.hypot(value[0], value[1], value[2]) || 1
+  return value.map((component) => component / length)
+}
+
+function cross(left, right) {
+  return [
+    left[1] * right[2] - left[2] * right[1],
+    left[2] * right[0] - left[0] * right[2],
+    left[0] * right[1] - left[1] * right[0]
+  ]
+}
+
+function defaultAtmosphere() {
+  return {
+    width: 2,
+    height: 2,
+    sunVisible: true,
+    sunDirection: normalized([0.41, -0.41, 0.82]),
+    ambientColor: [0.35, 0.55, 0.8],
+    diffuseColor: [1, 0.92, 0.72],
+    fogColor: [0.62, 0.72, 0.82],
+    seaLevelFogDensity: 0.00002,
+    rgba: new Uint8Array([
+      42, 92, 168, 255, 46, 98, 176, 255,
+      156, 184, 211, 255, 170, 193, 218, 255
+    ])
+  }
 }
 
 function isPowerOfTwo(value) {
@@ -1416,12 +1575,21 @@ class TerraWebGlRenderer {
     this.onDiagnostic = this.options.onDiagnostic || (() => {})
     this.onContextChange = this.options.onContextChange || (() => {})
     this.requestRenderCallback = this.options.requestRender || (() => {})
+    this.atmosphereCapable = this.options.atmosphereCapable === true
+    this.atmosphereEnabled = this.options.atmosphereEnabled === true
+    this.planetRadius = Number(this.options.planetRadius) || 6371000
     this.contextLost = false
     this.gl = null
     this.program = null
     this.attributes = null
     this.uniforms = null
     this.indexBuffer = null
+    this.atmosphere = defaultAtmosphere()
+    this.atmosphereProgram = null
+    this.atmosphereBuffer = null
+    this.atmosphereTexture = null
+    this.atmosphereAttributes = null
+    this.atmosphereUniforms = null
     this.overlayProgram = null
     this.overlayBuffer = null
     this.overlayAttributes = null
@@ -1493,6 +1661,9 @@ class TerraWebGlRenderer {
     }
     this.gl = gl
     this.program = createProgram(gl)
+    if (this.atmosphereCapable) {
+      this.atmosphereProgram = createAtmosphereProgram(gl)
+    }
     this.overlayProgram = createOverlayProgram(gl)
     this.attributes = {
       position: gl.getAttribLocation(this.program, 'a_position'),
@@ -1511,7 +1682,39 @@ class TerraWebGlRenderer {
       renderMode: gl.getUniformLocation(this.program, 'u_render_mode'),
       heightRange: gl.getUniformLocation(this.program, 'u_height_range'),
       debugMode: gl.getUniformLocation(this.program, 'u_debug_mode'),
-      textureState: gl.getUniformLocation(this.program, 'u_texture_state')
+      textureState: gl.getUniformLocation(this.program, 'u_texture_state'),
+      fogDensity: gl.getUniformLocation(this.program, 'u_fog_density'),
+      fogColor: gl.getUniformLocation(this.program, 'u_fog_color')
+    }
+    if (this.atmosphereProgram) {
+      this.atmosphereAttributes = {
+        clipPosition: gl.getAttribLocation(
+          this.atmosphereProgram, 'a_clip_position')
+      }
+      this.atmosphereUniforms = {
+        inverseProjectionView: gl.getUniformLocation(
+          this.atmosphereProgram, 'u_inverse_projection_view'),
+        cameraScaled: gl.getUniformLocation(
+          this.atmosphereProgram, 'u_camera_scaled'),
+        east: gl.getUniformLocation(this.atmosphereProgram, 'u_east'),
+        north: gl.getUniformLocation(this.atmosphereProgram, 'u_north'),
+        up: gl.getUniformLocation(this.atmosphereProgram, 'u_up'),
+        sunDirection: gl.getUniformLocation(
+          this.atmosphereProgram, 'u_sun_direction'),
+        sunVisible: gl.getUniformLocation(
+          this.atmosphereProgram, 'u_sun_visible'),
+        skyTexture: gl.getUniformLocation(
+          this.atmosphereProgram, 'u_sky_texture')
+      }
+      common.invariant(this.atmosphereAttributes.clipPosition >= 0 &&
+        this.atmosphereUniforms.inverseProjectionView &&
+        this.atmosphereUniforms.cameraScaled &&
+        this.atmosphereUniforms.east && this.atmosphereUniforms.north &&
+        this.atmosphereUniforms.up &&
+        this.atmosphereUniforms.sunDirection &&
+        this.atmosphereUniforms.sunVisible &&
+        this.atmosphereUniforms.skyTexture,
+      'WebGL atmosphere shader locations are incomplete')
     }
     this.overlayAttributes = {
       position: gl.getAttribLocation(this.overlayProgram, 'a_position')
@@ -1528,11 +1731,20 @@ class TerraWebGlRenderer {
       this.uniforms.cellUvScale && this.uniforms.cellUvOffset &&
       this.uniforms.uvOffset && this.uniforms.clipCell &&
       this.uniforms.texture &&
-      this.uniforms.renderMode && this.uniforms.heightRange,
+      this.uniforms.renderMode && this.uniforms.heightRange &&
+      this.uniforms.fogDensity && this.uniforms.fogColor,
     'WebGL terrain shader locations are incomplete')
     this.indexBuffer = gl.createBuffer()
     this.overlayBuffer = gl.createBuffer()
     this.fallbackTexture = this.createFallbackTexture()
+    if (this.atmosphereProgram) {
+      this.atmosphereBuffer = gl.createBuffer()
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.atmosphereBuffer)
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+        -1, -1, 3, -1, -1, 3
+      ]), gl.STATIC_DRAW)
+      this.atmosphereTexture = this.createAtmosphereTexture()
+    }
     gl.enable(gl.DEPTH_TEST)
     gl.depthFunc(gl.LEQUAL)
     gl.disable(gl.CULL_FACE)
@@ -1597,11 +1809,40 @@ class TerraWebGlRenderer {
     this.requestRender()
   }
 
+  setAtmosphereEnabled(enabled) {
+    common.invariant(!enabled || this.atmosphereCapable,
+      'Atmosphere is unavailable for this renderer')
+    this.atmosphereEnabled = Boolean(enabled)
+    this.requestRender()
+  }
+
+  setAtmosphere(value) {
+    common.invariant(value && Number.isInteger(value.width) &&
+      value.width > 0 && Number.isInteger(value.height) && value.height > 0 &&
+      value.rgba && value.rgba.length === value.width * value.height * 4,
+    'Atmosphere lookup texture is invalid')
+    this.atmosphere = {
+      width: value.width,
+      height: value.height,
+      sunVisible: Boolean(value.sunVisible),
+      sunDirection: normalized(value.sunDirection),
+      ambientColor: value.ambientColor.slice(0, 3),
+      diffuseColor: value.diffuseColor.slice(0, 3),
+      fogColor: value.fogColor.slice(0, 3),
+      seaLevelFogDensity: value.seaLevelFogDensity,
+      rgba: value.rgba
+    }
+    if (this.gl && this.atmosphereProgram) {
+      if (this.atmosphereTexture) this.gl.deleteTexture(this.atmosphereTexture)
+      this.atmosphereTexture = this.createAtmosphereTexture()
+    }
+    this.requestRender()
+  }
+
   setInteractionActive(active) {
     const next = Boolean(active)
     if (this.interactionActive === next) return
     this.interactionActive = next
-    this.rebuildImageryDraws()
     this.requestRender()
   }
 
@@ -1649,9 +1890,7 @@ class TerraWebGlRenderer {
         height: this.canvas.height,
         devicePixelRatio: this.options.devicePixelRatio || 1
       }, descriptor, {
-        targetPixelError: this.interactionActive
-          ? (this.options.interactionImageryPixelError || 2.5)
-          : (this.options.imageryPixelError || 1.25),
+        targetPixelError: this.options.imageryPixelError || 1.25,
         maximumSubdivisionLevels: this.options.maximumImagerySubdivisionLevels,
         maximumDraws: this.options.maximumImageryDraws,
         maximumTextures: this.textures.targetCapacity(),
@@ -1804,21 +2043,30 @@ class TerraWebGlRenderer {
     const current = this.current
     this.promoteCurrentSurfaceIfReady()
     const surface = this.displaySurface
-    if (!surface) {
-      this.drawStats = { submitted: 0, queued: this.uploadQueue.length }
-      return this.drawStats
-    }
     const viewFrame = current.frame
     const relative = common.rowMajorToWebGlMatrix(
       common.relativeProjectionView(viewFrame.projectionView,
         viewFrame.cameraPosition))
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
+    this.renderAtmosphere(relative, viewFrame.cameraPosition)
+    if (!surface) {
+      this.drawStats = { submitted: 0, queued: this.uploadQueue.length }
+      return this.drawStats
+    }
     gl.useProgram(this.program)
     gl.uniformMatrix4fv(this.uniforms.projectionView, false, relative)
     gl.uniform1i(this.uniforms.texture, 0)
     gl.uniform1f(this.uniforms.renderMode, this.mode === 'height' ? 1 : 0)
     gl.uniform2f(this.uniforms.heightRange,
       this.heightRange[0], this.heightRange[1])
+    const altitude = Math.max(0,
+      Math.hypot.apply(null, viewFrame.cameraPosition) - this.planetRadius)
+    const fogDensity = this.atmosphereEnabled
+      ? this.atmosphere.seaLevelFogDensity * Math.exp(-altitude / 8000) : 0
+    gl.uniform1f(this.uniforms.fogDensity, fogDensity)
+    gl.uniform3f(this.uniforms.fogColor,
+      this.atmosphere.fogColor[0], this.atmosphere.fogColor[1],
+      this.atmosphere.fogColor[2])
     gl.activeTexture(gl.TEXTURE0)
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer)
     this.textures.beginFrame()
@@ -1897,6 +2145,49 @@ class TerraWebGlRenderer {
         ? maximumResolvedLevel : null
     })
     return this.drawStats
+  }
+
+  renderAtmosphere(projectionView, cameraPosition) {
+    if (!this.atmosphereEnabled || !this.atmosphereProgram ||
+      !this.atmosphereBuffer || !this.atmosphereTexture) {
+      return
+    }
+    const gl = this.gl
+    const inverse = invertMatrix4(projectionView)
+    const up = normalized(cameraPosition)
+    let east = normalized([up[2], 0, -up[0]])
+    if (Math.hypot(east[0], east[1], east[2]) < 0.5) {
+      east = [1, 0, 0]
+    }
+    const north = normalized(cross(up, east))
+    gl.disable(gl.DEPTH_TEST)
+    gl.depthMask(false)
+    gl.useProgram(this.atmosphereProgram)
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.atmosphereBuffer)
+    gl.enableVertexAttribArray(this.atmosphereAttributes.clipPosition)
+    gl.vertexAttribPointer(this.atmosphereAttributes.clipPosition,
+      2, gl.FLOAT, false, 0, 0)
+    gl.uniformMatrix4fv(
+      this.atmosphereUniforms.inverseProjectionView, false, inverse)
+    gl.uniform3f(this.atmosphereUniforms.cameraScaled,
+      cameraPosition[0] / this.planetRadius,
+      cameraPosition[1] / this.planetRadius,
+      cameraPosition[2] / this.planetRadius)
+    gl.uniform3f(this.atmosphereUniforms.east, east[0], east[1], east[2])
+    gl.uniform3f(this.atmosphereUniforms.north,
+      north[0], north[1], north[2])
+    gl.uniform3f(this.atmosphereUniforms.up, up[0], up[1], up[2])
+    gl.uniform3f(this.atmosphereUniforms.sunDirection,
+      this.atmosphere.sunDirection[0], this.atmosphere.sunDirection[1],
+      this.atmosphere.sunDirection[2])
+    gl.uniform1f(this.atmosphereUniforms.sunVisible,
+      this.atmosphere.sunVisible ? 1 : 0)
+    gl.uniform1i(this.atmosphereUniforms.skyTexture, 0)
+    gl.activeTexture(gl.TEXTURE0)
+    gl.bindTexture(gl.TEXTURE_2D, this.atmosphereTexture)
+    gl.drawArrays(gl.TRIANGLES, 0, 3)
+    gl.depthMask(true)
+    gl.enable(gl.DEPTH_TEST)
   }
 
   renderOverlays(projectionView, cameraPosition) {
@@ -2022,6 +2313,21 @@ class TerraWebGlRenderer {
     return texture
   }
 
+  createAtmosphereTexture() {
+    const gl = this.gl
+    const texture = gl.createTexture()
+    gl.bindTexture(gl.TEXTURE_2D, texture)
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false)
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA,
+      this.atmosphere.width, this.atmosphere.height, 0, gl.RGBA,
+      gl.UNSIGNED_BYTE, this.atmosphere.rgba)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+    return texture
+  }
+
   uploadTexture(image, width, height) {
     const gl = this.gl
     const texture = gl.createTexture()
@@ -2098,6 +2404,15 @@ class TerraWebGlRenderer {
       }
       if (this.overlayBuffer) {
         this.gl.deleteBuffer(this.overlayBuffer)
+      }
+      if (this.atmosphereBuffer) {
+        this.gl.deleteBuffer(this.atmosphereBuffer)
+      }
+      if (this.atmosphereTexture) {
+        this.gl.deleteTexture(this.atmosphereTexture)
+      }
+      if (this.atmosphereProgram) {
+        this.gl.deleteProgram(this.atmosphereProgram)
       }
       if (this.fallbackTexture) {
         this.gl.deleteTexture(this.fallbackTexture)
@@ -2179,6 +2494,11 @@ class TerraWebGlRenderer {
         routeVertices: this.overlays.route ?
           this.overlays.route.worlds.length : 0
       },
+      atmosphere: {
+        capable: this.atmosphereCapable,
+        enabled: this.atmosphereEnabled,
+        source: this.atmosphere.width > 2 ? 'terra-core' : 'fallback'
+      },
       transition: {
         displayingPreviousFrame: Boolean(this.displaySurface &&
           this.displaySurface.current !== this.current),
@@ -2203,6 +2523,7 @@ module.exports = {
   ancestorUvTransform,
   descendantTextureTile,
   globalCoverageTextureTiles,
+  invertMatrix4,
   projectedDrawExtent,
   textureTileContains,
   maximumTerrainTextureLevel,

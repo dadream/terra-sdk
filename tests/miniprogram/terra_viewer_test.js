@@ -71,6 +71,13 @@ class FakePlanarRuntime {
     this.destroyed = false
     this.pauseCount = 0
     this.resumeCount = 0
+    this.atmosphere = {
+      enabled: false,
+      sunAzimuthDegrees: 135,
+      sunZenithDegrees: 35,
+      turbidity: 2,
+      exposure: 1
+    }
   }
 
   getView() { return JSON.parse(JSON.stringify(this.view)) }
@@ -91,6 +98,14 @@ class FakePlanarRuntime {
   pause() { this.pauseCount += 1 }
   resume() { this.resumeCount += 1 }
   rangeLimits() { return { minimum: 0.5, maximum: 40 } }
+  getAtmosphere() { return Object.assign({}, this.atmosphere) }
+  setAtmosphere(value) {
+    if (this.manifest.transform !== 'cylindrical') {
+      throw new Error('Atmosphere is only available in globe mode')
+    }
+    this.atmosphere = Object.assign({}, this.atmosphere, value)
+    return this.getAtmosphere()
+  }
   state() {
     return {
       schema: 'terra.miniprogram.planar-runtime.v1',
@@ -227,6 +242,18 @@ function testPoisRouteAndSurface() {
   assert.strictEqual(viewer.getState().imageryAttribution, 'Example imagery')
   assert.throws(() => viewer.imagery.setSource({ id: 'broken' }),
     (error) => error.code === 'invalid_imagery_source')
+
+  assert.deepStrictEqual(viewer.environment.getAtmosphere(),
+    runtime.atmosphere)
+  assert.throws(() => viewer.environment.setAtmosphere({ enabled: true }),
+    (error) => error.code === 'invalid_atmosphere_options')
+  runtime.manifest.transform = 'cylindrical'
+  const atmosphere = viewer.environment.setAtmosphere({
+    enabled: true,
+    sunAzimuthDegrees: 160
+  })
+  assert.strictEqual(atmosphere.enabled, true)
+  assert.strictEqual(atmosphere.sunAzimuthDegrees, 160)
 
   viewer.pause()
   assert.strictEqual(viewer.getState().paused, true)

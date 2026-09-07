@@ -196,11 +196,13 @@ async function main() {
     decision: exports.terra_sizeof_patch_decision_v1(),
     draw: exports.terra_sizeof_draw_range_v1(),
     frame: exports.terra_sizeof_frame_v1(),
-    stats: exports.terra_sizeof_stats_v1()
+    stats: exports.terra_sizeof_stats_v1(),
+    atmosphereParameters: exports.terra_sizeof_atmosphere_parameters_v1(),
+    atmosphereResult: exports.terra_sizeof_atmosphere_result_v1()
   }
   requireCondition(
-    `${layout.manifest},${layout.viewport},${layout.key},${layout.texture},${layout.request},${layout.decision},${layout.draw},${layout.frame},${layout.stats}` ===
-      '128,24,16,16,24,32,88,224,56',
+    `${layout.manifest},${layout.viewport},${layout.key},${layout.texture},${layout.request},${layout.decision},${layout.draw},${layout.frame},${layout.stats},${layout.atmosphereParameters},${layout.atmosphereResult}` ===
+      '128,24,16,16,24,32,88,224,56,32,72',
     'Wasm ABI structure layout changed'
   )
 
@@ -214,6 +216,45 @@ async function main() {
   }
 
   try {
+    const atmosphereParametersPointer = alloc(layout.atmosphereParameters)
+    const atmosphereResultPointer = alloc(layout.atmosphereResult)
+    const atmosphereRgbaPointer = alloc(4 * 4 * 4)
+    let atmosphereMemory = access.refresh()
+    const atmosphereView = atmosphereMemory.view
+    atmosphereMemory.bytes.fill(0, atmosphereParametersPointer,
+      atmosphereParametersPointer + layout.atmosphereParameters)
+    atmosphereView.setUint32(atmosphereParametersPointer,
+      layout.atmosphereParameters, true)
+    atmosphereView.setFloat32(atmosphereParametersPointer + 8, 135, true)
+    atmosphereView.setFloat32(atmosphereParametersPointer + 12, 35, true)
+    atmosphereView.setFloat32(atmosphereParametersPointer + 16, 2, true)
+    atmosphereView.setFloat32(atmosphereParametersPointer + 20, 1, true)
+    atmosphereView.setUint32(atmosphereParametersPointer + 24, 4, true)
+    atmosphereView.setUint32(atmosphereParametersPointer + 28, 4, true)
+    atmosphereMemory.bytes.fill(0, atmosphereResultPointer,
+      atmosphereResultPointer + layout.atmosphereResult)
+    atmosphereView.setUint32(atmosphereResultPointer,
+      layout.atmosphereResult, true)
+    requireStatus(
+      exports.terra_compute_atmosphere(atmosphereParametersPointer,
+        atmosphereResultPointer, atmosphereRgbaPointer, 4 * 4 * 4),
+      STATUS_OK,
+      'terra_compute_atmosphere'
+    )
+    atmosphereMemory = access.refresh()
+    const computedAtmosphere = atmosphereMemory.view
+    requireCondition(
+      computedAtmosphere.getUint32(atmosphereResultPointer + 4, true) === 4 &&
+      computedAtmosphere.getUint32(atmosphereResultPointer + 8, true) === 4 &&
+      computedAtmosphere.getUint32(atmosphereResultPointer + 12, true) === 1 &&
+      computedAtmosphere.getUint32(atmosphereResultPointer + 68, true) === 64,
+      'Wasm atmosphere result metadata changed'
+    )
+    const atmosphereRgba = atmosphereMemory.bytes.slice(
+      atmosphereRgbaPointer, atmosphereRgbaPointer + 64)
+    requireCondition(atmosphereRgba.some((value) => value !== 0),
+      'Wasm atmosphere texture is empty')
+
     const manifestPointer = alloc(layout.manifest)
     writeManifest(access, manifestPointer, layout.manifest)
     requireStatus(

@@ -143,7 +143,6 @@ class TerraInteractionController {
       velocityX: 0,
       velocityY: 0
     }
-    this.emit('interactionstart', { semantic: this.active.semantic })
   }
 
   update(packet) {
@@ -180,7 +179,7 @@ class TerraInteractionController {
     if (!this.active.moved && travel < this.options.deadZonePixels) {
       return
     }
-    this.active.moved = true
+    this.markActiveMoved()
     this.active.velocityX = dx / elapsed
     this.active.velocityY = dy / elapsed
     if (this.active.semantic === 'look') {
@@ -208,7 +207,7 @@ class TerraInteractionController {
       this.options.deadZonePixels) {
       return
     }
-    this.active.moved = true
+    this.markActiveMoved()
     const zoomScale = previousDistance > 0 && currentDistance > 0
       ? previousDistance / currentDistance
       : 1
@@ -376,13 +375,26 @@ class TerraInteractionController {
     }
   }
 
+  markActiveMoved() {
+    if (!this.active || this.active.moved) {
+      return
+    }
+    this.active.moved = true
+    this.emit('interactionstart', { semantic: this.active.semantic })
+  }
+
   finishActive(allowInertia) {
     if (!this.active) {
       return
     }
-    const semantic = this.active.semantic
+    const completed = this.active
     this.active = null
-    this.emit('interactionend', { semantic, allowInertia })
+    if (completed.moved) {
+      this.emit('interactionend', {
+        semantic: completed.semantic,
+        allowInertia
+      })
+    }
   }
 
   emit(type, detail) {

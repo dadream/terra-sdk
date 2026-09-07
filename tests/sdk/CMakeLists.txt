@@ -41,6 +41,15 @@ add_test(NAME terra_sdk_core_dependency_closure
         "-DLINK_MANIFEST=${_terra_sdk_core_link_manifest}"
         -P "${CMAKE_SOURCE_DIR}/sdk/cmake/CheckTerraSdkDependencies.cmake")
 
+add_executable(terra_sdk_core_atmosphere terra_core_atmosphere.cpp)
+target_link_libraries(terra_sdk_core_atmosphere PRIVATE Terra::core)
+target_compile_features(terra_sdk_core_atmosphere PRIVATE cxx_std_14)
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(terra_sdk_core_atmosphere PRIVATE -Wall -Wextra)
+endif()
+add_test(NAME terra_sdk_core_atmosphere
+    COMMAND "$<TARGET_FILE:terra_sdk_core_atmosphere>")
+
 add_executable(terra_sdk_core_metadata_golden
     terra_core_metadata_golden.cpp)
 target_link_libraries(terra_sdk_core_metadata_golden PRIVATE Terra::core)
@@ -180,6 +189,15 @@ add_test(NAME terra_sdk_c_api_contract
         "${_terra_sdk_root3_record}" "${_terra_sdk_root3_detail_record}"
         "${_terra_sdk_child_detail_record}")
 
+add_executable(terra_sdk_c_api_atmosphere terra_c_api_atmosphere.cpp)
+target_link_libraries(terra_sdk_c_api_atmosphere PRIVATE Terra::c_api)
+target_compile_features(terra_sdk_c_api_atmosphere PRIVATE cxx_std_14)
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(terra_sdk_c_api_atmosphere PRIVATE -Wall -Wextra)
+endif()
+add_test(NAME terra_sdk_c_api_atmosphere
+    COMMAND "$<TARGET_FILE:terra_sdk_c_api_atmosphere>")
+
 add_executable(terra_sdk_c_api_header terra_c_api_header.c)
 target_link_libraries(terra_sdk_c_api_header PRIVATE Terra::c_api)
 if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
@@ -245,6 +263,7 @@ set_tests_properties(terra_sdk_core_dependency_guard_link PROPERTIES
 
 add_custom_target(terra_sdk_core_tests
     DEPENDS
+        terra_sdk_core_atmosphere
         terra_sdk_core_metadata_golden
         terra_sdk_core_topology_golden
         terra_sdk_core_transform_golden
@@ -264,6 +283,7 @@ add_custom_target(terra_sdk_frame_tests
         terra_sdk_frame_packet)
 add_custom_target(terra_sdk_c_api_tests
     DEPENDS
+        terra_sdk_c_api_atmosphere
         terra_sdk_c_api_contract
         terra_sdk_c_api_header
         terra_sdk_c_api_parity

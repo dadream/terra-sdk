@@ -108,6 +108,14 @@ export interface ImagerySource {
   }): string
 }
 
+export interface AtmosphereOptions {
+  enabled?: boolean
+  sunAzimuthDegrees?: number
+  sunZenithDegrees?: number
+  turbidity?: number
+  exposure?: number
+}
+
 export interface ViewerCreateOptions {
   canvas: unknown
   mode: ViewerMode
@@ -122,6 +130,7 @@ export interface ViewerCreateOptions {
   initialView?: ViewState
   initialTarget?: GlobeTarget | PlanarTarget
   interaction?: InteractionOptions
+  atmosphere?: AtmosphereOptions
   serviceOrigin?: string
   manifestPath?: string
   textureId?: string
@@ -165,6 +174,10 @@ export class TerraViewer {
   readonly camera: CameraApi
   readonly interaction: InteractionApi
   readonly imagery: { setSource(source: ImagerySource): void }
+  readonly environment: {
+    getAtmosphere(): Required<AtmosphereOptions>
+    setAtmosphere(options: AtmosphereOptions): Required<AtmosphereOptions>
+  }
   setPois(values: PoiValue[]): void
   clearPois(): void
   setRoute(value: RouteValue): void

@@ -24,7 +24,29 @@ const ABI_LAYOUT = {
   decision: 32,
   draw: 88,
   frame: [208, 216, 224],
-  stats: 56
+  stats: 56,
+  atmosphereParameters: 32,
+  atmosphereResult: 72
+}
+
+function normalizeAtmosphereOptions(value) {
+  const input = value || {}
+  const result = {
+    enabled: input.enabled !== false,
+    sunAzimuthDegrees: input.sunAzimuthDegrees === undefined
+      ? 135 : common.finiteNumber(input.sunAzimuthDegrees, 'Sun azimuth'),
+    sunZenithDegrees: input.sunZenithDegrees === undefined
+      ? 35 : common.finiteNumber(input.sunZenithDegrees, 'Sun zenith'),
+    turbidity: input.turbidity === undefined
+      ? 2 : common.finiteNumber(input.turbidity, 'Atmosphere turbidity'),
+    exposure: input.exposure === undefined
+      ? 1 : common.finiteNumber(input.exposure, 'Atmosphere exposure')
+  }
+  common.invariant(result.sunZenithDegrees >= 0 &&
+    result.sunZenithDegrees <= 120 && result.turbidity >= 1 &&
+    result.turbidity <= 20 && result.exposure > 0 && result.exposure <= 8,
+  'Atmosphere options are outside supported ranges')
+  return result
 }
 
 function terrainRequestPriority(request) {
@@ -184,7 +206,9 @@ class TerraAbi {
       decision: 'terra_sizeof_patch_decision_v1',
       draw: 'terra_sizeof_draw_range_v1',
       frame: 'terra_sizeof_frame_v1',
-      stats: 'terra_sizeof_stats_v1'
+      stats: 'terra_sizeof_stats_v1',
+      atmosphereParameters: 'terra_sizeof_atmosphere_parameters_v1',
+      atmosphereResult: 'terra_sizeof_atmosphere_result_v1'
     }
     const layout = {}
     Object.keys(exported).forEach((name) => {
@@ -238,6 +262,56 @@ class TerraAbi {
       return ''
     } finally {
       this.free(countPointer)
+    }
+  }
+
+  computeAtmosphere(options) {
+    const width = 256
+    const height = 32
+    const rgbaCapacity = width * height * 4
+    const parametersPointer = this.alloc(this.layout.atmosphereParameters)
+    const resultPointer = this.alloc(this.layout.atmosphereResult)
+    const rgbaPointer = this.alloc(rgbaCapacity)
+    try {
+      let memory = this.module.refreshMemory()
+      const view = memory.dataView
+      view.setUint32(parametersPointer, this.layout.atmosphereParameters, true)
+      view.setUint32(parametersPointer + 4, 0, true)
+      view.setFloat32(parametersPointer + 8, options.sunAzimuthDegrees, true)
+      view.setFloat32(parametersPointer + 12, options.sunZenithDegrees, true)
+      view.setFloat32(parametersPointer + 16, options.turbidity, true)
+      view.setFloat32(parametersPointer + 20, options.exposure, true)
+      view.setUint32(parametersPointer + 24, width, true)
+      view.setUint32(parametersPointer + 28, height, true)
+      view.setUint32(resultPointer, this.layout.atmosphereResult, true)
+      requireStatus(this.module.call('terra_compute_atmosphere',
+        parametersPointer, resultPointer, rgbaPointer, rgbaCapacity),
+      'terra_compute_atmosphere')
+      memory = this.module.refreshMemory()
+      const output = memory.dataView
+      const color = (offset) => [
+        output.getFloat32(resultPointer + offset, true),
+        output.getFloat32(resultPointer + offset + 4, true),
+        output.getFloat32(resultPointer + offset + 8, true)
+      ]
+      const required = output.getUint32(resultPointer + 68, true)
+      common.invariant(required <= rgbaCapacity,
+        'Atmosphere result exceeds the allocated buffer')
+      return {
+        width: output.getUint32(resultPointer + 4, true),
+        height: output.getUint32(resultPointer + 8, true),
+        sunVisible: output.getUint32(resultPointer + 12, true) !== 0,
+        sunDirection: color(16),
+        ambientColor: color(28),
+        diffuseColor: color(40),
+        fogColor: color(52),
+        seaLevelFogDensity: output.getFloat32(resultPointer + 64, true),
+        rgba: memory.bytes.slice(rgbaPointer, rgbaPointer + required)
+      }
+    } finally {
+      this.free(rgbaPointer)
+      this.free(resultPointer)
+      this.free(parametersPointer)
     }
   }
 
@@ -580,14 +654,9 @@ class TerraGlobeRuntime {
     this.imageryPixelError = this.options.imageryPixelError === undefined
       ? 1.25 : common.finiteNumber(this.options.imageryPixelError,
         'Imagery pixel error')
-    this.interactionImageryPixelError =
-      this.options.interactionImageryPixelError === undefined
-        ? 2.5 : common.finiteNumber(this.options.interactionImageryPixelError,
-          'Interaction imagery pixel error')
     common.invariant(this.terrainPixelError > 0 &&
       this.terrainPixelError <= 16 && this.imageryPixelError > 0 &&
-      this.imageryPixelError <= 16 && this.interactionImageryPixelError > 0 &&
-      this.interactionImageryPixelError <= 32,
+      this.imageryPixelError <= 16,
     'Terrain and imagery pixel errors are outside supported ranges')
     this.frameQuality = {
       terrainPixelError: this.terrainPixelError,
@@ -611,6 +680,7 @@ class TerraGlobeRuntime {
       ? 400
       : Math.max(0, common.finiteNumber(this.options.terrainRetryDelayMs,
         'Terrain retry delay'))
+    this.atmosphere = normalizeAtmosphereOptions(this.options.atmosphere)
     this.recordCache = new common.LruCache({
       maximumEntries: this.options.maximumRecordEntries || 256,
       maximumBytes: this.options.recordCacheBytes || 8 * 1024 * 1024
@@ -661,11 +731,14 @@ class TerraGlobeRuntime {
       textureDescriptor: this.manifest.texture,
       devicePixelRatio: this.budget.devicePixelRatio,
       imageryPixelError: this.imageryPixelError,
-      interactionImageryPixelError: this.interactionImageryPixelError,
       maximumImagerySubdivisionLevels:
         this.options.maximumImagerySubdivisionLevels,
       maximumImageryDraws: this.options.maximumImageryDraws,
       heightRange: this.options.heightRange,
+      atmosphereCapable: this.manifest.transform === 'cylindrical',
+      atmosphereEnabled: this.atmosphere.enabled &&
+        this.manifest.transform === 'cylindrical',
+      planetRadius: this.manifest.radius,
       maximumTextureRequests: Math.max(1, Math.min(
         this.maximumTextureRequests, this.budget.maximumConcurrentRequests)),
       maximumTextureRetries: this.options.maximumTextureRetries,
@@ -700,6 +773,7 @@ class TerraGlobeRuntime {
     this.abi.setViewport(this.budget.physicalWidth, this.budget.physicalHeight,
       this.fovRadians)
     this.configureAbi()
+    this.applyAtmosphere()
     this.camera = this.createInitialCamera()
     this.refresh()
   }
@@ -736,6 +810,37 @@ class TerraGlobeRuntime {
   }
 
   configureAbi() {}
+
+  applyAtmosphere() {
+    if (!this.renderer) return
+    if (typeof this.renderer.setAtmosphereEnabled === 'function') {
+      this.renderer.setAtmosphereEnabled(this.atmosphere.enabled)
+    }
+    if (this.atmosphere.enabled && this.abi &&
+      typeof this.abi.computeAtmosphere === 'function' &&
+      typeof this.renderer.setAtmosphere === 'function') {
+      this.renderer.setAtmosphere(
+        this.abi.computeAtmosphere(this.atmosphere))
+    }
+  }
+
+  getAtmosphere() {
+    return Object.assign({}, this.atmosphere)
+  }
+
+  setAtmosphere(value) {
+    common.invariant(this.manifest &&
+      this.manifest.transform === 'cylindrical',
+    'Atmosphere is only available in globe mode')
+    common.invariant(value && typeof value === 'object',
+      'Atmosphere options are required')
+    this.atmosphere = normalizeAtmosphereOptions(
+      Object.assign({}, this.atmosphere, value))
+    this.applyAtmosphere()
+    this.scheduleRender()
+    this.publishState()
+    return this.getAtmosphere()
+  }
 
   createInitialCamera() {
     return geographicCamera(this.manifest.radius,
@@ -1442,6 +1547,7 @@ class TerraGlobeRuntime {
       terrain: Object.assign(this.recordCache.stats(), this.scheduler.stats(), {
         failedRequestCount: this.failedRequests.size
       }),
+      atmosphere: this.getAtmosphere(),
       renderer,
       contextLost: this.renderer ? this.renderer.contextLost : false,
       paused: this.paused,
@@ -1494,6 +1600,7 @@ class TerraGlobeRuntime {
 class TerraPlanarRuntime extends TerraGlobeRuntime {
   constructor(options) {
     super(options)
+    this.atmosphere.enabled = false
     this.planarLevel = Number.isInteger(this.options.planarLevel)
       ? common.clamp(this.options.planarLevel, 0, 2)
       : 1
@@ -1707,6 +1814,7 @@ module.exports = {
   TerraPlanarRuntime,
   defaultCamera,
   geographicCamera,
+  normalizeAtmosphereOptions,
   orderTerrainRequests,
   planarCamera,
   parseJsonResponse,

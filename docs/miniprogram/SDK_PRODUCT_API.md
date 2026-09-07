@@ -58,6 +58,25 @@ viewer.interaction.cancel()
 `sampleSurface()` 返回 `unavailable|approximate|ready`、高度和 revision；
 refinement 后会发出 `surfacechange`。
 
+## Sky And Atmosphere
+
+Globe 模式默认启用天空、大气边缘与距离雾。核心层使用 C++14 生成确定性的
+天空查找纹理、太阳方向和雾参数；WebGL 只负责渲染，不依赖 Qt、QImage 或固定
+管线 OpenGL。Planar 模式不创建大气资源。
+
+```js
+viewer.environment.setAtmosphere({
+  enabled: true,
+  sunAzimuthDegrees: 135,
+  sunZenithDegrees: 35,
+  turbidity: 2,
+  exposure: 1
+})
+const atmosphere = viewer.environment.getAtmosphere()
+```
+
+参数越界或在 Planar 模式调用时抛出 `invalid_atmosphere_options`。
+
 ## Imagery And Diagnostics
 
 `imagery.setSource()` 接收 source ID 和 `resolveTile(tile)`。token 由应用闭包
@@ -72,7 +91,8 @@ V1 错误码包括 `initialization_failed`、`invalid_view`、
 `invalid_camera_change`、`invalid_interaction`、`invalid_imagery_source`、
 `invalid_pois`、`invalid_route`、`invalid_coordinate`、
 `invalid_screen_point`、`route_unavailable`、`invalid_listener`、
-`invalid_viewport` 和 `camera_failed`。错误 message 已脱敏，仅用于诊断和用户
+`invalid_viewport`、`invalid_atmosphere_options` 和 `camera_failed`。
+错误 message 已脱敏，仅用于诊断和用户
 提示；未知底层失败统一保留在最接近的公开操作码下。
 
 ## Events

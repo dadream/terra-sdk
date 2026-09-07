@@ -1,9 +1,11 @@
 add_library(terra_core STATIC
+    src/core/atmosphere.cpp
     src/core/coordinate_transform.cpp
     src/core/grid.cpp
     src/core/metadata.cpp
     src/core/wmts.cpp
     include/terra/core/coordinate_transform.hpp
+    include/terra/core/atmosphere.hpp
     include/terra/core/grid.hpp
     include/terra/core/metadata.hpp
     include/terra/core/types.hpp

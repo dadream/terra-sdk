@@ -61,11 +61,14 @@ function create(options) {
 function testMoveDeadZoneAndFrameMerge() {
   const value = create({ inertiaEnabled: false })
   value.controller.begin({ pointers: [pointer(1, 10, 10)], timeMs: 0 })
+  assert(!value.events.some((event) => event.type === 'interactionstart'))
   value.controller.update({ pointers: [pointer(1, 12, 11)], timeMs: 10 })
   value.clock.tick()
   assert.strictEqual(value.camera.changes.length, 0)
+  assert(!value.events.some((event) => event.type === 'interactionstart'))
   value.controller.update({ pointers: [pointer(1, 20, 15)], timeMs: 20 })
   value.controller.update({ pointers: [pointer(1, 40, 25)], timeMs: 30 })
+  assert(value.events.some((event) => event.type === 'interactionstart'))
   assert.strictEqual(value.camera.changes.length, 0)
   value.clock.tick()
   assert.strictEqual(value.camera.changes.length, 1)
@@ -74,6 +77,16 @@ function testMoveDeadZoneAndFrameMerge() {
   value.controller.end({ pointers: [], timeMs: 40 })
   assert(value.events.some((event) => event.type === 'interactionstart'))
   assert(value.events.some((event) => event.type === 'interactionend'))
+  assert(value.events.some((event) => event.type === 'camerasettle'))
+}
+
+function testTapDoesNotActivateInteraction() {
+  const value = create({ inertiaEnabled: false })
+  value.controller.begin({ pointers: [pointer(1, 10, 10)], timeMs: 0 })
+  value.controller.end({ pointers: [], timeMs: 20 })
+  assert(!value.events.some((event) => event.type === 'interactionstart'))
+  assert(!value.events.some((event) => event.type === 'interactionend'))
+  assert(value.events.some((event) => event.type === 'tap'))
   assert(value.events.some((event) => event.type === 'camerasettle'))
 }
 
@@ -156,6 +169,7 @@ function testFiniteInertiaAndNewTouchCancellation() {
 
 function main() {
   testMoveDeadZoneAndFrameMerge()
+  testTapDoesNotActivateInteraction()
   testClampDropsOverflow()
   testPinchAndPointerRestart()
   testLookAndCancel()

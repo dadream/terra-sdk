@@ -25,6 +25,7 @@ class FakeGl {
     this.FLOAT = 0x1406
     this.TEXTURE0 = 0x84c0
     this.TEXTURE_2D = 0x0de1
+    this.TRIANGLES = 0x0004
     this.TRIANGLE_STRIP = 0x0005
     this.POINTS = 0x0000
     this.LINE_STRIP = 0x0003
@@ -36,6 +37,7 @@ class FakeGl {
     this.LINEAR = 0x2601
     this.TEXTURE_MAG_FILTER = 0x2800
     this.TEXTURE_WRAP_S = 0x2802
+    this.REPEAT = 0x2901
     this.CLAMP_TO_EDGE = 0x812f
     this.TEXTURE_WRAP_T = 0x2803
     this.LINEAR_MIPMAP_LINEAR = 0x2703
@@ -70,6 +72,7 @@ class FakeGl {
   getUniformLocation(program, name) { return { name } }
   createBuffer() { return this.object('buffer') }
   enable() { this.record('enable', arguments) }
+  depthMask() { this.record('depthMask', arguments) }
   depthFunc() { this.record('depthFunc', arguments) }
   disable() { this.record('disable', arguments) }
   blendFunc() { this.record('blendFunc', arguments) }
@@ -225,6 +228,12 @@ async function main() {
   assert.strictEqual(rendererModule.isPowerOfTwo(255), false)
   assert.strictEqual(rendererModule.geometryHash(new Float32Array([1, 2])),
     rendererModule.geometryHash(new Float32Array([1, 2])))
+  assert.deepStrictEqual(Array.from(rendererModule.invertMatrix4([
+    1, 0, 0, 0,
+    0, 1, 0, 0,
+    0, 0, 1, 0,
+    0, 0, 0, 1
+  ])), [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1])
   assert.deepStrictEqual(rendererModule.ancestorTextureTiles({
     level: 3, matrix: 4, row: 5, column: 11
   }), [
@@ -932,6 +941,13 @@ async function main() {
   descendant.texture = { level: 3, matrix: 3, row: 7, column: 11 }
   renderer.options.imageryPixelError = 0.0001
   renderer.setFrame(frame(), [descendant], positions, textureUv, indices)
+  let interactionRebuilds = 0
+  const rebuildImageryDraws = renderer.rebuildImageryDraws
+  renderer.rebuildImageryDraws = () => { interactionRebuilds += 1 }
+  renderer.setInteractionActive(true)
+  renderer.setInteractionActive(false)
+  assert.strictEqual(interactionRebuilds, 0)
+  renderer.rebuildImageryDraws = rebuildImageryDraws
   await settle()
   assert.strictEqual(renderer.stats().quality.terrainBound, true)
   assert.strictEqual(canvas.images.length, 3)
@@ -1082,6 +1098,43 @@ async function main() {
   assert.strictEqual(renderer.contextLost, false)
   renderer.render()
   assert.deepStrictEqual(contextEvents, [{ lost: true }, { lost: false }])
+
+  const atmosphereGl = new FakeGl()
+  const atmosphereCanvas = new FakeCanvas(atmosphereGl)
+  const atmosphereRenderer = new rendererModule.TerraWebGlRenderer(
+    atmosphereCanvas, {
+      urlForTile: () => 'https://tiles.example/0/0/0.jpg',
+      atmosphereCapable: true,
+      atmosphereEnabled: true,
+      planetRadius: 30,
+      maximumTextureRetries: 0
+    })
+  atmosphereRenderer.setAtmosphere({
+    width: 4,
+    height: 2,
+    sunVisible: true,
+    sunDirection: [0, 0, 1],
+    ambientColor: [0.2, 0.3, 0.4],
+    diffuseColor: [1, 0.9, 0.7],
+    fogColor: [0.5, 0.6, 0.7],
+    seaLevelFogDensity: 0.00002,
+    rgba: new Uint8Array(4 * 2 * 4).fill(128)
+  })
+  atmosphereRenderer.setFrame(frame(), [draw(0)], positions,
+    textureUv, indices)
+  atmosphereRenderer.render()
+  assert(atmosphereGl.calls.some((call) => call.name === 'drawArrays' &&
+    call.args[0] === atmosphereGl.TRIANGLES))
+  assert(atmosphereGl.calls.some((call) => call.name === 'depthMask' &&
+    call.args[0] === false))
+  assert(atmosphereGl.calls.some((call) => call.name === 'uniform1f' &&
+    call.args[0].name === 'u_fog_density'))
+  assert.deepStrictEqual(atmosphereRenderer.stats().atmosphere, {
+    capable: true,
+    enabled: true,
+    source: 'terra-core'
+  })
+  atmosphereRenderer.destroy()
 
   renderer.setBudget({
     geometryCacheBytes: 1,
