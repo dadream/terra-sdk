@@ -21,6 +21,23 @@
     imagery: document.getElementById('imagery-profile'),
     reset: document.getElementById('reset-view'),
     debugToggle: document.getElementById('debug-toggle'),
+    environmentToggle: document.getElementById('environment-toggle'),
+    environmentPanel: document.getElementById('environment-panel'),
+    environmentClose: document.getElementById('environment-close'),
+    atmosphereEnabled: document.getElementById('atmosphere-enabled'),
+    sunEnabled: document.getElementById('sun-enabled'),
+    fogEnabled: document.getElementById('fog-enabled'),
+    observeSun: document.getElementById('observe-sun'),
+    sunAzimuth: document.getElementById('sun-azimuth'),
+    sunAzimuthValue: document.getElementById('sun-azimuth-value'),
+    sunZenith: document.getElementById('sun-zenith'),
+    sunZenithValue: document.getElementById('sun-zenith-value'),
+    turbidity: document.getElementById('atmosphere-turbidity'),
+    turbidityValue: document.getElementById('atmosphere-turbidity-value'),
+    exposure: document.getElementById('atmosphere-exposure'),
+    exposureValue: document.getElementById('atmosphere-exposure-value'),
+    fogDensity: document.getElementById('fog-density'),
+    fogDensityValue: document.getElementById('fog-density-value'),
     move: document.getElementById('mode-move'),
     look: document.getElementById('mode-look')
   }
@@ -30,6 +47,7 @@
     gestureMode: 'move',
     debugVisible: false,
     diagnosticsTimer: null,
+    environmentFrame: null,
     resizeObserver: null,
     destroyed: false
   }
@@ -62,6 +80,8 @@
   function installCanvasAdapter() {
     canvas.requestAnimationFrame = (callback) =>
       window.requestAnimationFrame(callback)
+    canvas.cancelAnimationFrame = (handle) =>
+      window.cancelAnimationFrame(handle)
     canvas.createImage = () => {
       const image = new Image()
       image.decoding = 'async'
@@ -166,6 +186,108 @@
     })
   }
 
+  function environmentOptions() {
+    return {
+      enabled: elements.atmosphereEnabled.checked,
+      sunEnabled: elements.sunEnabled.checked,
+      fogEnabled: elements.fogEnabled.checked,
+      sunAzimuthDegrees: Number(elements.sunAzimuth.value),
+      sunZenithDegrees: Number(elements.sunZenith.value),
+      turbidity: Number(elements.turbidity.value),
+      exposure: Number(elements.exposure.value),
+      fogDensityMultiplier: Number(elements.fogDensity.value)
+    }
+  }
+
+  function updateEnvironmentControls() {
+    const atmosphereEnabled = elements.atmosphereEnabled.checked
+    elements.sunEnabled.disabled = !atmosphereEnabled
+    elements.fogEnabled.disabled = !atmosphereEnabled
+    elements.sunAzimuth.disabled = !atmosphereEnabled ||
+      !elements.sunEnabled.checked
+    elements.sunZenith.disabled = !atmosphereEnabled ||
+      !elements.sunEnabled.checked
+    elements.turbidity.disabled = !atmosphereEnabled
+    elements.exposure.disabled = !atmosphereEnabled
+    elements.fogDensity.disabled = !atmosphereEnabled ||
+      !elements.fogEnabled.checked
+    elements.sunAzimuthValue.value = `${elements.sunAzimuth.value}°`
+    elements.sunZenithValue.value = `${elements.sunZenith.value}°`
+    elements.turbidityValue.value =
+      Number(elements.turbidity.value).toFixed(1)
+    elements.exposureValue.value =
+      Number(elements.exposure.value).toFixed(1)
+    elements.fogDensityValue.value =
+      `${Number(elements.fogDensity.value).toFixed(1)}×`
+  }
+
+  function scheduleEnvironmentUpdate() {
+    updateEnvironmentControls()
+    if (!state.viewer || !isGlobe || state.environmentFrame !== null) return
+    state.environmentFrame = window.requestAnimationFrame(() => {
+      state.environmentFrame = null
+      if (!state.viewer) return
+      try {
+        state.viewer.environment.setAtmosphere(environmentOptions())
+      } catch (error) {
+        showError(error)
+      }
+    })
+  }
+
+  function setEnvironmentPanelVisible(visible) {
+    const next = Boolean(visible) && isGlobe
+    elements.environmentPanel.hidden = !next
+    elements.environmentToggle.setAttribute('aria-expanded',
+      next ? 'true' : 'false')
+    if (next && state.debugVisible) {
+      state.debugVisible = false
+      elements.debug.hidden = true
+      elements.debugToggle.setAttribute('aria-pressed', 'false')
+      if (state.viewer) {
+        state.viewer.debug.setRendering({ textureState: false })
+      }
+    }
+  }
+
+  function wireEnvironmentControls() {
+    elements.environmentToggle.addEventListener('click', () =>
+      setEnvironmentPanelVisible(elements.environmentPanel.hidden))
+    elements.environmentClose.addEventListener('click', () =>
+      setEnvironmentPanelVisible(false))
+    const controls = [elements.atmosphereEnabled, elements.sunEnabled,
+      elements.fogEnabled, elements.sunAzimuth, elements.sunZenith,
+      elements.turbidity, elements.exposure, elements.fogDensity]
+    controls.forEach((control) =>
+      control.addEventListener('input', scheduleEnvironmentUpdate))
+    elements.observeSun.addEventListener('click', () => {
+      if (!state.viewer || !isGlobe) return
+      try {
+        const runtimeState = state.viewer.getState()
+        const view = state.viewer.camera.getView()
+        const radius = Number(runtimeState.radiusMeters)
+        if (!Number.isFinite(radius) || radius <= 0) {
+          throw new Error('Globe radius is unavailable')
+        }
+        elements.atmosphereEnabled.checked = true
+        elements.sunEnabled.checked = true
+        elements.sunAzimuth.value = '25'
+        elements.sunZenith.value = '89'
+        updateEnvironmentControls()
+        state.viewer.environment.setAtmosphere(environmentOptions())
+        state.viewer.camera.setView(Object.assign({}, view, {
+          rangeMeters: radius + 30000,
+          headingDegrees: 0,
+          tiltDegrees: 80
+        }), { animate: true, durationMs: 1200 })
+        setEnvironmentPanelVisible(false)
+      } catch (error) {
+        showError(error)
+      }
+    })
+    updateEnvironmentControls()
+  }
+
   function wireControls() {
     elements.move.addEventListener('click', () => setInteractionMode('move'))
     elements.look.addEventListener('click', () => setInteractionMode('look'))
@@ -190,7 +312,9 @@
     })
     elements.debugToggle.addEventListener('click', () => {
       if (!state.viewer) return
-      state.debugVisible = !state.debugVisible
+      const next = !state.debugVisible
+      if (next) setEnvironmentPanelVisible(false)
+      state.debugVisible = next
       elements.debug.hidden = !state.debugVisible
       elements.debugToggle.setAttribute('aria-pressed',
         state.debugVisible ? 'true' : 'false')
@@ -281,6 +405,14 @@
     const textures = renderer.textures || {}
     const quality = renderer.quality || {}
     const transition = renderer.transition || {}
+    const runtimePerformance = current.performance || {}
+    const rendererPerformance = renderer.performance || {}
+    const lodPerformance = runtimePerformance.lodUpdate || {}
+    const readPerformance = runtimePerformance.frameRead || {}
+    const framePerformance = runtimePerformance.rendererSetFrame || {}
+    const geometryPerformance = rendererPerformance.geometryPrepare || {}
+    const imageryPerformance = rendererPerformance.imageryRebuild || {}
+    const atmosphere = current.atmosphere || {}
     const view = current.view || {}
     const target = view.target || {}
     elements.frame.textContent = `${text('demo.frame')} ${frame.sequence || 0} · ` +
@@ -334,7 +466,24 @@
         `${textures.capacity || 0} ${text('demo.debug.presentation')} ` +
         `${textures.presentationTiles || 0} ${text('demo.debug.fallback')} ` +
         `${quality.fallbackCount || 0} ${text('demo.debug.missing')} ` +
-        `${quality.missingCount || 0}`
+        `${quality.missingCount || 0}`,
+      `${text('demo.debug.environment')} ` +
+        `${atmosphere.enabled ? text('demo.atmosphere') : text('demo.debug.off')} ` +
+        `${text('demo.sun')} ${atmosphere.sunEnabled ? text('demo.debug.on') : text('demo.debug.off')} ` +
+        `${text('demo.fog')} ${atmosphere.fogEnabled ? text('demo.debug.on') : text('demo.debug.off')}`,
+      `${text('demo.debug.performance')} ` +
+        `${text('demo.debug.full')} ${number(runtimePerformance.fullUpdate && runtimePerformance.fullUpdate.lastMs, 2)}ms×` +
+        `${runtimePerformance.fullUpdate ? runtimePerformance.fullUpdate.count : 0} ` +
+        `${text('demo.debug.preview')} ${number(runtimePerformance.cameraPreview && runtimePerformance.cameraPreview.lastMs, 2)}ms×` +
+        `${runtimePerformance.cameraPreview ? runtimePerformance.cameraPreview.count : 0} ` +
+        `${text('demo.debug.render')} ${number(rendererPerformance.render && rendererPerformance.render.lastMs, 2)}ms ` +
+        `${number(rendererPerformance.framesPerSecond, 1)}fps`,
+      `${text('demo.debug.phases')} ${text('demo.debug.lod')} ${number(lodPerformance.lastMs, 2)}ms ` +
+        `${text('demo.debug.read')} ${number(readPerformance.lastMs, 2)}ms ` +
+        `${text('demo.debug.frameBuild')} ${number(framePerformance.lastMs, 2)}ms`,
+      `${text('demo.debug.rendererPhases')} ` +
+        `${text('demo.debug.geometryPrepare')} ${number(geometryPerformance.lastMs, 2)}ms ` +
+        `${text('demo.debug.imageryRebuild')} ${number(imageryPerformance.lastMs, 2)}ms`
     ].join('\n')
   }
 
@@ -352,6 +501,10 @@
     if (state.destroyed) return
     state.destroyed = true
     if (state.diagnosticsTimer) window.clearInterval(state.diagnosticsTimer)
+    if (state.environmentFrame !== null) {
+      window.cancelAnimationFrame(state.environmentFrame)
+      state.environmentFrame = null
+    }
     if (state.resizeObserver) state.resizeObserver.disconnect()
     if (state.viewer) state.viewer.destroy()
     state.viewer = null
@@ -360,6 +513,7 @@
   async function main() {
     installCanvasAdapter()
     wireControls()
+    wireEnvironmentControls()
     wirePointerInteraction()
     const requestedImagery = parameters.get('imagery') === 'tianditu-img-c'
       ? 'tianditu-img-c' : 'blue-marble'
@@ -383,6 +537,7 @@
         longitudeDegrees: 116.4074,
         latitudeDegrees: 39.9042
       }
+      options.atmosphere = environmentOptions()
     }
     state.viewer = await sdk.viewer.TerraViewer.create(options)
     elements.attribution.textContent = imagery.attribution

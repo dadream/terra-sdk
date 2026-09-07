@@ -119,11 +119,13 @@ const ATMOSPHERE_FRAGMENT_SHADER = [
   '    (shellRadius - 1.0), 0.0, 1.0), 0.35);',
   '  float atmosphere = cameraRadius <= shellRadius ? 1.0 : intersects * limb;',
   '  vec3 color = mix(vec3(0.003, 0.007, 0.016), sky, atmosphere);',
-  '  vec3 sunWorld = normalize(u_sun_direction.x * u_east +',
-  '    u_sun_direction.y * u_north + u_sun_direction.z * u_up);',
-  '  float sun = smoothstep(0.99982, 0.99994, dot(ray, sunWorld)) *',
+  '  float sunAngle = dot(localRay, normalize(u_sun_direction));',
+  '  float sunHalo = smoothstep(0.9903, 0.9992, sunAngle) *',
   '    u_sun_visible;',
-  '  color = mix(color, vec3(1.0, 0.92, 0.72), sun);',
+  '  float sunDisc = smoothstep(0.9992, 0.9999, sunAngle) *',
+  '    u_sun_visible;',
+  '  color += vec3(1.0, 0.58, 0.18) * sunHalo * 0.28;',
+  '  color = mix(color, vec3(1.0, 0.94, 0.72), sunDisc);',
   '  gl_FragColor = vec4(color, 1.0);',
   '}'
 ].join('\n')
@@ -280,11 +282,24 @@ function cross(left, right) {
   ]
 }
 
+function monotonicNow() {
+  return typeof performance !== 'undefined' &&
+    typeof performance.now === 'function' ? performance.now() : Date.now()
+}
+
+function recordTiming(target, elapsedMs) {
+  target.count += 1
+  target.lastMs = elapsedMs
+  target.averageMs += (elapsedMs - target.averageMs) / target.count
+}
+
 function defaultAtmosphere() {
   return {
     width: 2,
     height: 2,
     sunVisible: true,
+    fogEnabled: false,
+    fogDensityMultiplier: 1,
     sunDirection: normalized([0.41, -0.41, 0.82]),
     ambientColor: [0.35, 0.55, 0.8],
     diffuseColor: [1, 0.92, 0.72],
@@ -301,20 +316,10 @@ function isPowerOfTwo(value) {
   return value > 0 && (value & (value - 1)) === 0
 }
 
-function geometryHash(values) {
-  const bytes = new Uint8Array(values.buffer, values.byteOffset,
-    values.byteLength)
-  let hash = 0x811c9dc5
-  for (let index = 0; index < bytes.length; ++index) {
-    hash ^= bytes[index]
-    hash = Math.imul(hash, 0x01000193)
-  }
-  return hash >>> 0
-}
-
-function geometryKey(draw, positions, textureUv) {
-  return `${common.patchKeyString('geometry', draw.key)}:${draw.fragment}:` +
-    `${geometryHash(positions)}:${geometryHash(textureUv)}`
+function geometryKey(draw) {
+  // Submitted terrain records are immutable within a runtime, so the CBDAM
+  // patch and fragment identity is also the stable GPU mesh identity.
+  return `${common.patchKeyString('geometry', draw.key)}:${draw.fragment}`
 }
 
 function parentTextureTile(tile) {
@@ -1614,6 +1619,14 @@ class TerraWebGlRenderer {
       terrainBound: this.terrainBoundImagery
     }
     this.pendingQualityStats = this.qualityStats
+    this.performanceStats = {
+      render: { count: 0, lastMs: 0, averageMs: 0 },
+      geometryPrepare: { count: 0, lastMs: 0, averageMs: 0 },
+      imageryRebuild: { count: 0, lastMs: 0, averageMs: 0 },
+      frameIntervalMs: 0,
+      framesPerSecond: 0,
+      lastFrameAt: 0
+    }
     this.drawStats = { submitted: 0, queued: 0 }
     this.geometry = new common.LruCache({
       maximumEntries: this.options.maximumGeometryEntries || 192,
@@ -1825,6 +1838,9 @@ class TerraWebGlRenderer {
       width: value.width,
       height: value.height,
       sunVisible: Boolean(value.sunVisible),
+      fogEnabled: Boolean(value.fogEnabled),
+      fogDensityMultiplier: Number.isFinite(value.fogDensityMultiplier)
+        ? value.fogDensityMultiplier : 1,
       sunDirection: normalized(value.sunDirection),
       ambientColor: value.ambientColor.slice(0, 3),
       diffuseColor: value.diffuseColor.slice(0, 3),
@@ -2015,9 +2031,25 @@ class TerraWebGlRenderer {
     common.invariant(frame && draws && positions && textureUv && indices,
       'Renderer frame data is incomplete')
     this.current = { frame, draws, positions, textureUv, indices }
+    let startedAt = monotonicNow()
     this.enqueueGeometry(draws, positions, textureUv)
     this.updateGeometryPins()
+    recordTiming(this.performanceStats.geometryPrepare,
+      monotonicNow() - startedAt)
+    startedAt = monotonicNow()
     this.rebuildImageryDraws()
+    recordTiming(this.performanceStats.imageryRebuild,
+      monotonicNow() - startedAt)
+    this.requestRender()
+  }
+
+  setCameraFrame(snapshot) {
+    common.invariant(this.current && snapshot && snapshot.cameraPosition &&
+      snapshot.projectionView, 'Renderer camera snapshot is incomplete')
+    this.current.frame = Object.assign({}, this.current.frame, {
+      cameraPosition: snapshot.cameraPosition.slice(),
+      projectionView: new Float64Array(snapshot.projectionView)
+    })
     this.requestRender()
   }
 
@@ -2038,6 +2070,7 @@ class TerraWebGlRenderer {
     if (!this.gl || this.contextLost || !this.current) {
       return this.drawStats
     }
+    const startedAt = monotonicNow()
     this.processUploads()
     const gl = this.gl
     const current = this.current
@@ -2051,6 +2084,7 @@ class TerraWebGlRenderer {
     this.renderAtmosphere(relative, viewFrame.cameraPosition)
     if (!surface) {
       this.drawStats = { submitted: 0, queued: this.uploadQueue.length }
+      this.recordRender(startedAt)
       return this.drawStats
     }
     gl.useProgram(this.program)
@@ -2061,8 +2095,10 @@ class TerraWebGlRenderer {
       this.heightRange[0], this.heightRange[1])
     const altitude = Math.max(0,
       Math.hypot.apply(null, viewFrame.cameraPosition) - this.planetRadius)
-    const fogDensity = this.atmosphereEnabled
-      ? this.atmosphere.seaLevelFogDensity * Math.exp(-altitude / 8000) : 0
+    const fogDensity = this.atmosphereEnabled && this.atmosphere.fogEnabled
+      ? this.atmosphere.seaLevelFogDensity *
+        this.atmosphere.fogDensityMultiplier * Math.exp(-altitude / 8000)
+      : 0
     gl.uniform1f(this.uniforms.fogDensity, fogDensity)
     gl.uniform3f(this.uniforms.fogColor,
       this.atmosphere.fogColor[0], this.atmosphere.fogColor[1],
@@ -2144,7 +2180,27 @@ class TerraWebGlRenderer {
       resolvedLevelMaximum: Number.isFinite(maximumResolvedLevel)
         ? maximumResolvedLevel : null
     })
+    this.recordRender(startedAt)
     return this.drawStats
+  }
+
+  recordRender(startedAt) {
+    const now = monotonicNow()
+    recordTiming(this.performanceStats.render, now - startedAt)
+    if (this.performanceStats.lastFrameAt > 0) {
+      const interval = now - this.performanceStats.lastFrameAt
+      if (interval > 0 && interval <= 250) {
+        const previous = this.performanceStats.frameIntervalMs
+        this.performanceStats.frameIntervalMs = previous > 0
+          ? previous * 0.85 + interval * 0.15 : interval
+        this.performanceStats.framesPerSecond =
+          1000 / this.performanceStats.frameIntervalMs
+      } else if (interval > 250) {
+        this.performanceStats.frameIntervalMs = 0
+        this.performanceStats.framesPerSecond = 0
+      }
+    }
+    this.performanceStats.lastFrameAt = now
   }
 
   renderAtmosphere(projectionView, cameraPosition) {
@@ -2247,19 +2303,20 @@ class TerraWebGlRenderer {
     const additions = []
     for (let index = 0; index < draws.length; ++index) {
       const draw = draws[index]
+      const key = geometryKey(draw)
+      draw.geometryKey = key
+      wanted.add(key)
+      if (this.geometry.has(key) || queued.has(key)) {
+        continue
+      }
       const positionStart = draw.firstVertex * 3
       const positionEnd = positionStart + draw.vertexCount * 3
       const uvStart = draw.firstVertex * 2
       const uvEnd = uvStart + draw.vertexCount * 2
       const localPositions = positions.slice(positionStart, positionEnd)
       const localUv = textureUv.slice(uvStart, uvEnd)
-      const key = geometryKey(draw, localPositions, localUv)
-      draw.geometryKey = key
-      wanted.add(key)
-      if (!this.geometry.has(key) && !queued.has(key)) {
-        additions.push({ key, positions: localPositions, uv: localUv })
-        queued.add(key)
-      }
+      additions.push({ key, positions: localPositions, uv: localUv })
+      queued.add(key)
     }
     this.uploadQueue = this.uploadQueue.filter((item) => wanted.has(item.key))
     this.uploadQueue.push(...additions)
@@ -2497,7 +2554,18 @@ class TerraWebGlRenderer {
       atmosphere: {
         capable: this.atmosphereCapable,
         enabled: this.atmosphereEnabled,
+        sunVisible: this.atmosphere.sunVisible,
+        fogEnabled: this.atmosphere.fogEnabled,
         source: this.atmosphere.width > 2 ? 'terra-core' : 'fallback'
+      },
+      performance: {
+        render: Object.assign({}, this.performanceStats.render),
+        geometryPrepare: Object.assign({},
+          this.performanceStats.geometryPrepare),
+        imageryRebuild: Object.assign({},
+          this.performanceStats.imageryRebuild),
+        frameIntervalMs: this.performanceStats.frameIntervalMs,
+        framesPerSecond: this.performanceStats.framesPerSecond
       },
       transition: {
         displayingPreviousFrame: Boolean(this.displaySurface &&
@@ -2529,7 +2597,6 @@ module.exports = {
   maximumTerrainTextureLevel,
   refineImageryDraws,
   TerraWebGlRenderer,
-  geometryHash,
   geometryKey,
   isPowerOfTwo
 }

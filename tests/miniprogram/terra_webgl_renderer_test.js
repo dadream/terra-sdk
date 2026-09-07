@@ -226,8 +226,8 @@ async function loadAllImages(canvas, startIndex) {
 async function main() {
   assert.strictEqual(rendererModule.isPowerOfTwo(256), true)
   assert.strictEqual(rendererModule.isPowerOfTwo(255), false)
-  assert.strictEqual(rendererModule.geometryHash(new Float32Array([1, 2])),
-    rendererModule.geometryHash(new Float32Array([1, 2])))
+  assert.strictEqual(rendererModule.geometryKey(draw(2)),
+    'geometry:0/1/2/3:0')
   assert.deepStrictEqual(Array.from(rendererModule.invertMatrix4([
     1, 0, 0, 0,
     0, 1, 0, 0,
@@ -830,7 +830,9 @@ async function main() {
   const originalProcessUploads = transitionRenderer.processUploads.bind(
     transitionRenderer)
   transitionRenderer.processUploads = () => {}
-  const secondTransitionDraw = draw(21)
+  const secondTransitionDraw = Object.assign(draw(21), {
+    key: { level: 0, i: 1, j: 2, k: 4 }
+  })
   const secondTransitionPositions = new Float32Array([
     0, 0, 0,
     2, 0, 0,
@@ -1113,6 +1115,8 @@ async function main() {
     width: 4,
     height: 2,
     sunVisible: true,
+    fogEnabled: false,
+    fogDensityMultiplier: 1,
     sunDirection: [0, 0, 1],
     ambientColor: [0.2, 0.3, 0.4],
     diffuseColor: [1, 0.9, 0.7],
@@ -1122,18 +1126,50 @@ async function main() {
   })
   atmosphereRenderer.setFrame(frame(), [draw(0)], positions,
     textureUv, indices)
+  const geometryEntries = atmosphereRenderer.stats().geometry.entries
+  atmosphereRenderer.setFrame(frame(), [draw(0)], positions,
+    textureUv, indices)
+  assert.strictEqual(atmosphereRenderer.uploadQueue.length, 1)
+  assert.strictEqual(atmosphereRenderer.stats().geometry.entries,
+    geometryEntries)
   atmosphereRenderer.render()
   assert(atmosphereGl.calls.some((call) => call.name === 'drawArrays' &&
     call.args[0] === atmosphereGl.TRIANGLES))
   assert(atmosphereGl.calls.some((call) => call.name === 'depthMask' &&
     call.args[0] === false))
-  assert(atmosphereGl.calls.some((call) => call.name === 'uniform1f' &&
-    call.args[0].name === 'u_fog_density'))
+  const noFogCall = atmosphereGl.calls.filter((call) =>
+    call.name === 'uniform1f' &&
+    call.args[0].name === 'u_fog_density').pop()
+  assert.strictEqual(noFogCall.args[1], 0)
+  atmosphereRenderer.setAtmosphere(Object.assign({},
+    atmosphereRenderer.atmosphere, {
+      fogEnabled: true,
+      fogDensityMultiplier: 2
+    }))
+  atmosphereRenderer.render()
+  const fogCall = atmosphereGl.calls.filter((call) =>
+    call.name === 'uniform1f' &&
+    call.args[0].name === 'u_fog_density').pop()
+  assert(fogCall.args[1] > 0)
+  const previousDraws = atmosphereRenderer.current.draws
+  const previousDesired = atmosphereRenderer.stats().textures.targetDesired
+  atmosphereRenderer.setCameraFrame({
+    cameraPosition: [11, 22, 33],
+    projectionView: frame().projectionView
+  })
+  assert.strictEqual(atmosphereRenderer.current.draws, previousDraws)
+  assert.strictEqual(atmosphereRenderer.stats().textures.targetDesired,
+    previousDesired)
   assert.deepStrictEqual(atmosphereRenderer.stats().atmosphere, {
     capable: true,
     enabled: true,
+    sunVisible: true,
+    fogEnabled: true,
     source: 'terra-core'
   })
+  assert(atmosphereRenderer.stats().performance.render.count >= 2)
+  assert(atmosphereRenderer.stats().performance.geometryPrepare.count >= 2)
+  assert(atmosphereRenderer.stats().performance.imageryRebuild.count >= 2)
   atmosphereRenderer.destroy()
 
   renderer.setBudget({

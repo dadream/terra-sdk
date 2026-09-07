@@ -81,6 +81,8 @@ int main(int argc, char** argv) {
     require(terra_sizeof_manifest_v1() == sizeof(terra_manifest_v1) &&
                 terra_sizeof_viewport_v1() == sizeof(terra_viewport_v1) &&
                 terra_sizeof_camera_v1() == sizeof(terra_camera_v1) &&
+                terra_sizeof_camera_snapshot_v1() ==
+                    sizeof(terra_camera_snapshot_v1) &&
                 terra_sizeof_patch_key_v1() == sizeof(terra_patch_key_v1) &&
                 terra_sizeof_texture_key_v1() ==
                     sizeof(terra_texture_key_v1) &&
@@ -147,6 +149,15 @@ int main(int argc, char** argv) {
     terra_viewport_v1 viewport = default_viewport();
     require_status(terra_set_viewport(context, &viewport), TERRA_STATUS_OK,
                    "set viewport");
+    terra_camera_snapshot_v1 snapshot{};
+    snapshot.struct_size = sizeof(snapshot);
+    require_status(terra_get_camera_snapshot(context, &snapshot),
+                   TERRA_STATUS_OK, "get camera snapshot before update");
+    require(snapshot.api_version == TERRA_C_API_VERSION &&
+                std::isfinite(snapshot.camera_position[0]) &&
+                std::isfinite(snapshot.camera_position[1]) &&
+                std::isfinite(snapshot.camera_position[2]),
+            "camera snapshot is invalid");
     require_status(terra_update(context, 0.005F), TERRA_STATUS_OK,
                    "initial update");
 
@@ -166,6 +177,17 @@ int main(int argc, char** argv) {
                 std::isfinite(frame.camera_position[1]) &&
                 std::isfinite(frame.camera_position[2]),
             "camera position is invalid");
+
+    for (std::size_t index = 0U; index < 3U; ++index) {
+      require(snapshot.camera_position[index] ==
+                  frame.camera_position[index],
+              "camera snapshot position differs from frame");
+    }
+    for (std::size_t index = 0U; index < 16U; ++index) {
+      require(snapshot.projection_view[index] ==
+                  frame.projection_view[index],
+              "camera snapshot matrix differs from frame");
+    }
 
     std::size_t index_count = 0U;
     require_status(terra_get_index_buffer(context, nullptr, 0U,

@@ -190,6 +190,7 @@ async function main() {
   const layout = {
     manifest: exports.terra_sizeof_manifest_v1(),
     viewport: exports.terra_sizeof_viewport_v1(),
+    cameraSnapshot: exports.terra_sizeof_camera_snapshot_v1(),
     key: exports.terra_sizeof_patch_key_v1(),
     texture: exports.terra_sizeof_texture_key_v1(),
     request: exports.terra_sizeof_request_v1(),
@@ -201,8 +202,8 @@ async function main() {
     atmosphereResult: exports.terra_sizeof_atmosphere_result_v1()
   }
   requireCondition(
-    `${layout.manifest},${layout.viewport},${layout.key},${layout.texture},${layout.request},${layout.decision},${layout.draw},${layout.frame},${layout.stats},${layout.atmosphereParameters},${layout.atmosphereResult}` ===
-      '128,24,16,16,24,32,88,224,56,32,72',
+    `${layout.manifest},${layout.viewport},${layout.cameraSnapshot},${layout.key},${layout.texture},${layout.request},${layout.decision},${layout.draw},${layout.frame},${layout.stats},${layout.atmosphereParameters},${layout.atmosphereResult}` ===
+      '128,24,160,16,16,24,32,88,224,56,32,72',
     'Wasm ABI structure layout changed'
   )
 
@@ -283,6 +284,20 @@ async function main() {
       STATUS_OK,
       'terra_set_viewport'
     )
+    const cameraSnapshotPointer = alloc(layout.cameraSnapshot)
+    access.refresh().view.setUint32(cameraSnapshotPointer,
+      layout.cameraSnapshot, true)
+    requireStatus(
+      exports.terra_get_camera_snapshot(context, cameraSnapshotPointer),
+      STATUS_OK,
+      'terra_get_camera_snapshot'
+    )
+    const cameraSnapshotView = access.refresh().view
+    const snapshotCamera = [
+      cameraSnapshotView.getFloat64(cameraSnapshotPointer + 8, true),
+      cameraSnapshotView.getFloat64(cameraSnapshotPointer + 16, true),
+      cameraSnapshotView.getFloat64(cameraSnapshotPointer + 24, true)
+    ]
     requireStatus(exports.terra_update(context, 0.005), STATUS_OK, 'terra_update')
 
     const framePointer = alloc(layout.frame)
@@ -303,6 +318,10 @@ async function main() {
         view.getFloat64(framePointer + 56, true)
       ]
     }
+
+    requireCondition(snapshotCamera.every((value, index) =>
+      value === initial.camera[index]),
+    'Wasm camera snapshot differs from full frame')
 
     const countPointer = alloc(4)
     view = access.refresh().view

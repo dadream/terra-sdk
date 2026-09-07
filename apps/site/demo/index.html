@@ -41,6 +41,7 @@
       </div>
       <button id="reset-view" data-i18n-title="demo.globe" type="button" title="全球">全球</button>
       <button id="debug-toggle" data-i18n="demo.debug" data-i18n-title="demo.toggleDebug" type="button" aria-pressed="false" title="切换诊断信息">调试</button>
+      <button id="environment-toggle" data-i18n="demo.environment" data-i18n-title="demo.toggleEnvironment" type="button" aria-expanded="false" aria-controls="environment-panel" title="大气与雾">环境</button>
       <label class="imagery-control" for="imagery-profile">
         <span data-i18n="demo.imagery">影像</span>
         <select id="imagery-profile">
@@ -49,6 +50,43 @@
         </select>
       </label>
     </div>
+    <section id="environment-panel" class="environment-panel" hidden>
+      <header>
+        <strong data-i18n="demo.environment">环境</strong>
+        <button id="environment-close" class="icon-button" type="button" data-i18n-title="demo.environment.close" data-i18n-aria-label="demo.environment.close" title="关闭环境设置" aria-label="关闭环境设置">×</button>
+      </header>
+      <div class="environment-switches">
+        <label><input id="atmosphere-enabled" type="checkbox" checked> <span data-i18n="demo.atmosphere">大气</span></label>
+        <label><input id="sun-enabled" type="checkbox" checked> <span data-i18n="demo.sun">太阳</span></label>
+        <label><input id="fog-enabled" type="checkbox"> <span data-i18n="demo.fog">雾</span></label>
+      </div>
+      <button id="observe-sun" class="environment-action" type="button" data-i18n="demo.observeSun" data-i18n-title="demo.observeSunTitle" title="切换到近地平线视角观察太阳">观察太阳</button>
+      <label class="environment-range" for="sun-azimuth">
+        <span data-i18n="demo.sunAzimuth">太阳方位</span>
+        <input id="sun-azimuth" type="range" min="0" max="360" step="1" value="135">
+        <output id="sun-azimuth-value" for="sun-azimuth">135°</output>
+      </label>
+      <label class="environment-range" for="sun-zenith">
+        <span data-i18n="demo.sunZenith">太阳天顶角</span>
+        <input id="sun-zenith" type="range" min="0" max="89" step="1" value="35">
+        <output id="sun-zenith-value" for="sun-zenith">35°</output>
+      </label>
+      <label class="environment-range" for="atmosphere-turbidity">
+        <span data-i18n="demo.turbidity">浑浊度</span>
+        <input id="atmosphere-turbidity" type="range" min="1" max="10" step="0.1" value="2">
+        <output id="atmosphere-turbidity-value" for="atmosphere-turbidity">2.0</output>
+      </label>
+      <label class="environment-range" for="atmosphere-exposure">
+        <span data-i18n="demo.exposure">曝光</span>
+        <input id="atmosphere-exposure" type="range" min="0.1" max="4" step="0.1" value="1">
+        <output id="atmosphere-exposure-value" for="atmosphere-exposure">1.0</output>
+      </label>
+      <label class="environment-range" for="fog-density">
+        <span data-i18n="demo.fogDensity">雾强度</span>
+        <input id="fog-density" type="range" min="0" max="5" step="0.1" value="1" disabled>
+        <output id="fog-density-value" for="fog-density">1.0×</output>
+      </label>
+    </section>
     <pre id="debug-panel" class="debug-panel" hidden></pre>
     <div id="error-banner" class="error-banner" role="alert" hidden></div>
     <div id="attribution" class="attribution"></div>

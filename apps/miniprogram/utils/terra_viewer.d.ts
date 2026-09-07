@@ -110,6 +110,9 @@ export interface ImagerySource {
 
 export interface AtmosphereOptions {
   enabled?: boolean
+  sunEnabled?: boolean
+  fogEnabled?: boolean
+  fogDensityMultiplier?: number
   sunAzimuthDegrees?: number
   sunZenithDegrees?: number
   turbidity?: number

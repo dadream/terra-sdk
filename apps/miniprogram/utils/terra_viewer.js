@@ -261,7 +261,18 @@ class TerraViewer {
       }))
       : null
     this.camera = this.createCameraFacade()
-    this.interactionController = new TerraInteractionController(this.camera, {
+    const interactionOptions = Object.assign({}, this.options.interaction)
+    if (!interactionOptions.requestFrame && !interactionOptions.cancelFrame &&
+      this.runtime.canvas &&
+      typeof this.runtime.canvas.requestAnimationFrame === 'function' &&
+      typeof this.runtime.canvas.cancelAnimationFrame === 'function') {
+      interactionOptions.requestFrame = (callback) =>
+        this.runtime.canvas.requestAnimationFrame(callback)
+      interactionOptions.cancelFrame = (handle) =>
+        this.runtime.canvas.cancelAnimationFrame(handle)
+    }
+    this.interactionController = new TerraInteractionController(this.camera,
+      Object.assign(interactionOptions, {
       rotateEnabled: !this.options.interaction ||
         this.options.interaction.rotateEnabled !== false,
       tiltEnabled: !this.options.interaction ||
@@ -279,7 +290,7 @@ class TerraViewer {
         }, detail))
       },
       onTap: (point) => this.handleTap(point)
-    })
+      }))
     this.interaction = {
       begin: (packet) => viewerCall('invalid_interaction', () =>
         this.interactionController.begin(packet)),

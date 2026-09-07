@@ -69,6 +69,13 @@ class FakeAbi {
     }
   }
 
+  getCameraSnapshot() {
+    return {
+      cameraPosition: [512.5, 512.5, 2200],
+      projectionView: identity()
+    }
+  }
+
   getRequests() {
     return this.submitted ? [] : [{
       kind: runtimeModule.REQUEST_ROOT,

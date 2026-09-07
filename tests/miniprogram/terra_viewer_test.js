@@ -71,6 +71,20 @@ class FakePlanarRuntime {
     this.destroyed = false
     this.pauseCount = 0
     this.resumeCount = 0
+    this.interactionStates = []
+    this.interactionChanges = []
+    this.nextFrameHandle = 1
+    this.frameCallbacks = new Map()
+    this.canvas = {
+      requestAnimationFrame: (callback) => {
+        const handle = this.nextFrameHandle++
+        this.frameCallbacks.set(handle, callback)
+        return handle
+      },
+      cancelAnimationFrame: (handle) => {
+        this.frameCallbacks.delete(handle)
+      }
+    }
     this.atmosphere = {
       enabled: false,
       sunAzimuthDegrees: 135,
@@ -91,7 +105,13 @@ class FakePlanarRuntime {
   northUp() {}
   reset() {}
   cancelAnimation() { return false }
-  applyInteraction() {}
+  applyInteraction(change) { this.interactionChanges.push(change) }
+  setInteractionActive(active) { this.interactionStates.push(active) }
+  flushAnimationFrame() {
+    const callbacks = Array.from(this.frameCallbacks.values())
+    this.frameCallbacks.clear()
+    callbacks.forEach((callback) => callback(16))
+  }
   resize() {}
   scheduleRender() {}
   refresh() {}
@@ -150,6 +170,28 @@ function testPoisRouteAndSurface() {
   viewer.on('featureposition', (event) => positions.push(event))
   viewer.on('featureclick', (event) => clicks.push(event))
   viewer.on('surfacechange', (event) => surfaceChanges.push(event))
+
+  viewer.interaction.begin({
+    pointers: [{ id: 1, x: 10, y: 10 }],
+    timeMs: 0,
+    mode: 'look'
+  })
+  viewer.interaction.update({
+    pointers: [{ id: 1, x: 30, y: 30 }],
+    timeMs: 16
+  })
+  viewer.interaction.update({
+    pointers: [{ id: 1, x: 50, y: 50 }],
+    timeMs: 32
+  })
+  assert.deepStrictEqual(runtime.interactionStates, [true])
+  assert.strictEqual(runtime.interactionChanges.length, 0)
+  assert.strictEqual(runtime.frameCallbacks.size, 1)
+  runtime.flushAnimationFrame()
+  assert.strictEqual(runtime.interactionChanges.length, 1)
+  assert.strictEqual(runtime.interactionChanges[0].headingDegrees, 10)
+  viewer.interaction.end({ pointers: [], timeMs: 48 })
+  assert.deepStrictEqual(runtime.interactionStates, [true, false])
 
   viewer.setPois([
     {

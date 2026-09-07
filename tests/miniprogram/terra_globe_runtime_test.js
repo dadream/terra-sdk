@@ -70,6 +70,7 @@ class FakeAbi {
     this.failures = []
     this.retryRecords = []
     this.updateCount = 0
+    this.cameraSnapshotCount = 0
     this.destroyed = false
   }
 
@@ -87,6 +88,14 @@ class FakeAbi {
 
   setGlobeTarget(longitudeDegrees, latitudeDegrees) {
     this.targets.push({ longitudeDegrees, latitudeDegrees })
+  }
+
+  getCameraSnapshot() {
+    this.cameraSnapshotCount += 1
+    return {
+      cameraPosition: [4, 5, 6],
+      projectionView: identity()
+    }
   }
 
   update() {
@@ -147,6 +156,8 @@ class FakeRenderer {
     this.frames = []
     this.budgets = []
     this.resizes = []
+    this.cameraFrames = []
+    this.interactionStates = []
     this.renderCount = 0
     this.destroyed = false
     this.contextLost = false
@@ -166,6 +177,14 @@ class FakeRenderer {
 
   setFrame(frame, draws, positions, textureUv, indices) {
     this.frames.push({ frame, draws, positions, textureUv, indices })
+  }
+
+  setCameraFrame(snapshot) {
+    this.cameraFrames.push(snapshot)
+  }
+
+  setInteractionActive(active) {
+    this.interactionStates.push(active)
   }
 
   render() {
@@ -259,6 +278,16 @@ function testGeographicCamera() {
   assert.throws(() => runtimeModule.geographicCamera(
     6378000, 1280, 720, 0.5, { longitudeDegrees: 181, latitudeDegrees: 0 }),
   /longitude/)
+  const defaultAtmosphere = runtimeModule.normalizeAtmosphereOptions()
+  assert.strictEqual(defaultAtmosphere.enabled, true)
+  assert.strictEqual(defaultAtmosphere.sunEnabled, true)
+  assert.strictEqual(defaultAtmosphere.fogEnabled, false)
+  assert.strictEqual(defaultAtmosphere.fogDensityMultiplier, 1)
+  const fog = runtimeModule.normalizeAtmosphereOptions({
+    fogEnabled: true, fogDensityMultiplier: 2.5
+  })
+  assert.strictEqual(fog.fogEnabled, true)
+  assert.strictEqual(fog.fogDensityMultiplier, 2.5)
 }
 
 async function testSuccessfulLoadAndControls() {
@@ -286,6 +315,7 @@ async function testSuccessfulLoadAndControls() {
   assert.strictEqual(abi.submissions.length, 1)
   assert.deepStrictEqual(abi.submissions[0].bytes, Array.from(bytes))
   assert.strictEqual(result.runtime.state().terrain.entries, 1)
+  assert.strictEqual(result.runtime.state().radiusMeters, 6378000)
   assert.strictEqual(result.runtime.textureUrl({ matrix: 3, row: 4, column: 5 }),
     'https://tiles.example/3/5/4.jpg')
 
@@ -307,6 +337,33 @@ async function testSuccessfulLoadAndControls() {
     headingDegrees: 0,
     tiltDegrees: 0
   })
+  const previewUpdateCount = abi.updateCount
+  const previewFrameCount = result.renderer.frames.length
+  result.runtime.setInteractionActive(true)
+  result.runtime.applyInteraction({
+    headingDegrees: 2,
+    tiltDegrees: 1
+  })
+  result.runtime.applyInteraction({ headingDegrees: 3 })
+  result.runtime.scheduleRefresh()
+  await settle(2)
+
+  assert.strictEqual(abi.updateCount, previewUpdateCount)
+  assert.strictEqual(result.renderer.frames.length, previewFrameCount)
+  assert.strictEqual(abi.cameraSnapshotCount, 2)
+  assert.strictEqual(result.renderer.cameraFrames.length, 2)
+  assert.deepStrictEqual(result.renderer.interactionStates, [true])
+  assert.strictEqual(
+    result.runtime.state().performance.cameraPreview.count, 2)
+  result.runtime.setInteractionActive(false)
+  assert.strictEqual(abi.updateCount, previewUpdateCount)
+  assert.strictEqual(result.renderer.frames.length, previewFrameCount)
+  await settle(2)
+  assert.strictEqual(abi.updateCount, previewUpdateCount + 1)
+  assert.strictEqual(result.renderer.frames.length, previewFrameCount + 1)
+  assert.deepStrictEqual(result.renderer.interactionStates, [true, false])
+  assert(result.runtime.state().performance.fullUpdate.count > 0)
+
   const atomicUpdates = abi.updateCount
   result.runtime.setView({
     schema: 'terra.view-state.v1',
@@ -322,6 +379,18 @@ async function testSuccessfulLoadAndControls() {
   })
   assert.strictEqual(abi.updateCount, atomicUpdates + 1)
   assert.strictEqual(result.runtime.getView().tiltDegrees, 35)
+
+  const animationUpdates = abi.updateCount
+  const animationSnapshots = abi.cameraSnapshotCount
+  result.runtime.setView(Object.assign({}, result.runtime.getView(), {
+    headingDegrees: 30,
+    tiltDegrees: 40
+  }), { animate: true, durationMs: 48 })
+  await new Promise((resolve) => setTimeout(resolve, 100))
+  assert.strictEqual(abi.updateCount, animationUpdates + 1)
+  assert(abi.cameraSnapshotCount > animationSnapshots)
+  assert.strictEqual(result.runtime.getView().tiltDegrees, 40)
+
   assert.throws(() => result.runtime.setView({
     schema: 'terra.view-state.v1',
     mode: 'globe',

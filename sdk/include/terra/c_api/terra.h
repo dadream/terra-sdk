@@ -77,6 +77,13 @@ typedef struct terra_camera_v1 {
   double yaw_radians;
 } terra_camera_v1;
 
+typedef struct terra_camera_snapshot_v1 {
+  uint32_t struct_size;
+  uint32_t api_version;
+  double camera_position[3];
+  double projection_view[16];
+} terra_camera_snapshot_v1;
+
 typedef struct terra_patch_key_v1 {
   uint32_t level;
   int32_t i;
@@ -186,6 +193,7 @@ uint32_t terra_abi_version(void);
 uint32_t terra_sizeof_manifest_v1(void);
 uint32_t terra_sizeof_viewport_v1(void);
 uint32_t terra_sizeof_camera_v1(void);
+uint32_t terra_sizeof_camera_snapshot_v1(void);
 uint32_t terra_sizeof_patch_key_v1(void);
 uint32_t terra_sizeof_texture_key_v1(void);
 uint32_t terra_sizeof_request_v1(void);
@@ -236,6 +244,9 @@ terra_status terra_retry_record(terra_context* context,
                                 uint32_t kind,
                                 const terra_patch_key_v1* key);
 terra_status terra_update(terra_context* context, float lod_threshold);
+
+terra_status terra_get_camera_snapshot(const terra_context* context,
+                                       terra_camera_snapshot_v1* snapshot);
 
 terra_status terra_get_requests(const terra_context* context,
                                 terra_request_v1* requests,

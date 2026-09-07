@@ -444,6 +444,68 @@ terra_status build_render_buffers(
   return TERRA_STATUS_OK;
 }
 
+terra_status make_camera_snapshot(
+    const terra_context* context,
+    terra::frame::camera_snapshot& snapshot) {
+  if (context == nullptr) {
+    return TERRA_STATUS_INVALID_ARGUMENT;
+  }
+  if (!context->manifest_loaded || !context->viewport_set) {
+    return fail(context, TERRA_STATUS_INVALID_STATE,
+                "manifest and viewport are required before camera snapshot");
+  }
+  if (context->manifest.transform == TERRA_TRANSFORM_PLANAR) {
+    const terra::core::bounds2d bounds(
+        terra::core::vector2d{{context->manifest.minimum_u,
+                               context->manifest.minimum_v}},
+        terra::core::vector2d{{context->manifest.maximum_u,
+                               context->manifest.maximum_v}});
+    terra::frame::planar_camera camera(
+        bounds, static_cast<int>(context->viewport.width),
+        static_cast<int>(context->viewport.height),
+        static_cast<float>(context->viewport.vertical_fov_radians));
+    if (!camera.is_valid()) {
+      return fail(context, TERRA_STATUS_INVALID_STATE,
+                  "unable to construct planar camera");
+    }
+    if (context->camera_set) {
+      camera.set_distance(context->camera.distance);
+      camera.set_tilt_radians(context->camera.tilt_radians);
+      camera.rotate_yaw_radians(context->camera.yaw_radians);
+    }
+    if (context->planar_target_set &&
+        !camera.set_target(context->planar_target_x,
+                           context->planar_target_y)) {
+      return fail(context, TERRA_STATUS_INVALID_STATE,
+                  "unable to set planar camera target");
+    }
+    snapshot = camera.snapshot();
+    return TERRA_STATUS_OK;
+  }
+  terra::frame::globe_camera camera(
+      static_cast<float>(context->manifest.radius),
+      static_cast<int>(context->viewport.width),
+      static_cast<int>(context->viewport.height),
+      static_cast<float>(context->viewport.vertical_fov_radians));
+  if (!camera.is_valid()) {
+    return fail(context, TERRA_STATUS_INVALID_STATE,
+                "unable to construct globe camera");
+  }
+  if (!camera.set_target_degrees(
+          context->globe_target_longitude_degrees,
+          context->globe_target_latitude_degrees)) {
+    return fail(context, TERRA_STATUS_INVALID_STATE,
+                "unable to set globe camera target");
+  }
+  if (context->camera_set) {
+    camera.set_distance(context->camera.distance);
+    camera.set_tilt_radians(context->camera.tilt_radians);
+    camera.rotate_yaw_radians(context->camera.yaw_radians);
+  }
+  snapshot = camera.snapshot();
+  return TERRA_STATUS_OK;
+}
+
 void reset_runtime_state(terra_context& context) {
   context.manifest_loaded = false;
   context.sequence = 0U;
@@ -535,6 +597,10 @@ std::uint32_t terra_sizeof_viewport_v1(void) {
 
 std::uint32_t terra_sizeof_camera_v1(void) {
   return static_cast<std::uint32_t>(sizeof(terra_camera_v1));
+}
+
+std::uint32_t terra_sizeof_camera_snapshot_v1(void) {
+  return static_cast<std::uint32_t>(sizeof(terra_camera_snapshot_v1));
 }
 
 std::uint32_t terra_sizeof_patch_key_v1(void) {
@@ -980,59 +1046,18 @@ terra_status terra_update(terra_context* context, float lod_threshold) {
   }
   TERRA_C_API_TRY {
     terra::frame::camera_snapshot snapshot;
+    const terra_status camera_status =
+        make_camera_snapshot(context, snapshot);
+    if (camera_status != TERRA_STATUS_OK) {
+      return camera_status;
+    }
     terra::frame::lod_cut cut;
     std::size_t active_record_request_count = 0U;
     if (context->manifest.transform == TERRA_TRANSFORM_PLANAR) {
-      const terra::core::bounds2d bounds(
-          terra::core::vector2d{{context->manifest.minimum_u,
-                                 context->manifest.minimum_v}},
-          terra::core::vector2d{{context->manifest.maximum_u,
-                                 context->manifest.maximum_v}});
-      terra::frame::planar_camera camera(
-          bounds, static_cast<int>(context->viewport.width),
-          static_cast<int>(context->viewport.height),
-          static_cast<float>(context->viewport.vertical_fov_radians));
-      if (!camera.is_valid()) {
-        return fail(context, TERRA_STATUS_INVALID_STATE,
-                    "unable to construct planar camera");
-      }
-      if (context->camera_set) {
-        camera.set_distance(context->camera.distance);
-        camera.set_tilt_radians(context->camera.tilt_radians);
-        camera.rotate_yaw_radians(context->camera.yaw_radians);
-      }
-      if (context->planar_target_set &&
-          !camera.set_target(context->planar_target_x,
-                             context->planar_target_y)) {
-        return fail(context, TERRA_STATUS_INVALID_STATE,
-                    "unable to set planar camera target");
-      }
-      snapshot = camera.snapshot();
       cut = terra::frame::select_fixed_planar_lod(
           context->manifest.patch_dimension, context->planar_level);
       active_record_request_count = cut.record_requests.size();
     } else {
-      terra::frame::globe_camera camera(
-          static_cast<float>(context->manifest.radius),
-          static_cast<int>(context->viewport.width),
-          static_cast<int>(context->viewport.height),
-          static_cast<float>(context->viewport.vertical_fov_radians));
-      if (!camera.is_valid()) {
-        return fail(context, TERRA_STATUS_INVALID_STATE,
-                    "unable to construct globe camera");
-      }
-      if (!camera.set_target_degrees(
-              context->globe_target_longitude_degrees,
-              context->globe_target_latitude_degrees)) {
-        return fail(context, TERRA_STATUS_INVALID_STATE,
-                    "unable to set globe camera target");
-      }
-      if (context->camera_set) {
-        camera.set_distance(context->camera.distance);
-        camera.set_tilt_radians(context->camera.tilt_radians);
-        camera.rotate_yaw_radians(context->camera.yaw_radians);
-      }
-      snapshot = camera.snapshot();
       terra::frame::lod_resource_state resources;
       resources.available_roots.reserve(context->loaded_records.size());
       resources.available_details.reserve(context->loaded_records.size());
@@ -1196,6 +1221,30 @@ terra_status terra_update(terra_context* context, float lod_threshold) {
     return succeed(context);
   }
   TERRA_C_API_CATCH(context, "unexpected frame update error")
+}
+
+terra_status terra_get_camera_snapshot(
+    const terra_context* context,
+    terra_camera_snapshot_v1* snapshot) {
+  if (context == nullptr || !valid_input(snapshot)) {
+    return fail(context, TERRA_STATUS_INVALID_ARGUMENT,
+                "invalid camera snapshot output");
+  }
+  TERRA_C_API_TRY {
+    terra::frame::camera_snapshot value;
+    const terra_status status = make_camera_snapshot(context, value);
+    if (status != TERRA_STATUS_OK) {
+      return status;
+    }
+    snapshot->struct_size = sizeof(terra_camera_snapshot_v1);
+    snapshot->api_version = TERRA_C_API_VERSION;
+    std::copy(value.position.begin(), value.position.end(),
+              snapshot->camera_position);
+    std::copy(value.projection_view.begin(), value.projection_view.end(),
+              snapshot->projection_view);
+    return succeed(context);
+  }
+  TERRA_C_API_CATCH(context, "unexpected camera snapshot error")
 }
 
 terra_status terra_get_requests(const terra_context* context,

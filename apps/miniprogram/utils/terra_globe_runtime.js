@@ -13,11 +13,13 @@ const DEGREES_TO_RADIANS = Math.PI / 180
 const RADIANS_TO_DEGREES = 180 / Math.PI
 const MIN_TILT_RADIANS = -80 * DEGREES_TO_RADIANS
 const MAX_TILT_RADIANS = 0
+const ANIMATION_LOD_INTERVAL_MS = 200
 
 const ABI_LAYOUT = {
   manifest: 128,
   viewport: 24,
   camera: 32,
+  cameraSnapshot: 160,
   key: 16,
   texture: 16,
   request: 24,
@@ -33,6 +35,10 @@ function normalizeAtmosphereOptions(value) {
   const input = value || {}
   const result = {
     enabled: input.enabled !== false,
+    sunEnabled: input.sunEnabled !== false,
+    fogEnabled: input.fogEnabled === true,
+    fogDensityMultiplier: input.fogDensityMultiplier === undefined
+      ? 1 : common.finiteNumber(input.fogDensityMultiplier, 'Fog density'),
     sunAzimuthDegrees: input.sunAzimuthDegrees === undefined
       ? 135 : common.finiteNumber(input.sunAzimuthDegrees, 'Sun azimuth'),
     sunZenithDegrees: input.sunZenithDegrees === undefined
@@ -44,7 +50,8 @@ function normalizeAtmosphereOptions(value) {
   }
   common.invariant(result.sunZenithDegrees >= 0 &&
     result.sunZenithDegrees <= 120 && result.turbidity >= 1 &&
-    result.turbidity <= 20 && result.exposure > 0 && result.exposure <= 8,
+    result.turbidity <= 20 && result.exposure > 0 && result.exposure <= 8 &&
+    result.fogDensityMultiplier >= 0 && result.fogDensityMultiplier <= 10,
   'Atmosphere options are outside supported ranges')
   return result
 }
@@ -81,6 +88,17 @@ function requireStatus(status, operation, allowed) {
 function readU64(view, offset) {
   return view.getUint32(offset, true) +
     view.getUint32(offset + 4, true) * 4294967296
+}
+
+function monotonicNow() {
+  return typeof performance !== 'undefined' &&
+    typeof performance.now === 'function' ? performance.now() : Date.now()
+}
+
+function recordTiming(target, elapsedMs) {
+  target.count += 1
+  target.lastMs = elapsedMs
+  target.averageMs += (elapsedMs - target.averageMs) / target.count
 }
 
 function writeKey(view, pointer, key) {
@@ -200,6 +218,7 @@ class TerraAbi {
       manifest: 'terra_sizeof_manifest_v1',
       viewport: 'terra_sizeof_viewport_v1',
       camera: 'terra_sizeof_camera_v1',
+      cameraSnapshot: 'terra_sizeof_camera_snapshot_v1',
       key: 'terra_sizeof_patch_key_v1',
       texture: 'terra_sizeof_texture_key_v1',
       request: 'terra_sizeof_request_v1',
@@ -442,6 +461,32 @@ class TerraAbi {
           ? view.getUint32(pointer + 216, true) : 0,
         coverageComplete: this.layout.frame >= 224
           ? view.getUint32(pointer + 220, true) !== 0 : false
+      }
+    } finally {
+      this.free(pointer)
+    }
+  }
+
+  getCameraSnapshot() {
+    const pointer = this.alloc(this.layout.cameraSnapshot)
+    try {
+      let view = this.module.refreshMemory().dataView
+      view.setUint32(pointer, this.layout.cameraSnapshot, true)
+      requireStatus(this.module.call('terra_get_camera_snapshot',
+        this.context, pointer), 'terra_get_camera_snapshot')
+      view = this.module.refreshMemory().dataView
+      const projectionView = new Float64Array(16)
+      for (let index = 0; index < projectionView.length; ++index) {
+        projectionView[index] = view.getFloat64(
+          pointer + 32 + index * 8, true)
+      }
+      return {
+        cameraPosition: [
+          view.getFloat64(pointer + 8, true),
+          view.getFloat64(pointer + 16, true),
+          view.getFloat64(pointer + 24, true)
+        ],
+        projectionView
       }
     } finally {
       this.free(pointer)
@@ -693,6 +738,7 @@ class TerraGlobeRuntime {
     this.diagnostics = []
     this.refreshPending = false
     this.refreshing = false
+    this.settleRefreshScheduled = false
     this.destroyed = false
     this.paused = false
     this.manifest = null
@@ -704,6 +750,15 @@ class TerraGlobeRuntime {
     this.lastSurface = null
     this.lastError = ''
     this.cameraAnimation = null
+    this.interactionActive = false
+    this.cameraPreviewDirty = false
+    this.performanceStats = {
+      fullUpdate: { count: 0, lastMs: 0, averageMs: 0 },
+      lodUpdate: { count: 0, lastMs: 0, averageMs: 0 },
+      frameRead: { count: 0, lastMs: 0, averageMs: 0 },
+      rendererSetFrame: { count: 0, lastMs: 0, averageMs: 0 },
+      cameraPreview: { count: 0, lastMs: 0, averageMs: 0 }
+    }
   }
 
   static async create(options) {
@@ -802,7 +857,8 @@ class TerraGlobeRuntime {
   requiredAbiMethods() {
     const methods = ['loadManifest', 'setViewport', 'setCamera', 'update',
       'getRequests', 'getDrawRanges', 'getPositions', 'getTextureUv',
-      'getIndices', 'submitRecord', 'failRecord', 'retryRecord', 'destroy']
+      'getIndices', 'getCameraSnapshot', 'submitRecord', 'failRecord',
+      'retryRecord', 'destroy']
     if (this.manifest && this.manifest.transform === 'cylindrical') {
       methods.splice(3, 0, 'setGlobeTarget')
     }
@@ -819,8 +875,13 @@ class TerraGlobeRuntime {
     if (this.atmosphere.enabled && this.abi &&
       typeof this.abi.computeAtmosphere === 'function' &&
       typeof this.renderer.setAtmosphere === 'function') {
-      this.renderer.setAtmosphere(
-        this.abi.computeAtmosphere(this.atmosphere))
+      const atmosphere = this.abi.computeAtmosphere(this.atmosphere)
+      atmosphere.sunVisible = atmosphere.sunVisible &&
+        this.atmosphere.sunEnabled
+      atmosphere.fogEnabled = this.atmosphere.fogEnabled
+      atmosphere.fogDensityMultiplier =
+        this.atmosphere.fogDensityMultiplier
+      this.renderer.setAtmosphere(atmosphere)
     }
   }
 
@@ -1011,12 +1072,21 @@ class TerraGlobeRuntime {
       if (!this.cameraAnimation) {
         return
       }
-      const elapsed = Date.now() - startedAt
+      const now = Date.now()
+      const elapsed = now - startedAt
       const linear = common.clamp(elapsed / duration, 0, 1)
       const t = 1 - Math.pow(1 - linear, 3)
       const view = this.interpolateView(start, target, t, headingDelta)
       this.assignView(view)
-      this.refresh()
+      const lodRefreshDue = linear >= 1 ||
+        now - this.cameraAnimation.lastLodRefreshAt >=
+          ANIMATION_LOD_INTERVAL_MS
+      if (lodRefreshDue) {
+        this.cameraAnimation.lastLodRefreshAt = now
+        this.refresh()
+      } else if (!this.previewCamera()) {
+        this.refresh()
+      }
       if (linear >= 1) {
         this.cameraAnimation = null
         this.cameraEvent('camerasettle', { view: this.getView() })
@@ -1024,7 +1094,10 @@ class TerraGlobeRuntime {
         this.cameraAnimation.timer = setTimeout(step, 16)
       }
     }
-    this.cameraAnimation = { timer: setTimeout(step, 0) }
+    this.cameraAnimation = {
+      lastLodRefreshAt: startedAt,
+      timer: setTimeout(step, 0)
+    }
   }
 
   cancelAnimation() {
@@ -1092,10 +1165,15 @@ class TerraGlobeRuntime {
       'Interaction pan X')
     const panY = common.finiteNumber(value.yPixels || 0,
       'Interaction pan Y')
+    const headingDegrees = common.finiteNumber(
+      value.headingDegrees || 0, 'Heading delta')
+    const tiltDegrees = common.finiteNumber(
+      value.tiltDegrees || 0, 'Tilt delta')
+    const zoomChanged = value.zoomScale !== undefined && value.zoomScale !== 1
     if (panX || panY) {
       this.applyPanPixels(panX, panY)
     }
-    if (value.zoomScale !== undefined && value.zoomScale !== 1) {
+    if (zoomChanged) {
       const effectiveScale = this.applyZoomScale(value.zoomScale,
         'Interaction zoom scale')
       if (value.anchor) {
@@ -1111,11 +1189,15 @@ class TerraGlobeRuntime {
       }
     }
     this.camera.yawRadians = wrapRadians(this.camera.yawRadians +
-      common.finiteNumber(value.headingDegrees || 0, 'Heading delta') *
-        DEGREES_TO_RADIANS)
+      headingDegrees * DEGREES_TO_RADIANS)
     this.camera.tiltRadians = common.clamp(this.camera.tiltRadians -
-      common.finiteNumber(value.tiltDegrees || 0, 'Tilt delta') *
-        DEGREES_TO_RADIANS, MIN_TILT_RADIANS, MAX_TILT_RADIANS)
+      tiltDegrees * DEGREES_TO_RADIANS, MIN_TILT_RADIANS, MAX_TILT_RADIANS)
+    const changed = panX || panY || zoomChanged ||
+      headingDegrees || tiltDegrees
+    if (!changed) return
+    if (this.interactionActive && this.previewCamera()) {
+      return
+    }
     this.refresh()
   }
 
@@ -1285,11 +1367,55 @@ class TerraGlobeRuntime {
     this.refresh()
   }
 
-  setInteractionActive(active) {
-    if (this.renderer && typeof this.renderer.setInteractionActive === 'function') {
-      this.renderer.setInteractionActive(active)
-      this.publishState()
+  previewCamera() {
+    if (!this.lastFrame || !this.abi ||
+      typeof this.abi.getCameraSnapshot !== 'function' ||
+      !this.renderer || typeof this.renderer.setCameraFrame !== 'function') {
+      return false
     }
+    const startedAt = monotonicNow()
+    try {
+      if (this.manifest.transform === 'cylindrical') {
+        this.abi.setGlobeTarget(this.camera.longitudeDegrees,
+          this.camera.latitudeDegrees)
+      } else {
+        this.abi.setPlanarTarget(this.camera.x, this.camera.y)
+      }
+      this.abi.setCamera(this.camera)
+      const snapshot = this.abi.getCameraSnapshot()
+      this.lastFrame = Object.assign({}, this.lastFrame, snapshot)
+      this.renderer.setCameraFrame(snapshot)
+      this.cameraPreviewDirty = true
+      recordTiming(this.performanceStats.cameraPreview,
+        monotonicNow() - startedAt)
+      this.lastError = ''
+      this.scheduleRender()
+      return true
+    } catch (error) {
+      this.diagnostic('camera_preview_failed', {
+        message: common.redactSensitiveText(error.message || String(error))
+      })
+      return false
+    }
+  }
+
+  setInteractionActive(active) {
+    const next = Boolean(active)
+    if (this.interactionActive === next) {
+      return
+    }
+    this.interactionActive = next
+    if (this.renderer && typeof this.renderer.setInteractionActive === 'function') {
+      this.renderer.setInteractionActive(next)
+    }
+    const settleRefresh = !next &&
+      (this.cameraPreviewDirty || this.refreshPending)
+    if (settleRefresh) {
+      this.cameraPreviewDirty = false
+      this.scheduleSettledRefresh()
+      return
+    }
+    this.publishState()
   }
 
   setDebugRendering(options) {
@@ -1311,6 +1437,7 @@ class TerraGlobeRuntime {
       this.refreshPending = true
       return
     }
+    const startedAt = monotonicNow()
     this.refreshing = true
     try {
       if (this.manifest.transform === 'cylindrical') {
@@ -1320,20 +1447,34 @@ class TerraGlobeRuntime {
         this.abi.setPlanarTarget(this.camera.x, this.camera.y)
       }
       this.abi.setCamera(this.camera)
+      let phaseStartedAt = monotonicNow()
       const frame = this.abi.update(this.budget.lodThreshold)
+      recordTiming(this.performanceStats.lodUpdate,
+        monotonicNow() - phaseStartedAt)
+      phaseStartedAt = monotonicNow()
       const requests = this.abi.getRequests()
       const draws = this.abi.getDrawRanges()
       const positions = this.abi.getPositions()
       const textureUv = this.abi.getTextureUv()
       const indices = this.abi.getIndices()
+      recordTiming(this.performanceStats.frameRead,
+        monotonicNow() - phaseStartedAt)
       this.lastFrame = frame
       this.lastSurface = { draws, positions, textureUv, indices }
+      phaseStartedAt = monotonicNow()
       this.renderer.setFrame(frame, draws, positions, textureUv, indices)
+      recordTiming(this.performanceStats.rendererSetFrame,
+        monotonicNow() - phaseStartedAt)
+      this.cameraPreviewDirty = false
       this.syncTerrainRequests(requests)
       this.lastError = ''
+      recordTiming(this.performanceStats.fullUpdate,
+        monotonicNow() - startedAt)
       this.scheduleRender()
       this.publishState()
     } catch (error) {
+      recordTiming(this.performanceStats.fullUpdate,
+        monotonicNow() - startedAt)
       this.lastError = common.redactSensitiveText(error.message || String(error))
       this.diagnostic('runtime_refresh_failed', { message: this.lastError })
       this.publishState()
@@ -1350,7 +1491,7 @@ class TerraGlobeRuntime {
     if (this.destroyed) {
       return
     }
-    if (this.paused) {
+    if (this.paused || this.interactionActive) {
       this.refreshPending = true
       return
     }
@@ -1358,12 +1499,49 @@ class TerraGlobeRuntime {
       return
     }
     this.refreshPending = true
-    Promise.resolve().then(() => {
-      if (!this.destroyed && !this.paused) {
+    const refresh = () => {
+      if (this.destroyed || this.paused || this.interactionActive) {
+        return
+      }
+      this.refreshPending = false
+      this.refresh()
+    }
+    if (this.canvas &&
+      typeof this.canvas.requestAnimationFrame === 'function') {
+      this.canvas.requestAnimationFrame(refresh)
+    } else {
+      setTimeout(refresh, 0)
+    }
+  }
+
+  scheduleSettledRefresh() {
+    if (this.destroyed) {
+      return
+    }
+    this.refreshPending = true
+    if (this.settleRefreshScheduled) {
+      return
+    }
+    this.settleRefreshScheduled = true
+    const settle = () => {
+      setTimeout(() => {
+        this.settleRefreshScheduled = false
+        if (this.destroyed || this.paused || this.interactionActive) {
+          return
+        }
+        if (!this.refreshPending) {
+          return
+        }
         this.refreshPending = false
         this.refresh()
-      }
-    })
+      }, 0)
+    }
+    if (this.canvas &&
+      typeof this.canvas.requestAnimationFrame === 'function') {
+      this.canvas.requestAnimationFrame(settle)
+    } else {
+      setTimeout(settle, 0)
+    }
   }
 
   scheduleRender() {
@@ -1532,6 +1710,7 @@ class TerraGlobeRuntime {
       schema: 'terra.miniprogram.globe-runtime.v1',
       datasetId: this.manifest && this.manifest.datasetId,
       imageryId: this.manifest && this.manifest.texture.id,
+      radiusMeters: this.manifest && this.manifest.radius,
       frame: this.lastFrame && {
         sequence: this.lastFrame.sequence,
         patchCount: this.lastFrame.patchCount,
@@ -1548,6 +1727,13 @@ class TerraGlobeRuntime {
         failedRequestCount: this.failedRequests.size
       }),
       atmosphere: this.getAtmosphere(),
+      performance: {
+        fullUpdate: Object.assign({}, this.performanceStats.fullUpdate),
+        lodUpdate: Object.assign({}, this.performanceStats.lodUpdate),
+        frameRead: Object.assign({}, this.performanceStats.frameRead),
+        rendererSetFrame: Object.assign({}, this.performanceStats.rendererSetFrame),
+        cameraPreview: Object.assign({}, this.performanceStats.cameraPreview)
+      },
       renderer,
       contextLost: this.renderer ? this.renderer.contextLost : false,
       paused: this.paused,
@@ -1576,6 +1762,7 @@ class TerraGlobeRuntime {
     }
     this.paused = false
     if (this.refreshPending) {
+      this.settleRefreshScheduled = false
       this.refreshPending = false
       this.refresh()
     } else {
