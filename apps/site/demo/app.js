@@ -475,6 +475,14 @@
         `${number(quality.resolvedMaxPixelError, 2)}px ` +
         `${text('demo.debug.exact')} ` +
         `${number((quality.targetCoverage || 0) * 100, 1)}%`,
+      `${text('demo.debug.imageryLevels')} ` +
+        `${number(quality.selectedLevelMinimum, 0)}..` +
+        `${number(quality.selectedLevelMaximum, 0)} ` +
+        `${text('demo.debug.resolved')} ` +
+        `${number(quality.resolvedLevelMinimum, 0)}..` +
+        `${number(quality.resolvedLevelMaximum, 0)} ` +
+        `${text('demo.debug.transitionCoverage')} ` +
+        `${quality.coverageSubmitted || 0}`,
       `${text('demo.debug.cache')} ${textures.entries || 0}/` +
         `${textures.capacity || 0} ${text('demo.debug.presentation')} ` +
         `${textures.presentationTiles || 0} ${text('demo.debug.fallback')} ` +

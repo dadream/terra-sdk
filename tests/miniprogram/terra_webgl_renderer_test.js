@@ -301,6 +301,25 @@ async function main() {
   assert.strictEqual(refined.quality.coverageDrawCount, 1)
   assert.strictEqual(refined.quality.clippedDrawCount, 16)
   assert.strictEqual(refined.quality.coverageGuaranteed, true)
+  const edgePositions = new Float32Array([
+    0.75, -1, 0,
+    2.75, -1, 0,
+    0.75, 1, 0,
+    2.75, 1, 0
+  ])
+  const edgeRefined = rendererModule.refineImageryDraws(frame(), [qualityDraw],
+    edgePositions, qualityUv,
+    { width: 1024, height: 1024, devicePixelRatio: 1 }, {
+      tile_size: 256,
+      maximum_level: 8
+    }, { targetPixelError: 1, maximumDraws: 64 })
+  assert.strictEqual(edgeRefined.draws.length, refined.draws.length)
+  assert.strictEqual(edgeRefined.quality.selectedLevelMinimum,
+    refined.quality.selectedLevelMinimum)
+  assert.strictEqual(edgeRefined.quality.selectedLevelMaximum,
+    refined.quality.selectedLevelMaximum)
+  assert.strictEqual(edgeRefined.quality.measuredMaxPixelError,
+    refined.quality.measuredMaxPixelError)
   const terrainBound = rendererModule.refineImageryDraws(frame(),
     [qualityDraw], qualityPositions, qualityUv,
     { width: 1024, height: 1024, devicePixelRatio: 1 }, {
@@ -570,6 +589,45 @@ async function main() {
   assert.strictEqual(loadedCapacityStats.quality.limitedByTextureBudget, false)
   assert.strictEqual(loadedCapacityStats.quality.limitedByLevel, true)
   capacityRenderer.destroy()
+  await settle()
+
+  const presentationGl = new FakeGl()
+  const presentationCanvas = new FakeCanvas(presentationGl)
+  presentationCanvas.width = 1024
+  presentationCanvas.height = 1024
+  const presentationRenderer = new rendererModule.TerraWebGlRenderer(
+    presentationCanvas, {
+      urlForTile: (tile) =>
+        `https://tiles.example/${tile.matrix}/${tile.column}/${tile.row}.jpg`,
+      textureDescriptor: {
+        kind: 'global-geodetic',
+        matrix_level_offset: 1,
+        maximum_level: 8,
+        level_zero_columns: 2,
+        level_zero_rows: 1,
+        tile_size: 256
+      },
+      terrainBoundImagery: false,
+      maximumTextureEntries: 64,
+      textureCacheBytes: 64 * 349524,
+      maximumTextureRequests: 64,
+      maximumTextureRetries: 0,
+      prefetchTextureAncestors: false
+    })
+  presentationRenderer.setFrame(frame(), [qualityDraw], qualityPositions,
+    qualityUv, indices)
+  const loadingPresentation = presentationRenderer.render()
+  assert(loadingPresentation.submitted > 0)
+  assert(presentationRenderer.stats().quality.coverageSubmitted > 0)
+  assert.strictEqual(presentationRenderer.stats().quality.ready, false)
+  await loadAllImages(presentationCanvas)
+  presentationRenderer.render()
+  const settledPresentation = presentationRenderer.stats()
+  assert.strictEqual(settledPresentation.textures.targetMissing, 0)
+  assert.strictEqual(settledPresentation.quality.coverageSubmitted, 0)
+  assert.strictEqual(settledPresentation.quality.ready, true)
+  assert.strictEqual(settledPresentation.quality.settled, true)
+  presentationRenderer.destroy()
   await settle()
 
   const prefetchRenderer = new rendererModule.TerraWebGlRenderer(
@@ -953,12 +1011,14 @@ async function main() {
     [rootCoverageDraw, pendingDetailDraw], coveredPositions,
     coveredUv, indices)
   const promotedRenderStats = transitionRenderer.render()
-  assert.strictEqual(promotedRenderStats.submitted, 2)
+  assert.strictEqual(promotedRenderStats.submitted, 1)
+  assert.strictEqual(
+    transitionRenderer.stats().quality.geometryCoverageSubmitted, 0)
   assert.strictEqual(
     transitionRenderer.stats().transition.displayingPreviousFrame, false)
-  assert(transitionGl.calls.some((call) =>
+  assert.strictEqual(transitionGl.calls.some((call) =>
     call.name === 'clear' &&
-    call.args[0] === transitionGl.DEPTH_BUFFER_BIT))
+    call.args[0] === transitionGl.DEPTH_BUFFER_BIT), false)
   transitionRenderer.destroy()
   await settle()
 
@@ -1010,6 +1070,7 @@ async function main() {
   assert.strictEqual(renderer.stats().quality.state, 'ready')
   assert.strictEqual(renderer.stats().quality.ready, true)
   assert.strictEqual(renderer.stats().quality.settled, true)
+  assert.strictEqual(renderer.stats().quality.coverageSubmitted, 0)
   renderer.setOverlays({
     points: [{ id: 'beijing', world: [1, 2, 3], priority: 1 }],
     route: {

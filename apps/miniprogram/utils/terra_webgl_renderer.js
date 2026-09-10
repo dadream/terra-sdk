@@ -452,7 +452,8 @@ function drawUvBounds(draw, textureUv) {
 function projectedDrawDimensions(frame, draw, positions, viewport) {
   if (!frame || !frame.projectionView || !frame.cameraPosition ||
     !positions || !viewport) {
-    return { width: 0, height: 0, centerDistance: Number.POSITIVE_INFINITY }
+    return { width: 0, height: 0, unclippedWidth: 0, unclippedHeight: 0,
+      centerDistance: Number.POSITIVE_INFINITY }
   }
   const matrix = frame.projectionView
   let minimumX = Number.POSITIVE_INFINITY
@@ -479,7 +480,8 @@ function projectedDrawDimensions(frame, draw, positions, viewport) {
   }
   if (!projected || maximumX < -1 || minimumX > 1 || maximumY < -1 ||
     minimumY > 1) {
-    return { width: 0, height: 0, centerDistance: Number.POSITIVE_INFINITY }
+    return { width: 0, height: 0, unclippedWidth: 0, unclippedHeight: 0,
+      centerDistance: Number.POSITIVE_INFINITY }
   }
   const dpr = Math.max(1, viewport.devicePixelRatio || 1)
   const width = Math.max(1, viewport.width || 1) / dpr
@@ -493,6 +495,10 @@ function projectedDrawDimensions(frame, draw, positions, viewport) {
   return {
     width: (clippedMaximumX - clippedMinimumX) * width * 0.5,
     height: (clippedMaximumY - clippedMinimumY) * height * 0.5,
+    unclippedWidth: Math.min(width * 2,
+      (maximumX - minimumX) * width * 0.5),
+    unclippedHeight: Math.min(height * 2,
+      (maximumY - minimumY) * height * 0.5),
     centerDistance: Math.sqrt(centerX * centerX + centerY * centerY)
   }
 }
@@ -641,8 +647,9 @@ function refineImageryDraws(frame, draws, positions, textureUv, viewport,
     const uv = drawUvBounds(draw, textureUv)
     const uvWidth = Math.max(1 / tileSize, uv.maximumU - uv.minimumU)
     const uvHeight = Math.max(1 / tileSize, uv.maximumV - uv.minimumV)
-    const pixelError = Math.max(dimensions.width / (tileSize * uvWidth),
-      dimensions.height / (tileSize * uvHeight))
+    const pixelError = Math.max(
+      dimensions.unclippedWidth / (tileSize * uvWidth),
+      dimensions.unclippedHeight / (tileSize * uvHeight))
     const available = Math.max(0, maximumLevel - draw.texture.level)
     const minimumAllocation = -draw.texture.level
     const terrainAvailable = value.terrainBound
@@ -1990,6 +1997,12 @@ class TerraWebGlRenderer {
       this.omittedCurrentGeometryCount() === 0
   }
 
+  currentTargetGeometryReady() {
+    return Boolean(this.current && this.current.draws.length > 0) &&
+      this.missingCurrentGeometryCount() === 0 &&
+      this.omittedCurrentGeometryCount() === 0
+  }
+
   updateGeometryPins() {
     const pinned = new Set()
     if (this.displaySurface && this.displaySurface.current) {
@@ -2017,12 +2030,14 @@ class TerraWebGlRenderer {
 
   promoteCurrentSurfaceIfReady() {
     if (!this.currentGeometryReady()) return false
+    const useGeometryCoverage = !this.currentTargetGeometryReady()
     if (this.displaySurface &&
       this.displaySurface.current === this.current &&
       this.displaySurface.renderDraws === this.renderDraws &&
       this.displaySurface.coverageDraws === this.coverageDraws &&
       this.displaySurface.geometryCoverageDraws ===
-        this.geometryCoverageDraws) {
+        this.geometryCoverageDraws &&
+      this.displaySurface.useGeometryCoverage === useGeometryCoverage) {
       return true
     }
     this.uploadIndexBuffer(this.current.indices)
@@ -2031,6 +2046,7 @@ class TerraWebGlRenderer {
       renderDraws: this.renderDraws,
       coverageDraws: this.coverageDraws,
       geometryCoverageDraws: this.geometryCoverageDraws,
+      useGeometryCoverage,
       quality: this.pendingQualityStats
     }
     this.updateGeometryPins()
@@ -2119,14 +2135,23 @@ class TerraWebGlRenderer {
     gl.activeTexture(gl.TEXTURE0)
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer)
     this.textures.beginFrame()
-    const geometryCoverageDraws = surface.geometryCoverageDraws || []
+    const textureStatsBeforeRender = this.textures.stats()
+    const targetTexturesReady = surface.current === current &&
+      textureStatsBeforeRender.coverageReady &&
+      textureStatsBeforeRender.targetMissing === 0 &&
+      textureStatsBeforeRender.failed === 0
+    const geometryCoverageDraws = surface.useGeometryCoverage
+      ? (surface.geometryCoverageDraws || []) : []
+    const imageryCoverageDraws = this.mode === 'texture' &&
+      !targetTexturesReady ? (surface.coverageDraws || []) : []
     const targetTerrainDraws = this.mode === 'texture'
-      ? (surface.coverageDraws || []).concat(surface.renderDraws)
+      ? imageryCoverageDraws.concat(surface.renderDraws)
       : surface.current.draws.filter((draw) =>
         (draw.flags & DRAW_FLAG_COVERAGE) === 0)
     let submitted = 0
     const terrainDraws = geometryCoverageDraws.concat(targetTerrainDraws)
-    const coverageDrawCount = geometryCoverageDraws.length
+    const geometryCoverageDrawCount = geometryCoverageDraws.length
+    const imageryCoverageDrawCount = imageryCoverageDraws.length
     let maximumResolvedError = 0
     let fallbackCount = 0
     let missingCount = 0
@@ -2134,7 +2159,8 @@ class TerraWebGlRenderer {
     let maximumResolvedLevel = Number.NEGATIVE_INFINITY
     for (let index = 0; index < terrainDraws.length; ++index) {
       const draw = terrainDraws[index]
-      if (coverageDrawCount > 0 && index === coverageDrawCount) {
+      if (geometryCoverageDrawCount > 0 &&
+        index === geometryCoverageDrawCount) {
         gl.clear(gl.DEPTH_BUFFER_BIT)
       }
       const geometry = this.geometry.get(draw.geometryKey)
@@ -2184,6 +2210,11 @@ class TerraWebGlRenderer {
         draw.firstIndex * 2)
       submitted += 1
     }
+    const coverageSubmitted = geometryCoverageDrawCount +
+      imageryCoverageDrawCount
+    if (coverageSubmitted > 0) {
+      maximumResolvedError = Number.POSITIVE_INFINITY
+    }
     submitted += this.renderOverlays(relative, viewFrame.cameraPosition)
     const error = gl.getError()
     if (error !== gl.NO_ERROR) {
@@ -2192,6 +2223,9 @@ class TerraWebGlRenderer {
     this.drawStats = { submitted, queued: this.uploadQueue.length }
     this.qualityStats = Object.assign({}, surface.quality, {
       resolvedMaxPixelError: maximumResolvedError,
+      coverageSubmitted,
+      geometryCoverageSubmitted: geometryCoverageDrawCount,
+      imageryCoverageSubmitted: imageryCoverageDrawCount,
       fallbackCount,
       missingCount,
       resolvedLevelMinimum: Number.isFinite(minimumResolvedLevel)
@@ -2516,6 +2550,8 @@ class TerraWebGlRenderer {
       this.displaySurface.current === this.current)
     const geometryCoverageReady = this.currentGeometryCoverageReady()
     const geometryTargetComplete = this.omittedCurrentGeometryCount() === 0
+    const transitionCoverageSubmitted =
+      (this.qualityStats.coverageSubmitted || 0) > 0
     const covered = textureStats.coverageReady &&
       textureStats.missingRatio === 0 && displayingCurrent &&
       this.currentGeometryReady()
@@ -2528,6 +2564,9 @@ class TerraWebGlRenderer {
         resolvedError <= this.qualityStats.targetPixelError * 1.001))
     const ready = !this.interactionActive &&
       covered &&
+      geometryTargetComplete &&
+      this.currentTargetGeometryReady() &&
+      !transitionCoverageSubmitted &&
       targetMet &&
       !textureStats.blockedByFailure &&
       textureStats.state !== 'blocked-capacity' &&
@@ -2553,6 +2592,7 @@ class TerraWebGlRenderer {
       targetCoverage,
       geometryCoverageReady,
       geometryTargetComplete,
+      transitionCoverageSubmitted,
       covered,
       resourceStable,
       requestIdle,
