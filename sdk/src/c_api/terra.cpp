@@ -17,6 +17,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <exception>
+#include <limits>
 #include <map>
 #include <new>
 #include <set>
@@ -27,6 +28,36 @@ struct terra_loaded_record {
   std::uint32_t kind = 0U;
   terra_patch_key_v1 key{};
   terra::codec::height_patch values;
+};
+
+struct terra_surface_key {
+  terra_patch_key_v1 patch{};
+  std::uint8_t fragment = 0U;
+};
+
+struct terra_surface_key_less {
+  bool operator()(const terra_surface_key& left,
+                  const terra_surface_key& right) const {
+    if (left.patch.level != right.patch.level) {
+      return left.patch.level < right.patch.level;
+    }
+    if (left.patch.i != right.patch.i) {
+      return left.patch.i < right.patch.i;
+    }
+    if (left.patch.j != right.patch.j) {
+      return left.patch.j < right.patch.j;
+    }
+    if (left.patch.k != right.patch.k) {
+      return left.patch.k < right.patch.k;
+    }
+    return left.fragment < right.fragment;
+  }
+};
+
+struct terra_cached_surface {
+  terra::frame::patch_surface_mesh mesh;
+  std::uint64_t last_used_sequence = 0U;
+  std::size_t byte_size = 0U;
 };
 
 struct terra_context {
@@ -51,7 +82,10 @@ struct terra_context {
   std::vector<float> positions;
   std::vector<float> texture_uv;
   std::vector<std::uint16_t> index_buffer;
+  std::map<terra_surface_key, terra_cached_surface,
+           terra_surface_key_less> surface_cache;
   terra_frame_v1 frame{};
+  std::size_t surface_cache_bytes = 0U;
   terra_stats_v1 stats{};
   terra::frame::cylindrical_lod_controller globe_lod;
   mutable std::string last_error;
@@ -65,6 +99,8 @@ constexpr std::size_t manifest_v1_tiled_texture_size =
     offsetof(terra_manifest_v1, texture_minimum_u);
 constexpr std::size_t frame_v1_base_size =
     offsetof(terra_frame_v1, draw_count);
+constexpr std::size_t maximum_cached_surface_bytes = 16U * 1024U * 1024U;
+constexpr std::size_t maximum_cached_surface_count = 512U;
 
 terra_status fail(const terra_context* context, terra_status status,
                   const char* message) {
@@ -225,9 +261,31 @@ struct active_record_key_less {
   }
 };
 
+using active_record_set =
+    std::set<active_record_key, active_record_key_less>;
+using loaded_record_index =
+    std::map<active_record_key, const terra_loaded_record*,
+             active_record_key_less>;
+
+active_record_key make_active_record_key(
+    std::uint32_t kind, const terra_patch_key_v1& key) {
+  active_record_key result;
+  result.kind = kind;
+  result.key = key;
+  return result;
+}
+
+loaded_record_index index_loaded_records(const terra_context& context) {
+  loaded_record_index result;
+  for (const terra_loaded_record& record : context.loaded_records) {
+    result.emplace(make_active_record_key(record.kind, record.key), &record);
+  }
+  return result;
+}
+
 void prune_inactive_records(terra_context& context,
                             const terra::frame::lod_cut& cut) {
-  std::set<active_record_key, active_record_key_less> active;
+  active_record_set active;
   for (const terra::frame::lod_record_request& request :
        cut.record_requests) {
     active_record_key key;
@@ -247,10 +305,55 @@ void prune_inactive_records(terra_context& context,
             return active.find(key) == active.end();
           }),
       context.loaded_records.end());
+  context.failed_records.erase(
+      std::remove_if(
+          context.failed_records.begin(), context.failed_records.end(),
+          [&active](const terra_request_v1& request) {
+            active_record_key key;
+            key.kind = request.kind;
+            key.key = request.key;
+            return active.find(key) == active.end();
+          }),
+      context.failed_records.end());
   context.stats.loaded_patch_count = context.loaded_records.size();
   context.stats.decoded_value_count = 0U;
   for (const terra_loaded_record& record : context.loaded_records) {
     context.stats.decoded_value_count += record.values.values.size();
+  }
+}
+
+std::size_t surface_mesh_bytes(
+    const terra::frame::patch_surface_mesh& mesh) {
+  return (mesh.positions_xyz.capacity() + mesh.texture_uv.capacity()) *
+         sizeof(float);
+}
+
+void prune_surface_cache(terra_context& context,
+                         std::size_t incoming_bytes) {
+  if (incoming_bytes > maximum_cached_surface_bytes) {
+    context.surface_cache.clear();
+    context.surface_cache_bytes = 0U;
+    return;
+  }
+  while (!context.surface_cache.empty() &&
+         (context.surface_cache.size() >= maximum_cached_surface_count ||
+          context.surface_cache_bytes >
+              maximum_cached_surface_bytes - incoming_bytes)) {
+    auto least_recent = context.surface_cache.begin();
+    auto iterator = least_recent;
+    ++iterator;
+    for (; iterator != context.surface_cache.end(); ++iterator) {
+      if (iterator->second.last_used_sequence <
+          least_recent->second.last_used_sequence) {
+        least_recent = iterator;
+      }
+    }
+    const std::size_t removed_bytes = least_recent->second.byte_size;
+    context.surface_cache.erase(least_recent);
+    context.surface_cache_bytes =
+        removed_bytes <= context.surface_cache_bytes
+            ? context.surface_cache_bytes - removed_bytes
+            : 0U;
   }
 }
 
@@ -281,6 +384,36 @@ terra_status map_hierarchy_status(terra::codec::hierarchy_status status) {
   return TERRA_STATUS_INTERNAL_ERROR;
 }
 
+template <typename value_t>
+void reserve_frame_output(std::vector<value_t>& values,
+                          std::size_t required_count) {
+  const std::size_t minimum_headroom = 1024U;
+  const std::size_t retained_threshold =
+      (1024U * 1024U) / sizeof(value_t);
+  const bool enough = values.capacity() >= required_count;
+  const std::size_t allowed_surplus =
+      std::max(required_count / 2U, minimum_headroom);
+  const bool excessive = enough &&
+      values.capacity() > retained_threshold &&
+      values.capacity() - required_count > allowed_surplus;
+  if (enough && !excessive) {
+    return;
+  }
+  if (required_count == 0U) {
+    std::vector<value_t>().swap(values);
+    return;
+  }
+  const std::size_t headroom =
+      std::max(required_count / 4U, minimum_headroom);
+  const std::size_t maximum =
+      std::numeric_limits<std::size_t>::max();
+  const std::size_t reserve_count = required_count > maximum - headroom
+      ? required_count
+      : required_count + headroom;
+  std::vector<value_t>().swap(values);
+  values.reserve(reserve_count);
+}
+
 terra_status build_render_buffers(
     terra_context& context, const terra::frame::lod_cut& cut,
     std::uint32_t& expected_draw_count,
@@ -290,6 +423,8 @@ terra_status build_render_buffers(
   using height_map = std::map<terra_patch_key_v1,
                               terra::codec::height_diamond,
                               patch_key_less>;
+  const loaded_record_index loaded_records =
+      index_loaded_records(context);
   height_map heights;
   context.draw_ranges.clear();
   context.positions.clear();
@@ -306,7 +441,10 @@ terra_status build_render_buffers(
         request.kind == terra::frame::lod_record_kind::root
             ? TERRA_REQUEST_ROOT
             : TERRA_REQUEST_DETAIL;
-    const terra_loaded_record* record = find_record(context, kind, key);
+    const loaded_record_index::const_iterator loaded =
+        loaded_records.find(make_active_record_key(kind, key));
+    const terra_loaded_record* record =
+        loaded == loaded_records.end() ? nullptr : loaded->second;
     if (record == nullptr) {
       continue;
     }
@@ -374,6 +512,56 @@ terra_status build_render_buffers(
     }
   }
 
+  const auto ready_fragment_count =
+      [&heights](const terra::frame::lod_patch& patch) {
+        const height_map::const_iterator height =
+            heights.find(to_key(patch));
+        if (height == heights.end()) {
+          return std::size_t(0U);
+        }
+        std::size_t count = 0U;
+        for (std::uint8_t fragment = 0U; fragment < 2U; ++fragment) {
+          if (patch.has_fragment(fragment) &&
+              height->second.has_fragment(fragment)) {
+            ++count;
+          }
+        }
+        return count;
+      };
+  std::size_t render_surface_count = 0U;
+  if (context.manifest.transform == TERRA_TRANSFORM_CYLINDRICAL) {
+    for (const terra::frame::lod_record_request& request :
+         cut.record_requests) {
+      if (request.kind == terra::frame::lod_record_kind::root) {
+        render_surface_count += ready_fragment_count(request.patch);
+      }
+    }
+  }
+  for (const terra::frame::lod_patch& patch : cut.patches) {
+    if (patch.visible) {
+      render_surface_count += ready_fragment_count(patch);
+    }
+  }
+  const std::size_t patch_dimension = context.manifest.patch_dimension;
+  const std::size_t vertex_count =
+      (patch_dimension + 1U) * (patch_dimension + 2U) / 2U;
+  if (vertex_count != 0U &&
+      render_surface_count >
+          static_cast<std::size_t>(UINT32_MAX) / vertex_count) {
+    return fail(&context, TERRA_STATUS_RESOURCE_LIMIT,
+                "frame vertex count exceeds the C ABI range");
+  }
+  const std::size_t total_vertex_count =
+      render_surface_count * vertex_count;
+  if (total_vertex_count >
+          static_cast<std::size_t>(UINT32_MAX) / 3U) {
+    return fail(&context, TERRA_STATUS_RESOURCE_LIMIT,
+                "frame buffer exceeds the C ABI range");
+  }
+  reserve_frame_output(context.draw_ranges, render_surface_count);
+  reserve_frame_output(context.positions, total_vertex_count * 3U);
+  reserve_frame_output(context.texture_uv, total_vertex_count * 2U);
+
   const terra::core::global_geodetic_wmts_selector selector(
       static_cast<int>(context.manifest.texture_matrix_level_offset),
       static_cast<int>(context.manifest.texture_maximum_level));
@@ -392,9 +580,15 @@ terra_status build_render_buffers(
       [&](const terra::frame::lod_patch& patch, std::uint8_t fragment,
           const terra::codec::height_fragment& fragment_heights,
           std::uint32_t flags) -> terra_status {
-    terra::frame::patch_surface_mesh mesh;
-    const terra::frame::surface_mesh_status mesh_status =
-        context.manifest.transform == TERRA_TRANSFORM_PLANAR
+    terra_surface_key surface_key;
+    surface_key.patch = to_key(patch);
+    surface_key.fragment = fragment;
+    auto cached = context.surface_cache.find(surface_key);
+    terra::frame::patch_surface_mesh generated;
+    const terra::frame::patch_surface_mesh* surface = nullptr;
+    if (cached == context.surface_cache.end()) {
+      const terra::frame::surface_mesh_status mesh_status =
+          context.manifest.transform == TERRA_TRANSFORM_PLANAR
             ? terra::frame::make_planar_patch_surface(
                   patch, fragment, fragment_heights,
                   context.manifest.height_scale_factor,
@@ -403,19 +597,41 @@ terra_status build_render_buffers(
                                              context.manifest.minimum_v}},
                       terra::core::vector2d{{context.manifest.maximum_u,
                                              context.manifest.maximum_v}}),
-                  planar_texture_selector, mesh)
+                  planar_texture_selector, generated)
             : terra::frame::make_cylindrical_patch_surface(
                   patch, fragment, fragment_heights,
                   context.manifest.height_scale_factor,
-                  context.manifest.radius, selector, mesh);
-    if (mesh_status != terra::frame::surface_mesh_status::ok) {
-      const terra_status status =
-          mesh_status == terra::frame::surface_mesh_status::resource_limit
-              ? TERRA_STATUS_RESOURCE_LIMIT
-              : TERRA_STATUS_INTERNAL_ERROR;
-      return fail(&context, status,
-                  terra::frame::surface_mesh_status_message(mesh_status));
+                  context.manifest.radius, selector, generated);
+      if (mesh_status != terra::frame::surface_mesh_status::ok) {
+        const terra_status status =
+            mesh_status == terra::frame::surface_mesh_status::resource_limit
+                ? TERRA_STATUS_RESOURCE_LIMIT
+                : TERRA_STATUS_INTERNAL_ERROR;
+        return fail(&context, status,
+                    terra::frame::surface_mesh_status_message(mesh_status));
+      }
+      const std::size_t byte_size = surface_mesh_bytes(generated);
+      if (byte_size <= maximum_cached_surface_bytes) {
+        prune_surface_cache(context, byte_size);
+        terra_cached_surface value;
+        value.mesh = std::move(generated);
+        value.last_used_sequence = context.sequence + 1U;
+        value.byte_size = byte_size;
+        const auto inserted =
+            context.surface_cache.emplace(surface_key, std::move(value));
+        cached = inserted.first;
+        if (inserted.second) {
+          context.surface_cache_bytes += byte_size;
+        }
+        surface = &cached->second.mesh;
+      } else {
+        surface = &generated;
+      }
+    } else {
+      cached->second.last_used_sequence = context.sequence + 1U;
+      surface = &cached->second.mesh;
     }
+    const terra::frame::patch_surface_mesh& mesh = *surface;
 
     const std::size_t first_vertex = context.positions.size() / 3U;
     const std::size_t vertex_count = mesh.positions_xyz.size() / 3U;
@@ -609,6 +825,8 @@ void reset_runtime_state(terra_context& context) {
   context.positions.clear();
   context.texture_uv.clear();
   context.index_buffer.clear();
+  context.surface_cache.clear();
+  context.surface_cache_bytes = 0U;
   context.frame = terra_frame_v1{};
   context.frame.struct_size = sizeof(terra_frame_v1);
   context.frame.api_version = TERRA_C_API_VERSION;
@@ -1136,11 +1354,9 @@ terra_status terra_update(terra_context* context, float lod_threshold) {
       return camera_status;
     }
     terra::frame::lod_cut cut;
-    std::size_t active_record_request_count = 0U;
     if (context->manifest.transform == TERRA_TRANSFORM_PLANAR) {
       cut = terra::frame::select_fixed_planar_lod(
           context->manifest.patch_dimension, context->planar_level);
-      active_record_request_count = cut.record_requests.size();
     } else {
       terra::frame::lod_resource_state resources;
       resources.available_roots.reserve(context->loaded_records.size());
@@ -1167,32 +1383,14 @@ terra_status terra_update(terra_context* context, float lod_threshold) {
         resources.unavailable_details.push_back(unavailable);
       }
       cut = context->globe_lod.update(lod_threshold, snapshot, resources);
-      active_record_request_count = cut.record_requests.size();
-      const terra::frame::lod_cut prefetch =
-          terra::frame::select_procedural_cylindrical_lod(
-              context->manifest.radius,
-              context->manifest.patch_dimension, lod_threshold, snapshot,
-              40U, 65536U, resources.unavailable_details);
-      for (const terra::frame::lod_record_request& request :
-           prefetch.record_requests) {
-        const auto duplicate = std::find_if(
-            cut.record_requests.begin(), cut.record_requests.end(),
-            [&request](const terra::frame::lod_record_request& current) {
-              return current.kind == request.kind &&
-                     current.patch.level == request.patch.level &&
-                     current.patch.id == request.patch.id;
-            });
-        if (duplicate == cut.record_requests.end()) {
-          cut.record_requests.push_back(request);
-        }
-      }
     }
     if (!cut.complete) {
       return fail(context, TERRA_STATUS_RESOURCE_LIMIT,
                   "LOD selection exhausted its safety budget");
     }
     const terra::frame::frame_packet packet =
-        terra::frame::make_frame_packet(++context->sequence, snapshot, cut);
+        terra::frame::make_frame_packet(context->sequence + 1U, snapshot,
+                                        cut);
 
     context->requests.clear();
     context->patches.clear();
@@ -1208,16 +1406,21 @@ terra_status terra_update(terra_context* context, float lod_threshold) {
     }
     struct scheduled_record {
       const terra::frame::lod_record_request* record = nullptr;
-      bool active = false;
       std::size_t order = 0U;
     };
+    const loaded_record_index loaded_records =
+        index_loaded_records(*context);
+    active_record_set failed_records;
+    for (const terra_request_v1& failed : context->failed_records) {
+      failed_records.insert(
+          make_active_record_key(failed.kind, failed.key));
+    }
     std::vector<scheduled_record> schedule;
     schedule.reserve(cut.record_requests.size());
     for (std::size_t index = 0U; index < cut.record_requests.size();
          ++index) {
       scheduled_record entry;
       entry.record = &cut.record_requests[index];
-      entry.active = index < active_record_request_count;
       entry.order = index;
       schedule.push_back(entry);
     }
@@ -1230,9 +1433,6 @@ terra_status terra_update(terra_context* context, float lod_threshold) {
               right.record->kind == terra::frame::lod_record_kind::root;
           if (left_root != right_root) {
             return left_root;
-          }
-          if (left.active != right.active) {
-            return left.active;
           }
           if (left.record->patch.priority !=
               right.record->patch.priority) {
@@ -1250,9 +1450,10 @@ terra_status terra_update(terra_context* context, float lod_threshold) {
               ? TERRA_REQUEST_ROOT
               : TERRA_REQUEST_DETAIL;
       request.key = to_key(record.patch);
-      if (find_record(*context, request.kind, request.key) == nullptr &&
-          find_failed_record(*context, request.kind,
-                             request.key) == nullptr) {
+      const active_record_key active =
+          make_active_record_key(request.kind, request.key);
+      if (loaded_records.count(active) == 0U &&
+          failed_records.count(active) == 0U) {
         context->requests.push_back(request);
       }
     }
@@ -1267,6 +1468,7 @@ terra_status terra_update(terra_context* context, float lod_threshold) {
       return render_status;
     }
     prune_inactive_records(*context, cut);
+    context->sequence = packet.sequence;
 
     context->frame = terra_frame_v1{};
     context->frame.struct_size = sizeof(terra_frame_v1);
@@ -1280,7 +1482,7 @@ terra_status terra_update(terra_context* context, float lod_threshold) {
     context->frame.loaded_patch_count =
         static_cast<std::uint32_t>(context->loaded_records.size());
     context->frame.failed_patch_count =
-        static_cast<std::uint32_t>(context->stats.failed_patch_count);
+        static_cast<std::uint32_t>(context->failed_records.size());
     std::copy(packet.camera.position.begin(), packet.camera.position.end(),
               context->frame.camera_position);
     std::copy(packet.camera.projection_view.begin(),
@@ -1389,6 +1591,12 @@ terra_status terra_get_position_buffer(const terra_context* context,
                      positions, capacity, count);
 }
 
+const float* terra_get_position_buffer_view(const terra_context* context) {
+  return context == nullptr || context->positions.empty()
+      ? nullptr
+      : context->positions.data();
+}
+
 terra_status terra_get_texture_uv_buffer(const terra_context* context,
                                          float* texture_uv,
                                          std::size_t capacity,
@@ -1397,6 +1605,12 @@ terra_status terra_get_texture_uv_buffer(const terra_context* context,
                                   ? std::vector<float>()
                                   : context->texture_uv,
                      texture_uv, capacity, count);
+}
+
+const float* terra_get_texture_uv_buffer_view(const terra_context* context) {
+  return context == nullptr || context->texture_uv.empty()
+      ? nullptr
+      : context->texture_uv.data();
 }
 
 terra_status terra_get_index_buffer(const terra_context* context,

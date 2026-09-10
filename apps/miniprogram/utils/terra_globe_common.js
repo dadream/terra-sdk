@@ -530,7 +530,8 @@ function deriveFrameBudget(viewport, capabilities, quality) {
     maximumConcurrentRequests: area > 700000 ? 3 : 5,
     uploadBudgetMs: area > 700000 ? 4 : 7,
     geometryCacheBytes: area > 700000 ? 8 * 1024 * 1024 : 16 * 1024 * 1024,
-    textureCacheBytes: area > 700000 ? 24 * 1024 * 1024 : 48 * 1024 * 1024
+    maximumTextureEntries: area > 700000 ? 256 : 128,
+    textureCacheBytes: area > 700000 ? 96 * 1024 * 1024 : 48 * 1024 * 1024
   }
 }
 

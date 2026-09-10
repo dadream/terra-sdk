@@ -215,6 +215,8 @@ async function main() {
   assert.strictEqual(budget.physicalWidth, 1024)
   assert.strictEqual(budget.physicalHeight, 1024)
   assert.strictEqual(budget.maximumConcurrentRequests, 3)
+  assert.strictEqual(budget.maximumTextureEntries, 256)
+  assert.strictEqual(budget.textureCacheBytes, 96 * 1024 * 1024)
   assert.strictEqual(budget.terrainPixelError, 1.25)
   assert(budget.lodThreshold > 0.001 && budget.lodThreshold < 0.0011)
   const coarseBudget = common.deriveFrameBudget({
@@ -227,6 +229,8 @@ async function main() {
   })
   assert(Math.abs(coarseBudget.lodThreshold -
     (2.5 / 600 * 2 * Math.tan(Math.PI / 6))) < 1e-12)
+  assert.strictEqual(coarseBudget.maximumTextureEntries, 128)
+  assert.strictEqual(coarseBudget.textureCacheBytes, 48 * 1024 * 1024)
 
   const relative = common.relativeProjectionView(new Float64Array([
     1, 0, 0, 0,

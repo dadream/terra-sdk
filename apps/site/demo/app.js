@@ -415,7 +415,9 @@
     const atmosphere = current.atmosphere || {}
     const view = current.view || {}
     const target = view.target || {}
-    elements.frame.textContent = `${text('demo.frame')} ${frame.sequence || 0} · ` +
+    const presentationFrame = rendererPerformance.render &&
+      rendererPerformance.render.count
+    elements.frame.textContent = `${text('demo.frame')} ${presentationFrame || 0} · ` +
       `${text('demo.patches')} ${frame.loadedRecordCount || 0} · ` +
       `${text('demo.draws')} ${frame.drawCount || 0} · ` +
       `${text('demo.textures')} ${textures.entries || 0}`
@@ -424,12 +426,23 @@
     const pending = (current.terrain && current.terrain.active || 0) +
       (current.terrain && current.terrain.queued || 0) +
       (textures.active || 0) + (textures.queued || 0)
+    const qualityState = quality.state || 'loading'
     elements.runtime.textContent = current.error
       ? text('demo.status.failed')
-      : (coverageReady && pending === 0
-          ? text('demo.status.ready') : text('demo.status.loading'))
-    if (coverageReady && frame.drawCount > 0) {
+      : (quality.ready
+          ? text('demo.status.ready')
+          : (qualityState === 'limited' ||
+              qualityState === 'blocked-capacity' ||
+              qualityState === 'degraded'
+            ? text('demo.status.limited')
+            : (qualityState === 'refining' ||
+                (coverageReady && pending > 0)
+              ? text('demo.status.refining')
+              : text('demo.status.loading'))))
+    if (quality.ready && frame.drawCount > 0) {
       document.documentElement.dataset.terraStatus = 'ready'
+    } else if (!current.error) {
+      document.documentElement.dataset.terraStatus = qualityState
     }
     const targetText = isGlobe
       ? `${number(target.longitudeDegrees, 5)}, ${number(target.latitudeDegrees, 5)}`
@@ -477,14 +490,19 @@
         `${text('demo.debug.preview')} ${number(runtimePerformance.cameraPreview && runtimePerformance.cameraPreview.lastMs, 2)}ms×` +
         `${runtimePerformance.cameraPreview ? runtimePerformance.cameraPreview.count : 0} ` +
         `${text('demo.debug.render')} ${number(rendererPerformance.render && rendererPerformance.render.lastMs, 2)}ms ` +
-        `${number(rendererPerformance.framesPerSecond, 1)}fps`,
+        `${number(rendererPerformance.framesPerSecond, 1)}fps ` +
+        `${text('demo.debug.wasmMemory')} ` +
+        `${number((runtimePerformance.wasmMemoryBytes || 0) / (1024 * 1024), 1)}MiB`,
       `${text('demo.debug.phases')} ${text('demo.debug.lod')} ${number(lodPerformance.lastMs, 2)}ms ` +
         `${text('demo.debug.read')} ${number(readPerformance.lastMs, 2)}ms ` +
         `${text('demo.debug.frameBuild')} ${number(framePerformance.lastMs, 2)}ms`,
       `${text('demo.debug.rendererPhases')} ` +
         `${text('demo.debug.geometryPrepare')} ${number(geometryPerformance.lastMs, 2)}ms ` +
         `${text('demo.debug.imageryRebuild')} ${number(imageryPerformance.lastMs, 2)}ms`
-    ].join('\n')
+    ].concat(current.error ? [
+      `${text('demo.debug.error')} ` +
+        sdk.common.redactSensitiveText(current.error)
+    ] : []).join('\n')
   }
 
   function showError(error) {

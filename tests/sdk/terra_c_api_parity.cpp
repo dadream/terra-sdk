@@ -136,12 +136,10 @@ int main(int argc, char** argv) {
         requests, TERRA_REQUEST_ROOT, 0U, -134217728, 134217728, 0);
     const terra_request_v1* detail3 = find_request(
         requests, TERRA_REQUEST_DETAIL, 0U, -134217728, 134217728, 0);
-    const terra_request_v1* child_detail = find_request(
-        requests, TERRA_REQUEST_DETAIL, 1U, -134217728, 134217728,
-        134217728);
     require(root0 != nullptr && detail0 != nullptr && root3 != nullptr &&
-                detail3 != nullptr && child_detail != nullptr,
-            "complete globe request chain is missing");
+                detail3 != nullptr,
+            "root globe request frontier is missing");
+    const std::uint32_t root0_request_kind = root0->kind;
 
     std::size_t index_count = 0U;
     require(terra_get_index_buffer(context.get(), nullptr, 0U,
@@ -174,12 +172,30 @@ int main(int argc, char** argv) {
                    context.get(), detail3->kind, &detail3->key,
                    detail3_record.data(), detail3_record.size()),
                "terra_submit_record root three detail");
+    require_ok(terra_update(context.get(), 0.0025F),
+               "terra_update after root records");
+
+    request_count = 0U;
+    require(terra_get_requests(context.get(), nullptr, 0U,
+                               &request_count) ==
+                TERRA_STATUS_BUFFER_TOO_SMALL,
+            "child request sizing failed");
+    requests.assign(request_count, terra_request_v1{});
+    require_ok(terra_get_requests(context.get(), requests.data(),
+                                  requests.size(), &request_count),
+               "terra_get_requests child frontier");
+    const terra_request_v1* child_detail = find_request(
+        requests, TERRA_REQUEST_DETAIL, 1U, -134217728, 134217728,
+        134217728);
+    require(child_detail != nullptr,
+            "child detail frontier is missing after its parents are ready");
+    const terra_patch_key_v1 child_key = child_detail->key;
     require_ok(terra_submit_record(
-                   context.get(), child_detail->kind, &child_detail->key,
+                   context.get(), TERRA_REQUEST_DETAIL, &child_key,
                    child_record.data(), child_record.size()),
                "terra_submit_record shared child detail");
     require_ok(terra_update(context.get(), 0.0025F),
-               "terra_update after records");
+               "terra_update after child record");
 
     terra_frame_v1 after{};
     after.struct_size = sizeof(after);
@@ -248,7 +264,7 @@ int main(int argc, char** argv) {
     print_key(patches.back().key);
     std::cout << ',' << patches.back().visible << ','
               << patches.back().priority << '\n';
-    std::cout << "initial.request_kind=" << root0->kind << '\n';
+    std::cout << "initial.request_kind=" << root0_request_kind << '\n';
     std::cout << "initial.index_count=" << indices.size() << '\n';
     std::cout << "initial.index_fnv1a32="
               << fnv1a32(indices.data(),

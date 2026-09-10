@@ -165,8 +165,9 @@ int main(int argc, char** argv) {
     frame.struct_size = sizeof(frame);
     require_status(terra_get_frame(context, &frame), TERRA_STATUS_OK,
                    "get frame");
-    require(frame.sequence == 1U && frame.decisions_complete == 1U &&
-                frame.patch_count == 8U && frame.request_count == 20U &&
+    require(frame.sequence == 1U && frame.decisions_complete == 0U &&
+                frame.patch_count == 8U && frame.request_count >= 8U &&
+                frame.request_count <= 16U &&
                 frame.loaded_patch_count == 0U && frame.draw_count == 0U &&
                 frame.expected_draw_count > 0U &&
                 frame.omitted_draw_count == frame.expected_draw_count &&
@@ -239,7 +240,8 @@ int main(int argc, char** argv) {
     std::size_t request_count = 0U;
     require_status(terra_get_requests(context, nullptr, 0U, &request_count),
                    TERRA_STATUS_BUFFER_TOO_SMALL, "request sizing");
-    require(request_count == 38U, "record request count changed");
+    require(request_count >= 8U && request_count <= 16U,
+            "initial request frontier is not parent bounded");
     std::vector<terra_request_v1> requests(request_count);
     require_status(terra_get_requests(context, requests.data(),
                                       requests.size(), &request_count),
@@ -277,11 +279,11 @@ int main(int argc, char** argv) {
         child_detail = &request;
       }
     }
-    require(root_requests == 8U && detail_requests == 30U &&
+    require(root_requests == 8U && detail_requests > 0U &&
                 root0 != nullptr && root0_detail != nullptr &&
                 root3 != nullptr && root3_detail != nullptr &&
-                child_detail != nullptr,
-            "root/detail request contract changed");
+                child_detail == nullptr,
+            "initial request frontier bypassed the parent chain");
 
     const std::vector<std::uint8_t> root_record = read_binary(argv[1]);
     require_status(terra_submit_patch(
@@ -306,8 +308,33 @@ int main(int argc, char** argv) {
                        context, root3_detail->kind, &root3_detail->key,
                        detail3_record.data(), detail3_record.size()),
                    TERRA_STATUS_OK, "submit root three detail");
+    require_status(terra_update(context, 0.0025F), TERRA_STATUS_OK,
+                   "update after parent records");
+
+    request_count = 0U;
+    require_status(terra_get_requests(context, nullptr, 0U, &request_count),
+                   TERRA_STATUS_BUFFER_TOO_SMALL,
+                   "child request sizing");
+    requests.assign(request_count, terra_request_v1{});
+    require_status(terra_get_requests(context, requests.data(),
+                                      requests.size(), &request_count),
+                   TERRA_STATUS_OK, "get child request frontier");
+    child_detail = nullptr;
+    for (const terra_request_v1& request : requests) {
+      if (request.kind == TERRA_REQUEST_DETAIL &&
+          request.key.level == 1U &&
+          request.key.i == -134217728 &&
+          request.key.j == 134217728 &&
+          request.key.k == 134217728) {
+        child_detail = &request;
+        break;
+      }
+    }
+    require(child_detail != nullptr,
+            "child detail was not requested after its parents were ready");
+    const terra_patch_key_v1 child_key = child_detail->key;
     require_status(terra_submit_record(
-                       context, child_detail->kind, &child_detail->key,
+                       context, TERRA_REQUEST_DETAIL, &child_key,
                        child_record.data(), child_record.size()),
                    TERRA_STATUS_OK, "submit shared child detail");
     require_status(terra_update(context, 0.0025F), TERRA_STATUS_OK,
@@ -315,8 +342,7 @@ int main(int argc, char** argv) {
     frame.struct_size = sizeof(frame);
     require_status(terra_get_frame(context, &frame), TERRA_STATUS_OK,
                    "get drawable frame");
-    require(frame.sequence == 3U && frame.patch_count == 16U &&
-                frame.request_count == 33U &&
+    require(frame.sequence == 4U && frame.patch_count > 8U &&
                 frame.loaded_patch_count == 5U && frame.draw_count > 0U,
             "drawable hierarchy state changed");
 
@@ -336,6 +362,10 @@ int main(int argc, char** argv) {
                        context, positions.data(), positions.size(),
                        &position_count),
                    TERRA_STATUS_OK, "get positions");
+    const float* position_view = terra_get_position_buffer_view(context);
+    require(position_view != nullptr &&
+                std::equal(positions.begin(), positions.end(), position_view),
+            "position view differs from copied positions");
     std::size_t texture_count = 0U;
     require_status(terra_get_texture_uv_buffer(
                        context, nullptr, 0U, &texture_count),
@@ -345,6 +375,10 @@ int main(int argc, char** argv) {
                        context, texture_uv.data(), texture_uv.size(),
                        &texture_count),
                    TERRA_STATUS_OK, "get texture coordinates");
+    const float* texture_view = terra_get_texture_uv_buffer_view(context);
+    require(texture_view != nullptr &&
+                std::equal(texture_uv.begin(), texture_uv.end(), texture_view),
+            "texture view differs from copied coordinates");
     const std::size_t coverage_draw_count =
         static_cast<std::size_t>(std::count_if(
             draws.begin(), draws.end(), [](const terra_draw_range_v1& draw) {
@@ -389,26 +423,36 @@ int main(int argc, char** argv) {
                         }),
             "texture buffer contains an invalid coordinate");
 
+    request_count = 0U;
+    require_status(terra_get_requests(context, nullptr, 0U, &request_count),
+                   TERRA_STATUS_BUFFER_TOO_SMALL,
+                   "failure request sizing");
+    requests.assign(request_count, terra_request_v1{});
+    require_status(terra_get_requests(context, requests.data(),
+                                      requests.size(), &request_count),
+                   TERRA_STATUS_OK, "get failure request frontier");
+    require(!requests.empty(), "missing request for failure contract");
+    const terra_request_v1 failed_request = requests.back();
     require_status(terra_fail_record(
-                       context, requests.back().kind,
-                       &requests.back().key),
+                       context, failed_request.kind,
+                       &failed_request.key),
                    TERRA_STATUS_OK, "fail terrain record");
     const std::uint8_t malformed[] = {0U};
     require_status(terra_submit_record(
-                       context, requests.back().kind,
-                       &requests.back().key, malformed, sizeof(malformed)),
+                       context, failed_request.kind,
+                       &failed_request.key, malformed, sizeof(malformed)),
                    TERRA_STATUS_DECODE_ERROR, "malformed terrain record");
 
     terra_stats_v1 stats{};
     stats.struct_size = sizeof(stats);
     require_status(terra_get_stats(context, &stats), TERRA_STATUS_OK,
                    "get stats");
-    require(stats.update_count == 3U && stats.loaded_patch_count == 5U &&
+    require(stats.update_count == 4U && stats.loaded_patch_count == 5U &&
                 stats.failed_patch_count == 1U &&
                 stats.decoded_value_count == 20738U &&
-                stats.current_patch_count == 16U &&
-                stats.current_request_count == 33U &&
-                stats.last_sequence == 3U,
+                stats.current_patch_count == frame.patch_count &&
+                stats.current_request_count == frame.request_count &&
+                stats.last_sequence == 4U,
             "ABI statistics changed");
 
     terra_camera_v1 camera{};
@@ -427,8 +471,19 @@ int main(int argc, char** argv) {
     frame.struct_size = sizeof(frame);
     require_status(terra_get_frame(context, &frame), TERRA_STATUS_OK,
                    "get camera frame");
-    require(frame.sequence == 4U && frame.decisions_complete == 1U,
-            "camera frame state changed");
+    require(frame.sequence == 5U && frame.decisions_complete == 0U,
+            "coarsening frame did not expose its pending convergence");
+    std::size_t convergence_updates = 0U;
+    while (frame.decisions_complete == 0U && convergence_updates < 8U) {
+      require_status(terra_update(context, 1.0F), TERRA_STATUS_OK,
+                     "camera convergence update");
+      frame.struct_size = sizeof(frame);
+      require_status(terra_get_frame(context, &frame), TERRA_STATUS_OK,
+                     "get converging camera frame");
+      ++convergence_updates;
+    }
+    require(frame.decisions_complete == 1U && convergence_updates > 0U,
+            "camera frame did not converge within the bounded update loop");
 
     stats.struct_size = sizeof(stats);
     require_status(terra_get_stats(context, &stats), TERRA_STATUS_OK,

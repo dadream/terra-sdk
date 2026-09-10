@@ -22,6 +22,9 @@ async function main() {
     grow() {
       memory.grow(1)
       return 7
+    },
+    fail() {
+      capturedImports.wasi_snapshot_preview1.proc_exit(1)
     }
   }
   let capturedPath = null
@@ -45,11 +48,15 @@ async function main() {
     typeof capturedImports.wasi_snapshot_preview1.proc_exit,
     'function'
   )
+  assert.strictEqual(terra.memoryBytes(), 64 * 1024)
   const initialBuffer = terra.buffer
   assert.strictEqual(terra.call('grow'), 7)
+  assert.strictEqual(terra.memoryBytes(), 128 * 1024)
   assert.notStrictEqual(terra.buffer, initialBuffer)
   assert.strictEqual(terra.dataView.buffer, memory.buffer)
   assert.strictEqual(terra.bytes.buffer, memory.buffer)
+  assert.throws(() => terra.call('fail'),
+    /call fail failed at 0\.1 MiB: Terra Wasm exited with status 1/)
   const pointer = terra.alloc(32)
   assert.strictEqual(pointer, 64)
   terra.free(pointer)

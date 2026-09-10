@@ -67,7 +67,7 @@ frame_packet make_frame_packet(std::uint64_t sequence,
   frame_packet result;
   result.sequence = sequence;
   result.camera = camera;
-  result.decisions_complete = decisions.complete;
+  result.decisions_complete = decisions.complete && decisions.converged;
   result.patch_decisions = decisions.patches;
   return result;
 }

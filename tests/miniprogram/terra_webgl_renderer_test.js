@@ -562,8 +562,9 @@ async function main() {
   assert(loadedCapacityStats.textures.entries <=
     loadedCapacityStats.textures.capacity)
   assert.strictEqual(loadedCapacityStats.quality.targetCoverage, 1)
-  assert.strictEqual(loadedCapacityStats.quality.ready, true)
-  assert.strictEqual(loadedCapacityStats.quality.settled, true)
+  assert.strictEqual(loadedCapacityStats.quality.ready, false)
+  assert.strictEqual(loadedCapacityStats.quality.settled, false)
+  assert.strictEqual(loadedCapacityStats.quality.quiescent, true)
   assert.strictEqual(loadedCapacityStats.quality.targetMet, false)
   assert.strictEqual(loadedCapacityStats.quality.state, 'limited')
   assert.strictEqual(loadedCapacityStats.quality.limitedByTextureBudget, false)
@@ -1005,6 +1006,8 @@ async function main() {
   await settle()
   renderer.render()
   assert.strictEqual(renderer.stats().textures.fallbackRatio, 0)
+  assert.strictEqual(renderer.stats().quality.targetMet, true)
+  assert.strictEqual(renderer.stats().quality.state, 'ready')
   assert.strictEqual(renderer.stats().quality.ready, true)
   assert.strictEqual(renderer.stats().quality.settled, true)
   renderer.setOverlays({
@@ -1209,11 +1212,13 @@ async function main() {
   renderer.setBudget({
     geometryCacheBytes: 1,
     textureCacheBytes: 1,
+    maximumTextureEntries: 2,
     uploadBudgetMs: 3,
     maximumTextureRequests: 1
   })
   assert.strictEqual(renderer.geometry.maximumBytes, 1)
   assert.strictEqual(renderer.textures.cache.maximumBytes, 1)
+  assert.strictEqual(renderer.textures.cache.maximumEntries, 2)
   assert.strictEqual(renderer.textures.scheduler.maximumConcurrent, 1)
   renderer.destroy()
   assert(gl.calls.some((call) => call.name === 'deleteProgram'))

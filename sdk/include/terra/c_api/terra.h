@@ -266,10 +266,13 @@ terra_status terra_get_position_buffer(const terra_context* context,
                                        float* positions,
                                        size_t capacity,
                                        size_t* count);
+/* Views remain valid until the next non-const operation on context. */
+const float* terra_get_position_buffer_view(const terra_context* context);
 terra_status terra_get_texture_uv_buffer(const terra_context* context,
                                          float* texture_uv,
                                          size_t capacity,
                                          size_t* count);
+const float* terra_get_texture_uv_buffer_view(const terra_context* context);
 terra_status terra_get_index_buffer(const terra_context* context,
                                     uint16_t* indices,
                                     size_t capacity,

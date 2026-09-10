@@ -1795,6 +1795,12 @@ class TerraWebGlRenderer {
       this.geometry.maximumBytes = value.geometryCacheBytes
       this.geometry.evict()
     }
+    if (Number.isFinite(value.maximumTextureEntries) &&
+      value.maximumTextureEntries > 0) {
+      this.textures.cache.maximumEntries = Math.max(1,
+        Math.floor(value.maximumTextureEntries))
+      this.textures.cache.evict()
+    }
     if (Number.isFinite(value.textureCacheBytes) &&
       value.textureCacheBytes > 0) {
       this.textures.cache.maximumBytes = value.textureCacheBytes
@@ -2522,6 +2528,7 @@ class TerraWebGlRenderer {
         resolvedError <= this.qualityStats.targetPixelError * 1.001))
     const ready = !this.interactionActive &&
       covered &&
+      targetMet &&
       !textureStats.blockedByFailure &&
       textureStats.state !== 'blocked-capacity' &&
       !textureStats.limitedByCapacity &&
@@ -2549,6 +2556,7 @@ class TerraWebGlRenderer {
       covered,
       resourceStable,
       requestIdle,
+      quiescent: resourceStable && requestIdle,
       targetMet,
       state,
       ready,

@@ -14,7 +14,9 @@ const RADIANS_TO_DEGREES = 180 / Math.PI
 const MIN_TILT_RADIANS = -80 * DEGREES_TO_RADIANS
 const MAX_TILT_RADIANS = 0
 const ANIMATION_LOD_INTERVAL_MS = 200
-const DEFAULT_CAMERA_SETTLE_DELAY_MS = 80
+const DEFAULT_CAMERA_SETTLE_DELAY_MS = 160
+const DEFAULT_TERRAIN_REFRESH_BATCH_MS = 24
+const DEFAULT_TERRAIN_REFRESH_MAXIMUM_DELAY_MS = 120
 
 const ABI_LAYOUT = {
   manifest: 128,
@@ -536,12 +538,15 @@ class TerraAbi {
     return result
   }
 
-  getPositions() {
-    return new Float32Array(this.copyVector('terra_get_position_buffer', 4))
+  getPositions(count) {
+    return new Float32Array(this.copyVectorView(
+      'terra_get_position_buffer_view', 'terra_get_position_buffer', count, 4))
   }
 
-  getTextureUv() {
-    return new Float32Array(this.copyVector('terra_get_texture_uv_buffer', 4))
+  getTextureUv(count) {
+    return new Float32Array(this.copyVectorView(
+      'terra_get_texture_uv_buffer_view', 'terra_get_texture_uv_buffer',
+      count, 4))
   }
 
   getIndices() {
@@ -583,6 +588,35 @@ class TerraAbi {
     } finally {
       this.free(pointer)
     }
+  }
+
+  copyVectorView(viewFunctionName, copyFunctionName, count, elementSize) {
+    if (!Number.isInteger(count) || count < 0 ||
+        typeof this.exports[viewFunctionName] !== 'function') {
+      return this.copyVector(copyFunctionName, elementSize)
+    }
+    if (count === 0) {
+      return new ArrayBuffer(0)
+    }
+    const pointer = this.module.call(viewFunctionName, this.context)
+    common.invariant(pointer,
+      `${viewFunctionName} returned null for ${count} elements`)
+    const byteLength = count * elementSize
+    const memory = this.module.refreshMemory().bytes
+    common.invariant(Number.isSafeInteger(byteLength) &&
+      pointer >= 0 && pointer + byteLength <= memory.byteLength,
+      `${viewFunctionName} returned an invalid view`)
+    return memory.slice(pointer, pointer + byteLength).buffer
+  }
+
+  memoryBytes() {
+    if (this.module && typeof this.module.memoryBytes === 'function') {
+      return this.module.memoryBytes()
+    }
+    if (this.module && this.module.exports && this.module.exports.memory) {
+      return this.module.exports.memory.buffer.byteLength
+    }
+    return 0
   }
 
   copyVector(functionName, elementSize) {
@@ -712,6 +746,21 @@ class TerraGlobeRuntime {
       ? DEFAULT_CAMERA_SETTLE_DELAY_MS
       : common.clamp(common.finiteNumber(
         this.options.cameraSettleDelayMs, 'Camera settle delay'), 0, 500)
+    this.terrainRefreshBatchMs = this.options.terrainRefreshBatchMs === undefined
+      ? DEFAULT_TERRAIN_REFRESH_BATCH_MS
+      : common.clamp(common.finiteNumber(
+        this.options.terrainRefreshBatchMs,
+        'Terrain refresh batch delay'), 0, 100)
+    this.terrainRefreshMaximumDelayMs =
+      this.options.terrainRefreshMaximumDelayMs === undefined
+        ? DEFAULT_TERRAIN_REFRESH_MAXIMUM_DELAY_MS
+        : common.clamp(common.finiteNumber(
+          this.options.terrainRefreshMaximumDelayMs,
+          'Terrain refresh maximum delay'), 0, 500)
+    this.terrainRefreshMaximumDelayMs = this.terrainRefreshBatchMs === 0
+      ? 0
+      : Math.max(this.terrainRefreshBatchMs,
+        this.terrainRefreshMaximumDelayMs)
     this.serviceOrigin = this.options.serviceOrigin || ''
     this.request = this.options.request || requestWithWx
     this.maximumTerrainRequests = Number.isInteger(
@@ -730,6 +779,10 @@ class TerraGlobeRuntime {
       ? 400
       : Math.max(0, common.finiteNumber(this.options.terrainRetryDelayMs,
         'Terrain retry delay'))
+    this.maximumRefreshRetries = Number.isInteger(
+      this.options.maximumRefreshRetries)
+      ? common.clamp(this.options.maximumRefreshRetries, 0, 3)
+      : 1
     this.atmosphere = normalizeAtmosphereOptions(this.options.atmosphere)
     this.desiredRequests = new Map()
     this.retries = new Map()
@@ -756,8 +809,13 @@ class TerraGlobeRuntime {
     this.lastError = ''
     this.cameraAnimation = null
     this.cameraRefreshTimer = null
+    this.terrainRefreshTimer = null
+    this.terrainRefreshStartedAt = 0
     this.interactionActive = false
     this.cameraPreviewDirty = false
+    this.cameraRevision = 0
+    this.cameraSignature = ''
+    this.consecutiveRefreshFailures = 0
     this.performanceStats = {
       fullUpdate: { count: 0, lastMs: 0, averageMs: 0 },
       lodUpdate: { count: 0, lastMs: 0, averageMs: 0 },
@@ -787,11 +845,13 @@ class TerraGlobeRuntime {
       requestRender: () => this.scheduleRender(),
       geometryCacheBytes: this.budget.geometryCacheBytes,
       textureCacheBytes: this.budget.textureCacheBytes,
+      maximumTextureEntries: this.budget.maximumTextureEntries,
       uploadBudgetMs: this.budget.uploadBudgetMs,
       mode: this.renderMode,
       textureDescriptor: this.manifest.texture,
       devicePixelRatio: this.budget.devicePixelRatio,
       imageryPixelError: this.imageryPixelError,
+      terrainBoundImagery: this.options.terrainBoundImagery === true,
       maximumImagerySubdivisionLevels:
         this.options.maximumImagerySubdivisionLevels,
       maximumImageryDraws: this.options.maximumImageryDraws,
@@ -945,6 +1005,7 @@ class TerraGlobeRuntime {
       this.renderer.setBudget({
         geometryCacheBytes: this.budget.geometryCacheBytes,
         textureCacheBytes: this.budget.textureCacheBytes,
+        maximumTextureEntries: this.budget.maximumTextureEntries,
         uploadBudgetMs: this.budget.uploadBudgetMs,
         devicePixelRatio: this.budget.devicePixelRatio,
         maximumTextureRequests: Math.max(1, Math.min(
@@ -1406,6 +1467,29 @@ class TerraGlobeRuntime {
     this.refresh()
   }
 
+  synchronizeCameraRevision() {
+    if (!this.camera || !this.budget) {
+      return this.cameraRevision
+    }
+    const target = this.manifest.transform === 'cylindrical'
+      ? [this.camera.longitudeDegrees, this.camera.latitudeDegrees]
+      : [this.camera.x, this.camera.y]
+    const signature = target.concat([
+      this.camera.distance,
+      this.camera.tiltRadians,
+      this.camera.yawRadians,
+      this.budget.physicalWidth,
+      this.budget.physicalHeight
+    ]).join('|')
+    if (signature !== this.cameraSignature) {
+      this.cameraSignature = signature
+      this.retries.clear()
+      this.consecutiveRefreshFailures = 0
+      this.cameraRevision += 1
+    }
+    return this.cameraRevision
+  }
+
   previewCamera() {
     if (!this.lastFrame || !this.abi ||
       typeof this.abi.getCameraSnapshot !== 'function' ||
@@ -1414,6 +1498,7 @@ class TerraGlobeRuntime {
     }
     const startedAt = monotonicNow()
     try {
+      this.synchronizeCameraRevision()
       if (this.manifest.transform === 'cylindrical') {
         this.abi.setGlobeTarget(this.camera.longitudeDegrees,
           this.camera.latitudeDegrees)
@@ -1481,6 +1566,7 @@ class TerraGlobeRuntime {
     const startedAt = monotonicNow()
     this.refreshing = true
     try {
+      this.synchronizeCameraRevision()
       if (this.manifest.transform === 'cylindrical') {
         this.abi.setGlobeTarget(this.camera.longitudeDegrees,
           this.camera.latitudeDegrees)
@@ -1495,8 +1581,8 @@ class TerraGlobeRuntime {
       phaseStartedAt = monotonicNow()
       const requests = this.abi.getRequests()
       const draws = this.abi.getDrawRanges()
-      const positions = this.abi.getPositions()
-      const textureUv = this.abi.getTextureUv()
+      const positions = this.abi.getPositions(frame.positionFloatCount)
+      const textureUv = this.abi.getTextureUv(frame.textureFloatCount)
       const indices = this.abi.getIndices()
       recordTiming(this.performanceStats.frameRead,
         monotonicNow() - phaseStartedAt)
@@ -1509,15 +1595,24 @@ class TerraGlobeRuntime {
       this.cameraPreviewDirty = false
       this.syncTerrainRequests(requests)
       this.lastError = ''
+      this.consecutiveRefreshFailures = 0
       recordTiming(this.performanceStats.fullUpdate,
         monotonicNow() - startedAt)
       this.scheduleRender()
+      if (frame.decisionsComplete === false &&
+        requests.length === 0) {
+        this.scheduleRefresh()
+      }
       this.publishState()
     } catch (error) {
       recordTiming(this.performanceStats.fullUpdate,
         monotonicNow() - startedAt)
       this.lastError = common.redactSensitiveText(error.message || String(error))
       this.diagnostic('runtime_refresh_failed', { message: this.lastError })
+      this.consecutiveRefreshFailures += 1
+      if (this.consecutiveRefreshFailures <= this.maximumRefreshRetries) {
+        this.scheduleRefresh()
+      }
       this.publishState()
     } finally {
       this.refreshing = false
@@ -1533,6 +1628,10 @@ class TerraGlobeRuntime {
       return
     }
     if (this.paused || this.interactionActive) {
+      this.refreshPending = true
+      return
+    }
+    if (this.refreshing) {
       this.refreshPending = true
       return
     }
@@ -1553,6 +1652,43 @@ class TerraGlobeRuntime {
     } else {
       setTimeout(refresh, 0)
     }
+  }
+
+  scheduleTerrainRefresh() {
+    if (this.destroyed || this.terrainRefreshTimer !== null) {
+      return
+    }
+    if (this.terrainRefreshStartedAt === 0) {
+      this.terrainRefreshStartedAt = Date.now()
+    }
+    const flush = () => {
+      this.terrainRefreshTimer = null
+      if (this.destroyed) {
+        this.terrainRefreshStartedAt = 0
+        return
+      }
+      const requests = this.scheduler.stats()
+      const elapsed = Date.now() - this.terrainRefreshStartedAt
+      if (requests.active === 0 && requests.queued === 0 ||
+        elapsed >= this.terrainRefreshMaximumDelayMs) {
+        this.terrainRefreshStartedAt = 0
+        this.scheduleRefresh()
+        return
+      }
+      const remaining = this.terrainRefreshMaximumDelayMs - elapsed
+      this.terrainRefreshTimer = setTimeout(flush,
+        Math.min(this.terrainRefreshBatchMs, remaining))
+    }
+    this.terrainRefreshTimer = setTimeout(flush,
+      this.terrainRefreshBatchMs)
+  }
+
+  cancelTerrainRefresh() {
+    if (this.terrainRefreshTimer !== null) {
+      clearTimeout(this.terrainRefreshTimer)
+      this.terrainRefreshTimer = null
+    }
+    this.terrainRefreshStartedAt = 0
   }
 
   scheduleSettledRefresh() {
@@ -1626,18 +1762,25 @@ class TerraGlobeRuntime {
         return
       }
       if (!this.failedRequests.has(key)) {
-        this.enqueueTerrainRequest(key, request)
+        this.enqueueTerrainRequest(key, request, this.cameraRevision)
+      }
+    })
+    this.failedRequests.forEach((request, key) => {
+      if (!desired.has(key)) {
+        this.failedRequests.delete(key)
+        this.retries.delete(key)
       }
     })
     this.scheduler.cancelExcept(desired)
   }
 
-  enqueueTerrainRequest(key, request) {
-    this.scheduler.enqueue(key, () => this.startTerrainRequest(key, request),
+  enqueueTerrainRequest(key, request, revision) {
+    this.scheduler.enqueue(key,
+      () => this.startTerrainRequest(key, request, revision),
       terrainRequestPriority(request))
   }
 
-  startTerrainRequest(key, request) {
+  startTerrainRequest(key, request, revision) {
     const endpoint = request.kind === REQUEST_ROOT
       ? this.manifest.rootEndpoint
       : this.manifest.detailEndpoint
@@ -1654,11 +1797,11 @@ class TerraGlobeRuntime {
       common.invariant(task && task.promise,
         'Terrain request must return a cancellable promise')
     } catch (error) {
-      this.handleTerrainFailure(key, request, error)
+      this.handleTerrainFailure(key, request, revision, error)
       return { promise: Promise.resolve(), abort() {} }
     }
     task.promise.then((response) => {
-      if (!this.desiredRequests.has(key) || this.destroyed) {
+      if (this.destroyed) {
         return
       }
       if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -1669,16 +1812,28 @@ class TerraGlobeRuntime {
       }
       const bytes = common.validateRecordPayload(response.data, response.header)
       this.recordCache.set(key, bytes.slice(), bytes.byteLength)
+      if (!this.desiredRequests.has(key)) {
+        return
+      }
+      if (revision !== this.cameraRevision) {
+        this.scheduleRefresh()
+        return
+      }
       this.abi.submitRecord(request.kind, request.key, bytes)
       this.retries.delete(key)
-      this.scheduleRefresh()
-    }).catch((error) => this.handleTerrainFailure(key, request, error))
+      this.scheduleTerrainRefresh()
+    }).catch((error) => this.handleTerrainFailure(
+      key, request, revision, error))
     return task
   }
 
-  handleTerrainFailure(key, request, error) {
+  handleTerrainFailure(key, request, revision, error) {
     if (this.destroyed || !this.desiredRequests.has(key) ||
       /cancelled/.test(error && error.message ? error.message : '')) {
+      return
+    }
+    if (revision !== this.cameraRevision) {
+      this.scheduleRefresh()
       return
     }
     const attempt = (this.retries.get(key) || 0) + 1
@@ -1687,8 +1842,9 @@ class TerraGlobeRuntime {
     if (!unavailable && attempt <= this.maximumTerrainRetries) {
       const delay = attempt * this.terrainRetryDelayMs
       setTimeout(() => {
-        if (!this.destroyed && this.desiredRequests.has(key)) {
-          this.enqueueTerrainRequest(key, request)
+        if (!this.destroyed && revision === this.cameraRevision &&
+          this.desiredRequests.has(key)) {
+          this.enqueueTerrainRequest(key, request, revision)
         }
       }, delay)
       this.diagnostic('terrain_retry', { key, attempt,
@@ -1704,7 +1860,7 @@ class TerraGlobeRuntime {
     }
     this.diagnostic('terrain_request_failed', { key,
       message: error && error.message ? error.message : String(error) })
-    this.scheduleRefresh()
+    this.scheduleTerrainRefresh()
   }
 
   textureUrl(tile) {
@@ -1754,6 +1910,7 @@ class TerraGlobeRuntime {
       radiusMeters: this.manifest && this.manifest.radius,
       frame: this.lastFrame && {
         sequence: this.lastFrame.sequence,
+        decisionsComplete: this.lastFrame.decisionsComplete,
         patchCount: this.lastFrame.patchCount,
         requestCount: this.lastFrame.requestCount,
         loadedRecordCount: this.lastFrame.loadedRecordCount,
@@ -1773,7 +1930,10 @@ class TerraGlobeRuntime {
         lodUpdate: Object.assign({}, this.performanceStats.lodUpdate),
         frameRead: Object.assign({}, this.performanceStats.frameRead),
         rendererSetFrame: Object.assign({}, this.performanceStats.rendererSetFrame),
-        cameraPreview: Object.assign({}, this.performanceStats.cameraPreview)
+        cameraPreview: Object.assign({}, this.performanceStats.cameraPreview),
+        wasmMemoryBytes: this.abi &&
+          typeof this.abi.memoryBytes === 'function'
+          ? this.abi.memoryBytes() : 0
       },
       renderer,
       contextLost: this.renderer ? this.renderer.contextLost : false,
@@ -1814,6 +1974,7 @@ class TerraGlobeRuntime {
   destroy() {
     this.cancelAnimation()
     this.cancelCameraRefresh()
+    this.cancelTerrainRefresh()
     this.destroyed = true
     this.scheduler.clear()
     this.recordCache.clear()

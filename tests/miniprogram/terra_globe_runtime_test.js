@@ -108,6 +108,7 @@ class FakeAbi {
       failedRecordCount: this.failures.length,
       drawCount: 0,
       vertexCount: 0,
+      decisionsComplete: true,
       cameraPosition: [1, 2, 3],
       projectionView: identity()
     }
@@ -228,6 +229,8 @@ async function createRuntime(options) {
     canvas: canvas(),
     manifest: manifest(),
     serviceOrigin: 'https://terrain.example',
+    terrainRefreshBatchMs: 0,
+    terrainRefreshMaximumDelayMs: 0,
     viewport: { width: 1280, height: 720, devicePixelRatio: 2 },
     rendererFactory(node, rendererOptions) {
       renderer = new FakeRenderer(rendererOptions)
@@ -316,6 +319,8 @@ async function testSuccessfulLoadAndControls() {
   assert.strictEqual(abi.submissions.length, 1)
   assert.deepStrictEqual(abi.submissions[0].bytes, Array.from(bytes))
   assert.strictEqual(result.runtime.state().terrain.entries, 1)
+  assert.strictEqual(
+    result.runtime.state().frame.decisionsComplete, true)
   assert.strictEqual(result.runtime.state().radiusMeters, 6378000)
   assert.strictEqual(result.runtime.textureUrl({ matrix: 3, row: 4, column: 5 }),
     'https://tiles.example/3/5/4.jpg')
@@ -447,8 +452,12 @@ async function testSuccessfulLoadAndControls() {
   assert(result.renderer.budgets.length >= 2)
   assert.strictEqual(result.runtime.maximumTextureRequests, 4)
   assert.strictEqual(result.renderer.options.maximumTextureRequests, 3)
+  assert.strictEqual(result.renderer.options.terrainBoundImagery, false)
+  assert.strictEqual(result.renderer.options.maximumTextureEntries, 256)
   assert.strictEqual(result.renderer.budgets[
     result.renderer.budgets.length - 1].maximumTextureRequests, 3)
+  assert.strictEqual(result.renderer.budgets[
+    result.renderer.budgets.length - 1].maximumTextureEntries, 256)
   assert.strictEqual(result.runtime.retryFailed(), false)
   result.runtime.destroy()
   assert.strictEqual(abi.destroyed, true)
@@ -517,6 +526,156 @@ async function testCloseRangePanUsesSurfaceScale() {
   assert(Math.abs((result.runtime.getView().rangeMeters - radius) -
     15000) < 0.000001)
   assert.throws(() => result.runtime.zoomBy(0), /must be positive/)
+  result.runtime.destroy()
+}
+
+async function testIncrementalConvergence() {
+  class IncrementalAbi extends FakeAbi {
+    update() {
+      const frame = super.update()
+      frame.decisionsComplete = this.updateCount >= 2
+      return frame
+    }
+
+    getRequests() {
+      return []
+    }
+  }
+  const abi = new IncrementalAbi()
+  const result = await createRuntime({
+    abi,
+    request() {
+      return { promise: Promise.resolve(response(payload())), abort() {} }
+    }
+  })
+  await settle(4)
+  assert.strictEqual(abi.updateCount, 2)
+  assert.strictEqual(result.runtime.lastFrame.decisionsComplete, true)
+  result.runtime.destroy()
+}
+
+async function testNetworkWaitDoesNotSpin() {
+  class WaitingAbi extends FakeAbi {
+    update() {
+      const frame = super.update()
+      frame.decisionsComplete = false
+      return frame
+    }
+
+    getRequests() {
+      return [recordRequest]
+    }
+  }
+  const abi = new WaitingAbi()
+  let aborts = 0
+  const result = await createRuntime({
+    abi,
+    request() {
+      return {
+        promise: new Promise(() => {}),
+        abort() {
+          aborts += 1
+        }
+      }
+    }
+  })
+  await settle(8)
+  assert.strictEqual(abi.updateCount, 1,
+    'pending terrain I/O caused an empty LOD refresh loop')
+  result.runtime.destroy()
+  assert.strictEqual(aborts, 1)
+}
+
+async function testTerrainResponsesAreBatched() {
+  const requests = [0, 1, 2].map((index) => ({
+    kind: runtimeModule.REQUEST_DETAIL,
+    key: { level: 1, i: index, j: 2, k: 3 }
+  }))
+  class BatchedAbi extends FakeAbi {
+    getRequests() {
+      return this.submissions.length >= requests.length ? [] : requests
+    }
+  }
+  const abi = new BatchedAbi()
+  const result = await createRuntime({
+    abi,
+    terrainRefreshBatchMs: 20,
+    terrainRefreshMaximumDelayMs: 100,
+    request() {
+      return {
+        promise: Promise.resolve(response(payload())),
+        abort() {}
+      }
+    }
+  })
+  await new Promise((resolve) => setTimeout(resolve, 50))
+  assert.strictEqual(abi.submissions.length, requests.length)
+  assert.strictEqual(abi.updateCount, 2,
+    'one terrain batch caused multiple full LOD updates')
+  assert.strictEqual(result.runtime.terrainRefreshTimer, null)
+  result.runtime.destroy()
+}
+
+async function testStaleTerrainResponseUsesCurrentGeneration() {
+  const abi = new FakeAbi()
+  let resolveRequest = null
+  const result = await createRuntime({
+    abi,
+    cameraSettleDelayMs: 0,
+    request() {
+      return {
+        promise: new Promise((resolve) => { resolveRequest = resolve }),
+        abort() {}
+      }
+    }
+  })
+  assert.strictEqual(typeof resolveRequest, 'function')
+  const requestRevision = result.runtime.cameraRevision
+  result.runtime.setInteractionActive(true)
+  result.runtime.applyInteraction({ headingDegrees: 10 })
+  assert(result.runtime.cameraRevision > requestRevision)
+  resolveRequest(response(payload()))
+  await settle(4)
+  assert.strictEqual(abi.submissions.length, 0)
+  assert.strictEqual(result.runtime.state().terrain.entries, 1)
+
+  result.runtime.setInteractionActive(false)
+  await settle(4)
+  assert.strictEqual(abi.submissions.length, 1)
+  assert.strictEqual(result.runtime.state().terrain.entries, 1)
+  result.runtime.destroy()
+}
+
+async function testRefreshFailureKeepsCommittedFrame() {
+  class RecoveringAbi extends FakeAbi {
+    update() {
+      if (this.updateCount === 1) {
+        this.updateCount += 1
+        throw new Error('transient frame failure')
+      }
+      return super.update()
+    }
+
+    getRequests() {
+      return []
+    }
+  }
+  const abi = new RecoveringAbi()
+  const result = await createRuntime({
+    abi,
+    request() {
+      throw new Error('unexpected terrain request')
+    }
+  })
+  const committedSequence = result.runtime.lastFrame.sequence
+  const committedFrames = result.renderer.frames.length
+  result.runtime.refresh()
+  await settle(4)
+  assert(result.runtime.lastFrame.sequence > committedSequence)
+  assert.strictEqual(result.renderer.frames.length, committedFrames + 1)
+  assert.strictEqual(result.runtime.lastError, '')
+  assert(result.runtime.state().diagnostics.some((entry) =>
+    entry.kind === 'runtime_refresh_failed'))
   result.runtime.destroy()
 }
 
@@ -708,6 +867,11 @@ async function main() {
   testGeographicCamera()
   await testSuccessfulLoadAndControls()
   await testCloseRangePanUsesSurfaceScale()
+  await testIncrementalConvergence()
+  await testNetworkWaitDoesNotSpin()
+  await testTerrainResponsesAreBatched()
+  await testStaleTerrainResponseUsesCurrentGeneration()
+  await testRefreshFailureKeepsCommittedFrame()
   await testFailureRecovery()
   await testTransientFailureIsRetried()
   await testSparseNotFoundIsNotRetried()

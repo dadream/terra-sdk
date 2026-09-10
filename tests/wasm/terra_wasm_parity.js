@@ -7,7 +7,7 @@ const STATUS_INVALID_ARGUMENT = 1
 const STATUS_BUFFER_TOO_SMALL = 6
 const API_VERSION = 1
 const INITIAL_MEMORY_BYTES = 16 * 1024 * 1024
-const MAXIMUM_MEMORY_BYTES = 64 * 1024 * 1024
+const MAXIMUM_MEMORY_BYTES = 256 * 1024 * 1024
 
 function requireCondition(condition, message) {
   if (!condition) {
@@ -171,7 +171,7 @@ async function main() {
   exports.memory.grow(pagesToMaximum)
   requireCondition(
     exports.memory.buffer.byteLength === MAXIMUM_MEMORY_BYTES,
-    'Wasm memory did not grow to the configured 64 MiB maximum'
+    'Wasm memory did not grow to the configured 256 MiB maximum'
   )
   const oldBuffer = exports.memory.buffer
   let maximumRejected = false
@@ -180,7 +180,7 @@ async function main() {
   } catch (error) {
     maximumRejected = error instanceof RangeError
   }
-  requireCondition(maximumRejected, 'Wasm memory maximum is not 64 MiB')
+  requireCondition(maximumRejected, 'Wasm memory maximum is not 256 MiB')
   requireCondition(
     exports.memory.buffer === oldBuffer,
     'Rejected Wasm memory growth replaced the backing buffer'
@@ -403,7 +403,7 @@ async function main() {
     const detail0Request = findRequestPointer(2, 0, 0, 134217728, 134217728)
     const root3Request = findRequestPointer(1, 0, -134217728, 134217728, 0)
     const detail3Request = findRequestPointer(2, 0, -134217728, 134217728, 0)
-    const childDetailRequest = findRequestPointer(
+    const initialChildDetailRequest = findRequestPointer(
       2,
       1,
       -134217728,
@@ -415,8 +415,8 @@ async function main() {
         detail0Request !== 0 &&
         root3Request !== 0 &&
         detail3Request !== 0 &&
-        childDetailRequest !== 0,
-      'Complete globe request chain is missing'
+        initialChildDetailRequest === 0,
+      'Initial globe request frontier bypassed the parent chain'
     )
     const requestKind = view.getUint32(root0Request + 4, true)
 
@@ -471,6 +471,52 @@ async function main() {
       2,
       detail3Request,
       'terra_submit_record root three detail'
+    )
+    requireStatus(
+      exports.terra_update(context, 0.0025),
+      STATUS_OK,
+      'terra_update after parent records'
+    )
+
+    view = access.refresh().view
+    view.setUint32(countPointer, 0, true)
+    requireStatus(
+      exports.terra_get_requests(context, 0, 0, countPointer),
+      STATUS_BUFFER_TOO_SMALL,
+      'terra_get_requests child sizing'
+    )
+    view = access.refresh().view
+    const childRequestCount = view.getUint32(countPointer, true)
+    const childRequestsPointer = alloc(childRequestCount * layout.request)
+    requireStatus(
+      exports.terra_get_requests(
+        context,
+        childRequestsPointer,
+        childRequestCount,
+        countPointer
+      ),
+      STATUS_OK,
+      'terra_get_requests child frontier'
+    )
+    view = access.refresh().view
+    let childDetailRequest = 0
+    for (let index = 0; index < childRequestCount; ++index) {
+      const pointer = childRequestsPointer + index * layout.request
+      const key = readKey(view, pointer + 8)
+      if (
+        view.getUint32(pointer + 4, true) === 2 &&
+        key.level === 1 &&
+        key.i === -134217728 &&
+        key.j === 134217728 &&
+        key.k === 134217728
+      ) {
+        childDetailRequest = pointer
+        break
+      }
+    }
+    requireCondition(
+      childDetailRequest !== 0,
+      'Child detail request is missing after its parents are ready'
     )
     submitRecord(
       childDetailPath,
@@ -554,6 +600,12 @@ async function main() {
       positionsPointer,
       positionCount * 4
     )
+    const positionViewPointer =
+      exports.terra_get_position_buffer_view(context)
+    requireCondition(positionViewPointer !== 0, 'position view is null')
+    requireCondition(bytesFnv1a32(
+      access.refresh().bytes, positionViewPointer, positionCount * 4
+    ) === positionHash, 'position view differs from copied positions')
 
     view = access.refresh().view
     view.setUint32(countPointer, 0, true)
@@ -580,6 +632,12 @@ async function main() {
       texturePointer,
       textureCount * 4
     )
+    const textureViewPointer =
+      exports.terra_get_texture_uv_buffer_view(context)
+    requireCondition(textureViewPointer !== 0, 'texture view is null')
+    requireCondition(bytesFnv1a32(
+      access.refresh().bytes, textureViewPointer, textureCount * 4
+    ) === textureHash, 'texture view differs from copied coordinates')
 
     const statsPointer = alloc(layout.stats)
     access.refresh().view.setUint32(statsPointer, layout.stats, true)

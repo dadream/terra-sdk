@@ -43,6 +43,8 @@ struct lod_record_request {
 
 struct lod_cut {
   bool complete = false;
+  bool converged = false;
+  std::size_t change_count = 0U;
   std::size_t graph_level_count = 0U;
   std::vector<std::size_t> leaf_count_by_level;
   std::vector<lod_patch> patches;
@@ -69,7 +71,8 @@ class cylindrical_lod_controller {
                  std::size_t maximum_level = 40U,
                  std::size_t maximum_node_count = 65536U);
   lod_cut update(float threshold, const camera_snapshot& camera,
-                 const lod_resource_state& resources);
+                 const lod_resource_state& resources,
+                 std::size_t maximum_change_count = 32U);
 
  private:
   struct implementation;

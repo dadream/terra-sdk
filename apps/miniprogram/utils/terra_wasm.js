@@ -47,6 +47,10 @@ class TerraWasmModule {
     }
   }
 
+  memoryBytes() {
+    return this.exports.memory.buffer.byteLength
+  }
+
   call(name, ...args) {
     const fn = this.exports[name]
     if (typeof fn !== 'function') {
@@ -54,6 +58,11 @@ class TerraWasmModule {
     }
     try {
       return fn(...args)
+    } catch (error) {
+      const message = error && error.message ? error.message : String(error)
+      const memoryMiB = (this.memoryBytes() / (1024 * 1024)).toFixed(1)
+      throw new Error(
+        `Terra Wasm call ${name} failed at ${memoryMiB} MiB: ${message}`)
     } finally {
       this.refreshMemory()
     }
@@ -65,7 +74,9 @@ class TerraWasmModule {
     }
     const pointer = this.call('terra_alloc', size)
     if (!pointer) {
-      throw new Error(`Terra Wasm allocation failed for ${size} bytes`)
+      const memoryMiB = (this.memoryBytes() / (1024 * 1024)).toFixed(1)
+      throw new Error(
+        `Terra Wasm allocation failed for ${size} bytes at ${memoryMiB} MiB`)
     }
     return pointer
   }
