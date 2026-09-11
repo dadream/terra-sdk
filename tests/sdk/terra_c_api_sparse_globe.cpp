@@ -151,8 +151,8 @@ int main(int argc, char** argv) {
 
     terra_destroy(context);
 
-    // A camera-only preview may expose a patch that the preceding update did
-    // not consider visible. Its resident leaf fragments must still be exported.
+    // Invisible resident leaves must not inflate the draw payload. Root
+    // coverage remains exported independently for camera previews.
     context = terra_create();
     require(context != nullptr, "unable to create preview coverage context");
     require_ok(terra_load_manifest(context, &dataset), "load preview manifest");
@@ -194,7 +194,12 @@ int main(int argc, char** argv) {
                 return draw.flags == TERRA_DRAW_FLAG_NONE &&
                     same_key(draw.key, root_key.level, root_key.i, root_key.j, root_key.k);
               });
-          require(fragments == 2, "invisible resident leaf lost preview coverage");
+          require(fragments == 0, "invisible resident leaf entered visible payload");
+          require(std::count_if(preview_draws.begin(), preview_draws.end(),
+              [&root_key](const terra_draw_range_v1& draw) {
+                return draw.flags == TERRA_DRAW_FLAG_COVERAGE &&
+                    same_key(draw.key, root_key.level, root_key.i, root_key.j, root_key.k);
+              }) == 2, "root preview coverage was lost");
         }
       }
     }

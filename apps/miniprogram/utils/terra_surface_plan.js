@@ -165,11 +165,14 @@ function prepareSurface(positions, uv, indices, firstIndex, indexCount) {
       block = { minimum: [Infinity, Infinity, Infinity],
         maximum: [-Infinity, -Infinity, -Infinity],
         du: [ux, uy, uz], dv: [vx, vy, vz], deviation: 0,
+        duRadius: [0, 0, 0], dvRadius: [0, 0, 0],
         uv: { minimumU: Infinity, minimumV: Infinity, maximumU: -Infinity, maximumV: -Infinity } }
       blocks[key] = block
     }
     const dx = ux - block.du[0], dy = uy - block.du[1], dz = uz - block.du[2]
     const ex = vx - block.dv[0], ey = vy - block.dv[1], ez = vz - block.dv[2]
+    ;[dx, dy, dz].forEach((v, i) => { block.duRadius[i] = Math.max(block.duRadius[i], Math.abs(v)) })
+    ;[ex, ey, ez].forEach((v, i) => { block.dvRadius[i] = Math.max(block.dvRadius[i], Math.abs(v)) })
     block.deviation = Math.max(block.deviation,
       Math.sqrt(dx * dx + dy * dy + dz * dz + ex * ex + ey * ey + ez * ez))
     block.minimum[0] = Math.min(block.minimum[0], x0, x1, x2)
@@ -192,6 +195,7 @@ function measureSurface(surface,origin,context) {
     return {pixelsPerUv:Infinity,visible:true,centerDistance:0}
   }
   let pixelsPerUv=0,visible=false,centerDistance=Infinity
+  const regions=[]
   const uv={minimumU:Infinity,minimumV:Infinity,maximumU:-Infinity,maximumV:-Infinity}
   surface.blocks.forEach(block=>{
     const points=visibleBox(block,origin,context)
@@ -200,8 +204,10 @@ function measureSurface(surface,origin,context) {
     Object.keys(uv).forEach(key=>{
       uv[key]=key.startsWith('minimum')?Math.min(uv[key],block.uv[key]):Math.max(uv[key],block.uv[key])
     })
+    const region={uv:block.uv,pixelsPerUv:0}
+    regions.push(region)
     const minW=Math.min(...points.map(p=>p[3]))
-    if(!(minW>1e-9)) {pixelsPerUv=Infinity;return}
+    if(!(minW>1e-9)) {pixelsPerUv=region.pixelsPerUv=Infinity;return}
     points.forEach(p=>{
       const nx=p[0]/p[3],ny=p[1]/p[3]
       centerDistance=Math.min(centerDistance,Math.hypot(nx,ny))
@@ -209,10 +215,17 @@ function measureSurface(surface,origin,context) {
       // A norm is convex in projected position. Intersection vertices and the
       // minimum visible w bound the block, including the cached slope residual.
       const derivative=spectral([dot(x,block.du),dot(x,block.dv),0],[dot(y,block.du),dot(y,block.dv),0])
-      pixelsPerUv=Math.max(pixelsPerUv,(derivative+spectral(x,y)*block.deviation)/minW)
+      // Project derivative intervals before bounding their residual. Depth-only
+      // variation must not be charged as a full screen-space slope change.
+      const radius=(row,r)=>row.reduce((sum,v,i)=>sum+Math.abs(v)*r[i],0)
+      const residual=Math.min(spectral(x,y)*block.deviation,
+        Math.hypot(radius(x,block.duRadius),radius(x,block.dvRadius),
+          radius(y,block.duRadius),radius(y,block.dvRadius)))
+      region.pixelsPerUv=Math.max(region.pixelsPerUv,(derivative+residual)/minW)
     })
+    pixelsPerUv=Math.max(pixelsPerUv,region.pixelsPerUv)
   })
-  return {pixelsPerUv,visible,uv,centerDistance}
+  return {pixelsPerUv,visible,uv,centerDistance,regions}
 }
 function clipPolygon(polygon,axis,boundary,greater) {
   const result=[]

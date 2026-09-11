@@ -85,6 +85,7 @@ struct terra_context {
   std::map<terra_surface_key, terra_cached_surface,
            terra_surface_key_less> surface_cache;
   terra_frame_v1 frame{};
+  std::vector<std::int64_t> render_signature;
   std::size_t surface_cache_bytes = 0U;
   terra_stats_v1 stats{};
   terra::frame::cylindrical_lod_controller globe_lod;
@@ -328,26 +329,29 @@ std::size_t surface_mesh_bytes(
          sizeof(float);
 }
 
-void prune_surface_cache(terra_context& context,
+bool prune_surface_cache(terra_context& context,
                          std::size_t incoming_bytes) {
   if (incoming_bytes > maximum_cached_surface_bytes) {
     context.surface_cache.clear();
     context.surface_cache_bytes = 0U;
-    return;
+    return false;
   }
   while (!context.surface_cache.empty() &&
          (context.surface_cache.size() >= maximum_cached_surface_count ||
           context.surface_cache_bytes >
               maximum_cached_surface_bytes - incoming_bytes)) {
-    auto least_recent = context.surface_cache.begin();
-    auto iterator = least_recent;
-    ++iterator;
-    for (; iterator != context.surface_cache.end(); ++iterator) {
-      if (iterator->second.last_used_sequence <
-          least_recent->second.last_used_sequence) {
+    auto least_recent = context.surface_cache.end();
+    for (auto iterator = context.surface_cache.begin();
+         iterator != context.surface_cache.end(); ++iterator) {
+      if (iterator->second.last_used_sequence == context.sequence + 1U) continue;
+      if (least_recent == context.surface_cache.end() ||
+          iterator->second.last_used_sequence < least_recent->second.last_used_sequence) {
         least_recent = iterator;
       }
     }
+    // Never evict a surface needed later in this same frame. A working set
+    // larger than the cache otherwise rebuilds every mesh on every update.
+    if (least_recent == context.surface_cache.end()) return false;
     const std::size_t removed_bytes = least_recent->second.byte_size;
     context.surface_cache.erase(least_recent);
     context.surface_cache_bytes =
@@ -355,6 +359,7 @@ void prune_surface_cache(terra_context& context,
             ? context.surface_cache_bytes - removed_bytes
             : 0U;
   }
+  return true;
 }
 
 terra::core::grid_diamond to_diamond(
@@ -420,6 +425,39 @@ terra_status build_render_buffers(
     std::uint32_t& omitted_draw_count,
     std::uint32_t& coverage_draw_count,
     std::uint32_t& coverage_complete) {
+  std::vector<std::int64_t> signature;
+  const auto append_signature = [&signature](const terra::frame::lod_patch& patch) {
+    signature.push_back(patch.level);
+    for (std::size_t axis = 0U; axis < 3U; ++axis) signature.push_back(patch.id[axis]);
+    signature.push_back((patch.has_fragment(0U) ? 1 : 0) |
+                        (patch.has_fragment(1U) ? 2 : 0));
+  };
+  for (const auto& request : cut.record_requests) {
+    if (request.kind == terra::frame::lod_record_kind::root) append_signature(request.patch);
+  }
+  signature.push_back(-1);
+  for (const auto& patch : cut.patches) if (patch.visible) append_signature(patch);
+  if (signature == context.render_signature) {
+    expected_draw_count = context.frame.expected_draw_count;
+    omitted_draw_count = context.frame.omitted_draw_count;
+    coverage_draw_count = context.frame.coverage_draw_count;
+    coverage_complete = context.frame.coverage_complete;
+    return TERRA_STATUS_OK;
+  }
+  // Protect cached members of the new visible set before admitting any mesh.
+  const auto protect = [&context](const terra::frame::lod_patch& patch) {
+    for (std::uint8_t fragment = 0U; fragment < 2U; ++fragment) {
+      terra_surface_key key;
+      key.patch = to_key(patch);
+      key.fragment = fragment;
+      auto cached = context.surface_cache.find(key);
+      if (cached != context.surface_cache.end()) cached->second.last_used_sequence = context.sequence + 1U;
+    }
+  };
+  for (const auto& request : cut.record_requests) {
+    if (request.kind == terra::frame::lod_record_kind::root) protect(request.patch);
+  }
+  for (const auto& patch : cut.patches) if (patch.visible) protect(patch);
   using height_map = std::map<terra_patch_key_v1,
                               terra::codec::height_diamond,
                               patch_key_less>;
@@ -611,8 +649,8 @@ terra_status build_render_buffers(
                     terra::frame::surface_mesh_status_message(mesh_status));
       }
       const std::size_t byte_size = surface_mesh_bytes(generated);
-      if (byte_size <= maximum_cached_surface_bytes) {
-        prune_surface_cache(context, byte_size);
+      if (byte_size <= maximum_cached_surface_bytes &&
+          prune_surface_cache(context, byte_size)) {
         terra_cached_surface value;
         value.mesh = std::move(generated);
         value.last_used_sequence = context.sequence + 1U;
@@ -703,9 +741,10 @@ terra_status build_render_buffers(
             : 0U;
   }
 
-  // Export the complete leaf cut so camera previews retain coverage beyond
-  // the last LOD update's visible set.
+  // Resident LOD records are separate from the visible draw payload. Global
+  // root coverage remains available for camera-only previews.
   for (const terra::frame::lod_patch& patch : cut.patches) {
+    if (!patch.visible) continue;
     const terra_patch_key_v1 key = to_key(patch);
     const height_map::const_iterator height = heights.find(key);
     for (std::uint8_t fragment = 0U; fragment < 2U; ++fragment) {
@@ -740,6 +779,7 @@ terra_status build_render_buffers(
     return fail(&context, TERRA_STATUS_RESOURCE_LIMIT,
                 "frame buffers exceed the C ABI range");
   }
+  context.render_signature = std::move(signature);
   return TERRA_STATUS_OK;
 }
 
@@ -816,6 +856,7 @@ void reset_runtime_state(terra_context& context) {
   context.planar_target_set = false;
   context.planar_level = 0U;
   context.globe_lod.clear();
+  context.render_signature.clear();
   context.loaded_records.clear();
   context.failed_records.clear();
   context.requests.clear();
@@ -1196,6 +1237,7 @@ terra_status terra_submit_record(terra_context* context,
                                  const terra_patch_key_v1* key,
                                  const std::uint8_t* data,
                                  std::size_t data_size) {
+  if (context != nullptr) context->render_signature.clear();
   if (context == nullptr || !valid_record_kind(kind) || key == nullptr ||
       data == nullptr || data_size == 0U || !valid_key(*key)) {
     return fail(context, TERRA_STATUS_INVALID_ARGUMENT,

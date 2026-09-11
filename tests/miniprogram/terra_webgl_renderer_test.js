@@ -20,6 +20,12 @@ class FakeGl {
     this.ARRAY_BUFFER = 0x8892
     this.ELEMENT_ARRAY_BUFFER = 0x8893
     this.STATIC_DRAW = 0x88e4
+    this.STENCIL_TEST = 0x0b90
+    this.STENCIL_BUFFER_BIT = 0x0400
+    this.ALWAYS = 0x0207
+    this.EQUAL = 0x0202
+    this.KEEP = 0x1e00
+    this.REPLACE = 0x1e01
     this.COLOR_BUFFER_BIT = 0x4000
     this.DEPTH_BUFFER_BIT = 0x0100
     this.FLOAT = 0x1406
@@ -72,6 +78,10 @@ class FakeGl {
   getUniformLocation(program, name) { return { name } }
   createBuffer() { return this.object('buffer') }
   enable() { this.record('enable', arguments) }
+  stencilMask() { this.record('stencilMask', arguments) }
+  clearStencil() { this.record('clearStencil', arguments) }
+  stencilFunc() { this.record('stencilFunc', arguments) }
+  stencilOp() { this.record('stencilOp', arguments) }
   depthMask() { this.record('depthMask', arguments) }
   depthFunc() { this.record('depthFunc', arguments) }
   disable() { this.record('disable', arguments) }
@@ -439,7 +449,8 @@ async function main() {
   const diagnostics = []
   const renderRequests = []
   const renderer = new rendererModule.TerraWebGlRenderer(canvas, {
-    urlForTile: (tile) =>
+    directTextureTargets: false,
+      urlForTile: (tile) =>
       `https://tiles.example/${tile.matrix}/${tile.column}/${tile.row}.jpg`,
     onContextChange: (event) => contextEvents.push(event),
     onDiagnostic: (kind, detail) => diagnostics.push({ kind, detail }),
@@ -461,12 +472,51 @@ async function main() {
   ])
   const indices = new Uint16Array([0, 1, 2])
 
+  const directGl = new FakeGl(), directCanvas = new FakeCanvas(directGl)
+  const directRenderer = new rendererModule.TerraWebGlRenderer(directCanvas, {
+    urlForTile: tile => `https://tiles.example/${tile.level}/${tile.column}/${tile.row}.jpg`,
+    maximumTextureRequests: 8, maximumTextureRetries: 0, terrainBoundImagery: false,
+    textureDescriptor: { tile_size: 256, maximum_level: 12 }
+  })
+  directRenderer.textures.sync([{ texture: { level: 6, matrix: 6, row: 10, column: 20 } }])
+  await loadAllImages(directCanvas)
+  assert.strictEqual(directCanvas.images.length, 2,
+    'Direct scheduling must request only root and terminal target, not six intermediate levels')
+  assert.strictEqual(directRenderer.stats().textures.targetMissing, 0)
+  const directTargets = Array.from({ length: 40 }, (_, column) => ({
+    texture: { level: 6, matrix: 6, row: 10, column } }))
+  directRenderer.textures.sync(directTargets)
+  await loadAllImages(directCanvas, 2)
+  assert.strictEqual(directRenderer.stats().textures.targetMissing, 0,
+    'Targets sharing a root must progress when their count exceeds the transition reserve')
+  const directLoaded = directCanvas.images.length
+
+  const visibleDraw = Object.assign(draw(0), { origin: [0, 0, 0],
+    texture: { level: 0, matrix: 0, row: 0, column: 0 } })
+  const rootDraw = Object.assign({}, visibleDraw, { flags: 1,
+    key: { level: 0, i: 9, j: 9, k: 9 } })
+  directRenderer.setFrame(frame(), [visibleDraw, rootDraw], positions, textureUv, indices)
+  directRenderer.render()
+  await loadAllImages(directCanvas, directLoaded)
+  directRenderer.render()
+  const preview = frame()
+  preview.projectionView[3] = 0.25
+  directRenderer.setCameraFrame(preview)
+  directRenderer.render()
+  assert.strictEqual(directRenderer.stats().quality.quiescent, false,
+    'A dirty camera cannot be reported as converged')
+  assert(directGl.calls.some(call => call.name === 'stencilFunc' && call.args[0] === directGl.EQUAL && call.args[1] === 0),
+    'Camera preview coverage must be restricted to pixels not drawn by retained geometry')
+  directRenderer.destroy()
+  await settle()
+
   const prefetchGl = new FakeGl()
   const prefetchCanvas = new FakeCanvas(prefetchGl)
   const pressureGl = new FakeGl()
   const pressureCanvas = new FakeCanvas(pressureGl)
   const pressureRenderer = new rendererModule.TerraWebGlRenderer(
     pressureCanvas, {
+      directTextureTargets: false,
       urlForTile: (tile) =>
         `https://tiles.example/${tile.matrix}/${tile.column}/${tile.row}.jpg`,
       maximumTextureEntries: 4,
@@ -503,6 +553,7 @@ async function main() {
   const coverageCanvas = new FakeCanvas(coverageGl)
   const coverageRenderer = new rendererModule.TerraWebGlRenderer(
     coverageCanvas, {
+      directTextureTargets: false,
       urlForTile: (tile) =>
         `https://tiles.example/${tile.matrix}/${tile.column}/${tile.row}.jpg`,
       textureDescriptor: {
@@ -547,6 +598,7 @@ async function main() {
   capacityCanvas.height = 1024
   const capacityRenderer = new rendererModule.TerraWebGlRenderer(
     capacityCanvas, {
+      directTextureTargets: false,
       urlForTile: (tile) =>
         `https://tiles.example/${tile.matrix}/${tile.column}/${tile.row}.jpg`,
       textureDescriptor: {
@@ -597,6 +649,7 @@ async function main() {
   presentationCanvas.height = 1024
   const presentationRenderer = new rendererModule.TerraWebGlRenderer(
     presentationCanvas, {
+      directTextureTargets: false,
       urlForTile: (tile) =>
         `https://tiles.example/${tile.matrix}/${tile.column}/${tile.row}.jpg`,
       textureDescriptor: {
@@ -676,6 +729,7 @@ async function main() {
 
   const prefetchRenderer = new rendererModule.TerraWebGlRenderer(
     prefetchCanvas, {
+      directTextureTargets: false,
       urlForTile: (tile) =>
         `https://tiles.example/${tile.matrix}/${tile.column}/${tile.row}.jpg`,
       maximumTextureRequests: 3,
@@ -721,7 +775,8 @@ async function main() {
   const atomicGl = new FakeGl()
   const atomicCanvas = new FakeCanvas(atomicGl)
   const atomicRenderer = new rendererModule.TerraWebGlRenderer(atomicCanvas, {
-    urlForTile: (tile) =>
+    directTextureTargets: false,
+      urlForTile: (tile) =>
       `https://tiles.example/${tile.matrix}/${tile.column}/${tile.row}.jpg`,
     maximumTextureRequests: 4,
     maximumTextureRetries: 0
@@ -771,6 +826,7 @@ async function main() {
   const stagedCanvas = new FakeCanvas(stagedGl)
   const stagedRenderer = new rendererModule.TerraWebGlRenderer(
     stagedCanvas, {
+      directTextureTargets: false,
       urlForTile: (tile) =>
         `https://tiles.example/${tile.matrix}/${tile.column}/${tile.row}.jpg`,
       maximumTextureEntries: 128,
@@ -831,6 +887,7 @@ async function main() {
   const logicalParentCanvas = new FakeCanvas(logicalParentGl)
   const logicalParentRenderer = new rendererModule.TerraWebGlRenderer(
     logicalParentCanvas, {
+      directTextureTargets: false,
       urlForTile: (tile) =>
         `https://tiles.example/${tile.matrix}/${tile.column}/${tile.row}.jpg`,
       maximumTextureRequests: 1,
@@ -865,6 +922,7 @@ async function main() {
   const failureCanvas = new FakeCanvas(failureGl)
   const failureRenderer = new rendererModule.TerraWebGlRenderer(
     failureCanvas, {
+      directTextureTargets: false,
       urlForTile: (tile) =>
         `https://tiles.example/${tile.matrix}/${tile.column}/${tile.row}.jpg`,
       maximumTextureRequests: 4,
@@ -906,6 +964,7 @@ async function main() {
   const transitionCanvas = new FakeCanvas(transitionGl)
   const transitionRenderer = new rendererModule.TerraWebGlRenderer(
     transitionCanvas, {
+      directTextureTargets: false,
       urlForTile: (tile) =>
         `https://tiles.example/${tile.matrix}/${tile.column}/${tile.row}.jpg`,
       maximumTextureRequests: 1,
@@ -1247,6 +1306,7 @@ async function main() {
   const atmosphereCanvas = new FakeCanvas(atmosphereGl)
   const atmosphereRenderer = new rendererModule.TerraWebGlRenderer(
     atmosphereCanvas, {
+      directTextureTargets: false,
       urlForTile: () => 'https://tiles.example/0/0/0.jpg',
       atmosphereCapable: true,
       atmosphereEnabled: true,
