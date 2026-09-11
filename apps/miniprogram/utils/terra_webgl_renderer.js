@@ -1,4 +1,5 @@
 const common = require('./terra_globe_common')
+const surfacePlan = require('./terra_surface_plan')
 
 const DRAW_FLAG_COVERAGE = 1
 
@@ -495,10 +496,8 @@ function projectedDrawDimensions(frame, draw, positions, viewport) {
   return {
     width: (clippedMaximumX - clippedMinimumX) * width * 0.5,
     height: (clippedMaximumY - clippedMinimumY) * height * 0.5,
-    unclippedWidth: Math.min(width * 2,
-      (maximumX - minimumX) * width * 0.5),
-    unclippedHeight: Math.min(height * 2,
-      (maximumY - minimumY) * height * 0.5),
+    unclippedWidth: (maximumX - minimumX) * width * 0.5,
+    unclippedHeight: (maximumY - minimumY) * height * 0.5,
     centerDistance: Math.sqrt(centerX * centerX + centerY * centerY)
   }
 }
@@ -531,6 +530,8 @@ function childCount(candidate, levelDelta) {
 }
 
 function candidateTextureTiles(candidate, allocation) {
+  if (!candidate.tileCache) candidate.tileCache = new Map()
+  if (candidate.tileCache.has(allocation)) return candidate.tileCache.get(allocation)
   if (allocation < 0) {
     return [textureTileAtDelta(candidate.draw.texture, allocation)]
   }
@@ -539,10 +540,13 @@ function candidateTextureTiles(candidate, allocation) {
   for (let row = bounds.minimumRow; row <= bounds.maximumRow; ++row) {
     for (let column = bounds.minimumColumn;
       column <= bounds.maximumColumn; ++column) {
-      result.push(descendantTextureTile(candidate.draw.texture, allocation,
-        row, column))
+      const scale = Math.pow(2, allocation)
+      if (candidate.model && !surfacePlan.intersectsCell(candidate.model.hull,
+        column / scale, row / scale, (column + 1) / scale, (row + 1) / scale)) continue
+      result.push(descendantTextureTile(candidate.draw.texture, allocation, row, column))
     }
   }
+  candidate.tileCache.set(allocation, result)
   return result
 }
 
@@ -643,11 +647,12 @@ function refineImageryDraws(frame, draws, positions, textureUv, viewport,
   const terrainLevels = value.terrainBound
     ? terrainTextureLevelIndex(draws) : null
   const candidates = draws.map((draw, index) => {
-    const dimensions = projectedDrawDimensions(frame, draw, positions, viewport)
-    const uv = drawUvBounds(draw, textureUv)
+    const measurement = value.measureDraw ? value.measureDraw(draw) : null
+    const dimensions = measurement ? null : projectedDrawDimensions(frame, draw, positions, viewport)
+    const uv = measurement && measurement.bounds || drawUvBounds(draw, textureUv)
     const uvWidth = Math.max(1 / tileSize, uv.maximumU - uv.minimumU)
     const uvHeight = Math.max(1 / tileSize, uv.maximumV - uv.minimumV)
-    const pixelError = Math.max(
+    const pixelError = measurement ? measurement.pixelsPerUv / tileSize : Math.max(
       dimensions.unclippedWidth / (tileSize * uvWidth),
       dimensions.unclippedHeight / (tileSize * uvHeight))
     const available = Math.max(0, maximumLevel - draw.texture.level)
@@ -662,15 +667,23 @@ function refineImageryDraws(frame, draws, positions, textureUv, viewport,
     const required = pixelError > 0
       ? Math.ceil(Math.log(pixelError / targetPixelError) / Math.log(2))
       : minimumAllocation
-    const desired = common.clamp(required, minimumAllocation,
-      maximumAllocation)
-    const allocated = Math.min(0, desired)
+    let desired = common.clamp(required, minimumAllocation, maximumAllocation)
+    const previous = value.previousLevels && value.previousLevels.get(geometryKey(draw))
+    const previousDelta = previous === undefined ? minimumAllocation : previous - draw.texture.level
+    // Coarsening has a separate threshold; actual quality is never relaxed.
+    if (previousDelta > desired && pixelError > 0) {
+      desired = Math.min(previousDelta, maximumAllocation, Math.max(desired,
+        Math.ceil(Math.log(pixelError / (targetPixelError * 0.7)) / Math.LN2)))
+    }
+    const allocated = common.clamp(previous === undefined ? Math.min(0, desired)
+      : previousDelta, minimumAllocation, desired)
     const candidate = {
       draw,
       index,
       uv,
+      model: measurement && measurement.model,
       pixelError,
-      centerDistance: dimensions.centerDistance,
+      centerDistance: measurement ? measurement.centerDistance : dimensions.centerDistance,
       required,
       desired,
       allocated
@@ -684,7 +697,7 @@ function refineImageryDraws(frame, draws, positions, textureUv, viewport,
   let drawCost = candidates.reduce((sum, candidate) =>
     sum + candidate.tiles.length, 0)
 
-  while (textureRefs.size > maximumTextures) {
+  while (textureRefs.size > maximumTextures || drawCost > maximumDraws) {
     let selected = null
     candidates.forEach((candidate) => {
       if (candidate.allocated <= -candidate.draw.texture.level) return
@@ -738,10 +751,16 @@ function refineImageryDraws(frame, draws, positions, textureUv, viewport,
   }
 
   const idealTextures = new Set()
-  candidates.forEach((candidate) => {
+  const desiredCountBound = candidates.reduce((sum, candidate) =>
+    sum + childCount(candidate, candidate.desired), 0)
+  const countIsUpperBound = desiredCountBound > Math.max(4096, Math.min(16384, maximumTextures * 4))
+  if (!countIsUpperBound) candidates.forEach((candidate) => {
     candidateTextureTiles(candidate, candidate.desired).forEach((tile) =>
       idealTextures.add(common.textureKeyString(tile)))
   })
+  const textureBudgetLimited = candidates.some(candidate => candidate.allocated < candidate.desired &&
+    replacementTextureCount(textureRefs, candidate.tiles,
+      candidateTextureTiles(candidate, candidate.allocated + 1)) > maximumTextures)
   const result = []
   const coverageDraws = []
   let maximumMeasuredError = 0
@@ -778,6 +797,7 @@ function refineImageryDraws(frame, draws, positions, textureUv, viewport,
       maximumSelectedLevel = Math.max(maximumSelectedLevel, tile.level)
       result.push(Object.assign({}, candidate.draw, {
         texture: tile,
+        sourceTexture: candidate.draw.texture,
         imageryCellScale: transform.scale,
         imageryCellOffsetX: transform.offsetX,
         imageryCellOffsetY: transform.offsetY,
@@ -792,6 +812,7 @@ function refineImageryDraws(frame, draws, positions, textureUv, viewport,
   return {
     draws: result,
     coverageDraws,
+    levels: new Map(candidates.map(c => [geometryKey(c.draw), c.draw.texture.level + c.allocated])),
     quality: {
       targetPixelError,
       measuredMaxPixelError: maximumMeasuredError,
@@ -804,7 +825,8 @@ function refineImageryDraws(frame, draws, positions, textureUv, viewport,
         count + (draw.imageryClipCell ? 1 : 0), 0),
       coverageGuaranteed: coverageDraws.length === candidates.filter(
         (candidate) => candidate.allocated > 0).length,
-      desiredTextureCount: idealTextures.size,
+      desiredTextureCount: countIsUpperBound ? desiredCountBound : idealTextures.size,
+      desiredTextureCountIsUpperBound: countIsUpperBound,
       selectedTextureCount: textureRefs.size,
       maximumTextureCount: maximumTextures,
       coarsenedDrawCount,
@@ -812,8 +834,9 @@ function refineImageryDraws(frame, draws, positions, textureUv, viewport,
         ? minimumSelectedLevel : null,
       selectedLevelMaximum: Number.isFinite(maximumSelectedLevel)
         ? maximumSelectedLevel : null,
-      limitedByTextureBudget: textureRefs.size < idealTextures.size,
+      limitedByTextureBudget: textureBudgetLimited,
       limitedByBudget,
+      limitedByProjection: candidates.some(candidate => !Number.isFinite(candidate.pixelError)),
       limitedByLevel: candidates.some((candidate) =>
         candidate.required > candidate.desired),
       meetsTarget: maximumMeasuredError <= targetPixelError * 1.001
@@ -1408,7 +1431,7 @@ class TextureStore {
     for (let index = 0; index < candidates.length; ++index) {
       const candidate = candidates[index]
       const key = common.textureKeyString(candidate)
-      if (!this.committedKeys.has(key)) continue
+      if (!this.committedKeys.has(key) && !this.renderer.presentedTextures.has(key)) continue
       const asset = this.cache.get(key)
       if (!asset) continue
       if (index === 0) {
@@ -1420,6 +1443,7 @@ class TextureStore {
           offsetY: 0,
           exact: true,
           kind: 'exact',
+          resolvedTile: candidate,
           resolvedLevel: tile.level
         }
       }
@@ -1429,6 +1453,7 @@ class TextureStore {
         texture: this.uploadedTexture(asset),
         exact: false,
         kind: 'fallback',
+        resolvedTile: candidate,
         resolvedLevel: candidate.level
       }, transform)
     }
@@ -1614,6 +1639,13 @@ class TerraWebGlRenderer {
     this.coverageDraws = []
     this.geometryCoverageDraws = []
     this.displaySurface = null
+    this.presentedTextures = new Map()
+    this.imageryLevels = new Map()
+    this.cameraVersion = 0
+    this.presentedCameraVersion = -1
+    this.plannedCameraVersion = -1
+    this.measurements = new Map()
+    this.partitionBytes = 0
     this.interactionActive = false
     this.debugOptions = { textureState: false }
     this.geometryPinnedKeys = new Set()
@@ -1627,6 +1659,8 @@ class TerraWebGlRenderer {
     }
     this.pendingQualityStats = this.qualityStats
     this.performanceStats = {
+      textureUploads: 0,
+      partitionBuilds: 0,
       render: { count: 0, lastMs: 0, averageMs: 0 },
       geometryPrepare: { count: 0, lastMs: 0, averageMs: 0 },
       imageryRebuild: { count: 0, lastMs: 0, averageMs: 0 },
@@ -1889,8 +1923,158 @@ class TerraWebGlRenderer {
     this.textures.setSource(urlForTile,
       globalCoverageTextureTiles(textureDescriptor))
     this.displaySurface = null
+    this.presentedTextures.clear()
+    this.imageryLevels.clear()
     this.rebuildImageryDraws()
     this.requestRender()
+  }
+
+  measureDraw(draw) {
+    const key = draw.geometryKey || geometryKey(draw)
+    if (this.measurements.has(key)) return this.measurements.get(key)
+    const geometry = this.geometry.get(key) || this.uploadQueue.find(item => item.key === key)
+    const measured = geometry && geometry.model && this.projectionContext
+      ? surfacePlan.measureSurface(geometry.model, draw.origin, this.projectionContext)
+      : { pixelsPerUv: Infinity, visible: true, centerDistance: 0 }
+    if (geometry && geometry.model) {
+      measured.bounds = geometry.model.bounds
+      measured.model = geometry.model
+    }
+    this.measurements.set(key, measured)
+    return measured
+  }
+
+  presentationDraws(draws) {
+    const branches = new Set()
+    this.presentedTextures.forEach(tile => {
+      if (!this.textures.cache.has(common.textureKeyString(tile))) return
+      let parent = parentTextureTile(tile)
+      while (parent) {
+        branches.add(common.textureKeyString(parent))
+        parent = parentTextureTile(parent)
+      }
+    })
+    const result = []
+    draws.forEach(draw => {
+      const source = draw.sourceTexture || draw.texture
+      const visit = tile => {
+        const key = common.textureKeyString(tile)
+        const exact = this.textures.committedKeys.has(key) && this.textures.cache.has(key)
+        if (!exact && branches.has(key)) {
+          for (let row = 0; row < 2; ++row) for (let column = 0; column < 2; ++column) {
+            visit(descendantTextureTile(tile, 1, row, column))
+          }
+          return
+        }
+        const transform = textureCellTransform(source, tile)
+        result.push(Object.assign({}, draw, {
+          texture: tile, sourceTexture: source,
+          imageryCellScale: transform.scale,
+          imageryCellOffsetX: transform.offsetX,
+          imageryCellOffsetY: transform.offsetY,
+          imageryClipCell: tile.level > source.level
+        }))
+      }
+      visit(draw.texture)
+    })
+    return this.preparePartitions(result)
+  }
+
+  preparePartitions(draws) {
+    const groups = new Map()
+    draws.forEach(draw => {
+      const key = draw.geometryKey
+      if (!groups.has(key)) groups.set(key, [])
+      groups.get(key).push(draw)
+    })
+    const result = []
+    this.partitionBudgetLimited = false
+    groups.forEach((items, key) => {
+      const geometry = this.geometry.get(key)
+      if (!geometry) { result.push(...items); return }
+      items.sort((a, b) => common.textureKeyString(a.texture).localeCompare(common.textureKeyString(b.texture)))
+      const signature = items.map(draw => common.textureKeyString(draw.texture)).join('|')
+      if (geometry.partitionSignature === signature) { result.push(...items); return }
+      const cells = items.filter(draw => draw.imageryClipCell).map(draw => {
+        const scale = draw.imageryCellScale
+        return { key: common.textureKeyString(draw.texture), bounds: {
+          minimumU: -draw.imageryCellOffsetX / scale,
+          maximumU: (1 - draw.imageryCellOffsetX) / scale,
+          minimumV: -draw.imageryCellOffsetY / scale,
+          maximumV: (1 - draw.imageryCellOffsetY) / scale
+        } }
+      })
+      const parts = cells.length ? surfacePlan.partitionSurface(geometry.model, cells) : []
+      const effectiveSignature = parts.map(p => p.cell.key).sort().join('|')
+      if (geometry.partitionEffectiveSignature === effectiveSignature) {
+        geometry.partitionSignature = signature
+        geometry.partitionDraws = items
+        result.push(...items)
+        return
+      }
+      const bytes = parts.reduce((sum, p) => sum + p.positions.byteLength + p.uv.byteLength +
+        p.indices.byteLength, 0)
+      const previousBytes = geometry.partitionBytes || 0
+      const budget = this.options.geometryCacheBytes || 16 * 1024 * 1024
+      if (this.partitionBytes - previousBytes + bytes > budget) {
+        this.geometry.entries.forEach((entry, cachedKey) => {
+          if (!groups.has(cachedKey)) {
+            this.releasePartitions(entry.value)
+            entry.value.partitionSignature = null
+            entry.value.partitionEffectiveSignature = null
+            entry.value.partitionDraws = null
+          }
+        })
+      }
+      if (this.partitionBytes - previousBytes + bytes > budget) {
+        this.partitionBudgetLimited = true
+        if (geometry.partitionDraws) result.push(...geometry.partitionDraws)
+        else {
+          const source = items[0].sourceTexture || items[0].texture
+          result.push(Object.assign({}, items[0], { texture: source, sourceTexture: source,
+            imageryCellScale: 1, imageryCellOffsetX: 0, imageryCellOffsetY: 0, imageryClipCell: false }))
+        }
+        return
+      }
+      this.releasePartitions(geometry)
+      const gl = this.gl
+      parts.forEach(part => {
+        const positionBuffer = gl.createBuffer(), uvBuffer = gl.createBuffer()
+        const indexBuffer = gl.createBuffer()
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer)
+        gl.bufferData(gl.ARRAY_BUFFER, part.positions, gl.STATIC_DRAW)
+        gl.bindBuffer(gl.ARRAY_BUFFER, uvBuffer)
+        gl.bufferData(gl.ARRAY_BUFFER, part.uv, gl.STATIC_DRAW)
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer)
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, part.indices, gl.STATIC_DRAW)
+        geometry.partitions.set(part.cell.key, { positionBuffer, uvBuffer, indexBuffer,
+          indexCount: part.indices.length, vertexCount: part.positions.length / 3 })
+      })
+      geometry.partitionBytes = bytes
+      this.partitionBytes += bytes
+      geometry.partitionSignature = signature
+      geometry.partitionEffectiveSignature = effectiveSignature
+      geometry.partitionDraws = items
+      this.performanceStats.partitionBuilds += parts.length ? 1 : 0
+      result.push(...items)
+    })
+    return result
+  }
+
+  partitionForDraw(geometry, draw) {
+    return geometry.partitions.get(common.textureKeyString(draw.texture)) ||
+      { vertexCount: 0, indexCount: 0 }
+  }
+
+  releasePartitions(geometry) {
+    if (geometry.partitions) geometry.partitions.forEach(part => {
+      if (part.positionBuffer) this.gl.deleteBuffer(part.positionBuffer)
+      if (part.uvBuffer) this.gl.deleteBuffer(part.uvBuffer)
+      if (part.indexBuffer) this.gl.deleteBuffer(part.indexBuffer)
+    })
+    geometry.partitions = new Map()
+    this.partitionBytes -= geometry.partitionBytes || 0
+    geometry.partitionBytes = 0
   }
 
   rebuildImageryDraws() {
@@ -1915,6 +2099,11 @@ class TerraWebGlRenderer {
       }))
     const targetDraws = sourceDraws.filter((draw) =>
       (draw.flags & DRAW_FLAG_COVERAGE) === 0)
+    this.measurements.clear()
+    this.projectionContext = surfacePlan.projectionContext(this.current.frame, {
+      width: this.canvas.width, height: this.canvas.height,
+      devicePixelRatio: this.options.devicePixelRatio || 1
+    }, invertMatrix4(this.current.frame.projectionView))
     const result = refineImageryDraws(this.current.frame, targetDraws,
       this.current.positions, this.current.textureUv, {
         width: this.canvas.width,
@@ -1925,11 +2114,17 @@ class TerraWebGlRenderer {
         maximumSubdivisionLevels: this.options.maximumImagerySubdivisionLevels,
         maximumDraws: this.options.maximumImageryDraws,
         maximumTextures: this.textures.targetCapacity(),
-        terrainBound: this.terrainBoundImagery
+        terrainBound: this.terrainBoundImagery,
+        previousLevels: this.imageryLevels,
+        measureDraw: draw => this.measureDraw(draw)
       })
+    this.imageryLevels = result.levels
+    this.plannedCameraVersion = this.cameraVersion
     this.renderDraws = result.draws
-    this.coverageDraws = result.coverageDraws
+    // Resolve fallback per region instead of overlaying a whole coarse mesh.
+    this.coverageDraws = []
     result.quality.terrainBound = this.terrainBoundImagery
+    result.quality.coverageDrawCount = 0
     this.pendingQualityStats = result.quality
     const retainedDraws = this.displaySurface &&
       this.displaySurface.current !== this.current
@@ -1937,7 +2132,8 @@ class TerraWebGlRenderer {
         this.displaySurface.coverageDraws || [],
         this.displaySurface.renderDraws) : null
     this.textures.sync(this.geometryCoverageDraws.concat(
-      this.coverageDraws, this.renderDraws), retainedDraws)
+      this.coverageDraws, this.renderDraws), (retainedDraws || []).concat(
+        Array.from(this.presentedTextures.values()).map(texture => ({ texture }))))
     this.promoteCurrentSurfaceIfReady()
   }
 
@@ -2052,13 +2248,15 @@ class TerraWebGlRenderer {
     this.updateGeometryPins()
     this.qualityStats = Object.assign({}, this.pendingQualityStats)
     this.textures.sync(this.geometryCoverageDraws.concat(
-      this.coverageDraws, this.renderDraws))
+      this.coverageDraws, this.renderDraws),
+      Array.from(this.presentedTextures.values()).map(texture => ({ texture })))
     return true
   }
 
   setFrame(frame, draws, positions, textureUv, indices) {
     common.invariant(frame && draws && positions && textureUv && indices,
       'Renderer frame data is incomplete')
+    this.cameraVersion += 1
     this.current = { frame, draws, positions, textureUv, indices }
     let startedAt = monotonicNow()
     this.enqueueGeometry(draws, positions, textureUv)
@@ -2075,10 +2273,16 @@ class TerraWebGlRenderer {
   setCameraFrame(snapshot) {
     common.invariant(this.current && snapshot && snapshot.cameraPosition &&
       snapshot.projectionView, 'Renderer camera snapshot is incomplete')
+    this.cameraVersion += 1
+    this.measurements.clear()
     this.current.frame = Object.assign({}, this.current.frame, {
       cameraPosition: snapshot.cameraPosition.slice(),
       projectionView: new Float64Array(snapshot.projectionView)
     })
+    this.projectionContext = surfacePlan.projectionContext(this.current.frame, {
+      width: this.canvas.width, height: this.canvas.height,
+      devicePixelRatio: this.options.devicePixelRatio || 1
+    }, invertMatrix4(this.current.frame.projectionView))
     this.requestRender()
   }
 
@@ -2144,14 +2348,15 @@ class TerraWebGlRenderer {
       ? (surface.geometryCoverageDraws || []) : []
     const imageryCoverageDraws = this.mode === 'texture' &&
       !targetTexturesReady ? (surface.coverageDraws || []) : []
-    const targetTerrainDraws = this.mode === 'texture'
-      ? imageryCoverageDraws.concat(surface.renderDraws)
+    const targetTerrainDraws = surface.useGeometryCoverage ? [] : (this.mode === 'texture'
+      ? this.presentationDraws(surface.renderDraws)
       : surface.current.draws.filter((draw) =>
-        (draw.flags & DRAW_FLAG_COVERAGE) === 0)
+        (draw.flags & DRAW_FLAG_COVERAGE) === 0))
     let submitted = 0
     const terrainDraws = geometryCoverageDraws.concat(targetTerrainDraws)
     const geometryCoverageDrawCount = geometryCoverageDraws.length
     const imageryCoverageDrawCount = imageryCoverageDraws.length
+    const nextPresentedTextures = new Map()
     let maximumResolvedError = 0
     let fallbackCount = 0
     let missingCount = 0
@@ -2167,6 +2372,9 @@ class TerraWebGlRenderer {
       if (!geometry || !geometry.positionBuffer || !geometry.uvBuffer) {
         continue
       }
+      const part = this.mode === 'texture' && draw.imageryClipCell
+        ? this.partitionForDraw(geometry, draw) : null
+      if (part && part.vertexCount === 0 && part.indexCount === 0) continue
       gl.bindBuffer(gl.ARRAY_BUFFER, geometry.positionBuffer)
       gl.enableVertexAttribArray(this.attributes.position)
       gl.vertexAttribPointer(this.attributes.position, 3, gl.FLOAT, false, 0, 0)
@@ -2183,7 +2391,7 @@ class TerraWebGlRenderer {
       gl.uniform2f(this.uniforms.cellUvOffset,
         draw.imageryCellOffsetX || 0, draw.imageryCellOffsetY || 0)
       gl.uniform1f(this.uniforms.clipCell,
-        draw.imageryClipCell ? 1 : 0)
+        0)
       const binding = this.textures.get(draw.texture)
       gl.uniform2f(this.uniforms.uvScale, binding.scale, binding.scale)
       gl.uniform2f(this.uniforms.uvOffset,
@@ -2200,21 +2408,46 @@ class TerraWebGlRenderer {
         maximumResolvedLevel = Math.max(maximumResolvedLevel,
           binding.resolvedLevel)
         maximumResolvedError = Math.max(maximumResolvedError,
-          (draw.imageryPixelError || 0) *
-          Math.pow(2, draw.texture.level - binding.resolvedLevel))
+          this.measureDraw(draw).pixelsPerUv /
+          ((Number(this.options.textureDescriptor && this.options.textureDescriptor.tile_size) || 256) *
+          Math.pow(2, binding.resolvedLevel - (draw.sourceTexture || draw.texture).level)))
+        if (binding.resolvedTile) nextPresentedTextures.set(
+          common.textureKeyString(binding.resolvedTile), binding.resolvedTile)
       } else {
         maximumResolvedError = Number.POSITIVE_INFINITY
       }
       gl.bindTexture(gl.TEXTURE_2D, binding.texture)
-      gl.drawElements(gl.TRIANGLE_STRIP, draw.indexCount, gl.UNSIGNED_SHORT,
-        draw.firstIndex * 2)
+      if (part) {
+        if (part.indexCount) {
+          gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, part.indexBuffer)
+          gl.drawElements(gl.TRIANGLES, part.indexCount, gl.UNSIGNED_SHORT, 0)
+        }
+        if (part.vertexCount) {
+          gl.bindBuffer(gl.ARRAY_BUFFER, part.positionBuffer)
+          gl.vertexAttribPointer(this.attributes.position, 3, gl.FLOAT, false, 0, 0)
+          gl.bindBuffer(gl.ARRAY_BUFFER, part.uvBuffer)
+          gl.vertexAttribPointer(this.attributes.uv, 2, gl.FLOAT, false, 0, 0)
+          gl.drawArrays(gl.TRIANGLES, 0, part.vertexCount)
+        }
+      } else {
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer)
+        gl.drawElements(gl.TRIANGLE_STRIP, draw.indexCount, gl.UNSIGNED_SHORT, draw.firstIndex * 2)
+      }
       submitted += 1
     }
-    const coverageSubmitted = geometryCoverageDrawCount +
-      imageryCoverageDrawCount
+    this.presentedCameraVersion = this.cameraVersion
+    const changedPresentation = nextPresentedTextures.size !== this.presentedTextures.size ||
+      Array.from(nextPresentedTextures.keys()).some(key => !this.presentedTextures.has(key))
+    this.presentedTextures = nextPresentedTextures
+    if (changedPresentation) {
+      this.textures.sync(this.geometryCoverageDraws.concat(this.renderDraws),
+        Array.from(nextPresentedTextures.values()).map(texture => ({ texture })))
+    }
+    const coverageSubmitted = geometryCoverageDrawCount
     if (coverageSubmitted > 0) {
       maximumResolvedError = Number.POSITIVE_INFINITY
     }
+    const terrainSubmitted = submitted
     submitted += this.renderOverlays(relative, viewFrame.cameraPosition)
     const error = gl.getError()
     if (error !== gl.NO_ERROR) {
@@ -2223,6 +2456,10 @@ class TerraWebGlRenderer {
     this.drawStats = { submitted, queued: this.uploadQueue.length }
     this.qualityStats = Object.assign({}, surface.quality, {
       resolvedMaxPixelError: maximumResolvedError,
+      renderedDrawCount: terrainSubmitted,
+      meetsTarget: Number.isFinite(maximumResolvedError) && maximumResolvedError <=
+        surface.quality.targetPixelError * 1.001,
+      limitedByGeometryBudget: this.partitionBudgetLimited,
       coverageSubmitted,
       geometryCoverageSubmitted: geometryCoverageDrawCount,
       imageryCoverageSubmitted: imageryCoverageDrawCount,
@@ -2368,7 +2605,9 @@ class TerraWebGlRenderer {
       const uvEnd = uvStart + draw.vertexCount * 2
       const localPositions = positions.slice(positionStart, positionEnd)
       const localUv = textureUv.slice(uvStart, uvEnd)
-      additions.push({ key, positions: localPositions, uv: localUv })
+      const model = surfacePlan.prepareSurface(localPositions, localUv,
+        this.current.indices, draw.firstIndex, draw.indexCount)
+      additions.push({ key, positions: localPositions, uv: localUv, model })
       queued.add(key)
     }
     this.uploadQueue = this.uploadQueue.filter((item) => wanted.has(item.key))
@@ -2393,7 +2632,9 @@ class TerraWebGlRenderer {
         positionBuffer,
         uvBuffer,
         positions: item.positions,
-        uv: item.uv
+        uv: item.uv,
+        model: item.model,
+        partitions: new Map()
       }, item.positions.byteLength + item.uv.byteLength)
     }
     this.ensureCurrentGeometryQueued()
@@ -2439,6 +2680,7 @@ class TerraWebGlRenderer {
   }
 
   uploadTexture(image, width, height) {
+    this.performanceStats.textureUploads += 1
     const gl = this.gl
     const texture = gl.createTexture()
     gl.bindTexture(gl.TEXTURE_2D, texture)
@@ -2471,6 +2713,8 @@ class TerraWebGlRenderer {
       this.geometry.clear()
       this.uploadQueue = []
       this.displaySurface = null
+      this.presentedTextures.clear()
+      this.presentedCameraVersion = -1
       this.initialize()
       this.textures.restoreContext()
       if (this.current) {
@@ -2492,6 +2736,7 @@ class TerraWebGlRenderer {
     if (!value || !this.gl) {
       return
     }
+    this.releasePartitions(value)
     if (value.positionBuffer) {
       this.gl.deleteBuffer(value.positionBuffer)
     }
@@ -2549,7 +2794,9 @@ class TerraWebGlRenderer {
     const displayingCurrent = Boolean(this.displaySurface &&
       this.displaySurface.current === this.current)
     const geometryCoverageReady = this.currentGeometryCoverageReady()
-    const geometryTargetComplete = this.omittedCurrentGeometryCount() === 0
+    const geometryTargetComplete = this.omittedCurrentGeometryCount() === 0 &&
+      Boolean(this.current) && this.current.frame.decisionsComplete !== false &&
+      !(this.current.frame.requestCount > 0)
     const transitionCoverageSubmitted =
       (this.qualityStats.coverageSubmitted || 0) > 0
     const covered = textureStats.coverageReady &&
@@ -2559,9 +2806,10 @@ class TerraWebGlRenderer {
       textureStats.stagedTiles === 0 && textureStats.frontierTiles === 0 &&
       geometryTargetComplete
     const requestIdle = textureStats.active === 0 && textureStats.queued === 0
-    const targetMet = Boolean(this.qualityStats.meetsTarget) &&
-      (!hasResolvedError || (Number.isFinite(resolvedError) &&
-        resolvedError <= this.qualityStats.targetPixelError * 1.001))
+    const cameraCurrent = this.presentedCameraVersion === this.cameraVersion &&
+      this.plannedCameraVersion === this.cameraVersion
+    const targetMet = cameraCurrent && hasResolvedError && Number.isFinite(resolvedError) &&
+      resolvedError <= this.qualityStats.targetPixelError * 1.001
     const ready = !this.interactionActive &&
       covered &&
       geometryTargetComplete &&
@@ -2578,11 +2826,15 @@ class TerraWebGlRenderer {
     const settled = ready && resourceStable &&
       textureStats.fallbackRatio === 0
     const state = textureStats.blockedByFailure ? 'degraded'
-      : (textureStats.state === 'blocked-capacity' ? 'blocked-capacity'
-        : (!covered ? 'loading'
-          : (!resourceStable ? 'refining'
-            : (targetMet ? 'ready' : 'limited'))))
+      : (this.interactionActive ? 'interacting'
+        : (textureStats.state === 'blocked-capacity' ? 'blocked-capacity'
+          : (ready ? 'ready' : (!covered ? 'loading'
+            : (!resourceStable || !cameraCurrent ? 'refining' : 'limited')))))
     const quality = Object.assign({}, this.qualityStats, {
+      cameraCurrent,
+      cameraVersion: this.cameraVersion,
+      presentedCameraVersion: this.presentedCameraVersion,
+      plannedCameraVersion: this.plannedCameraVersion,
       interactionActive: this.interactionActive,
       textureState: textureStats.state,
       coverageReady: textureStats.coverageReady,
@@ -2620,6 +2872,9 @@ class TerraWebGlRenderer {
         source: this.atmosphere.width > 2 ? 'terra-core' : 'fallback'
       },
       performance: {
+        textureUploads: this.performanceStats.textureUploads,
+        partitionBuilds: this.performanceStats.partitionBuilds,
+        partitionBytes: this.partitionBytes,
         render: Object.assign({}, this.performanceStats.render),
         geometryPrepare: Object.assign({},
           this.performanceStats.geometryPrepare),

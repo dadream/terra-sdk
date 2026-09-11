@@ -703,10 +703,9 @@ terra_status build_render_buffers(
             : 0U;
   }
 
+  // Export the complete leaf cut so camera previews retain coverage beyond
+  // the last LOD update's visible set.
   for (const terra::frame::lod_patch& patch : cut.patches) {
-    if (!patch.visible) {
-      continue;
-    }
     const terra_patch_key_v1 key = to_key(patch);
     const height_map::const_iterator height = heights.find(key);
     for (std::uint8_t fragment = 0U; fragment < 2U; ++fragment) {

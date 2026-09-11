@@ -809,6 +809,7 @@ class TerraGlobeRuntime {
     this.lastError = ''
     this.cameraAnimation = null
     this.cameraRefreshTimer = null
+    this.interactionRefreshTimer = null
     this.terrainRefreshTimer = null
     this.terrainRefreshStartedAt = 0
     this.interactionActive = false
@@ -1263,6 +1264,7 @@ class TerraGlobeRuntime {
       headingDegrees || tiltDegrees
     if (!changed) return
     if (this.interactionActive && this.previewCamera()) {
+      this.scheduleInteractionRefresh()
       return
     }
     this.refresh()
@@ -1523,12 +1525,34 @@ class TerraGlobeRuntime {
     }
   }
 
+  cancelInteractionRefresh() {
+    if (this.interactionRefreshTimer !== null) clearTimeout(this.interactionRefreshTimer)
+    this.interactionRefreshTimer = null
+  }
+
+  scheduleInteractionRefresh() {
+    if (this.destroyed || this.paused || !this.interactionActive ||
+        this.interactionRefreshTimer !== null) return
+    // Keep the camera path responsive and bound planning to at most one pending
+    // latest-camera update. I/O completions use the same coalesced wake-up.
+    const delay = Math.max(120, Math.min(500,
+      this.performanceStats.fullUpdate.lastMs * 4))
+    this.interactionRefreshTimer = setTimeout(() => {
+      this.interactionRefreshTimer = null
+      if (this.destroyed || this.paused || !this.interactionActive) return
+      if (!this.cameraPreviewDirty && !this.refreshPending) return
+      this.refreshPending = false
+      this.refresh()
+    }, delay)
+  }
+
   setInteractionActive(active) {
     const next = Boolean(active)
     if (this.interactionActive === next) {
       return
     }
     this.interactionActive = next
+    if (!next) this.cancelInteractionRefresh()
     if (this.renderer && typeof this.renderer.setInteractionActive === 'function') {
       this.renderer.setInteractionActive(next)
     }
@@ -1629,6 +1653,7 @@ class TerraGlobeRuntime {
     }
     if (this.paused || this.interactionActive) {
       this.refreshPending = true
+      if (this.interactionActive) this.scheduleInteractionRefresh()
       return
     }
     if (this.refreshing) {
@@ -1954,6 +1979,7 @@ class TerraGlobeRuntime {
       return
     }
     this.paused = true
+    this.cancelInteractionRefresh()
     this.cancelAnimation()
   }
 
@@ -1974,6 +2000,7 @@ class TerraGlobeRuntime {
   destroy() {
     this.cancelAnimation()
     this.cancelCameraRefresh()
+    this.cancelInteractionRefresh()
     this.cancelTerrainRefresh()
     this.destroyed = true
     this.scheduler.clear()

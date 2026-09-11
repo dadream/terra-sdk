@@ -44,6 +44,7 @@ function browserBundle() {
     ['./terra_wasm', 'apps/miniprogram/utils/terra_wasm.js'],
     ['./terra_globe_common', 'apps/miniprogram/utils/terra_globe_common.js'],
     ['./terra_webgl_renderer', 'apps/miniprogram/utils/terra_webgl_renderer.js'],
+  ['./terra_surface_plan', 'apps/miniprogram/utils/terra_surface_plan.js'],
     ['./terra_globe_runtime', 'apps/miniprogram/utils/terra_globe_runtime.js'],
     ['./terra_interaction_controller',
       'apps/miniprogram/utils/terra_interaction_controller.js'],

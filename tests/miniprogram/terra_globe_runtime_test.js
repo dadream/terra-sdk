@@ -370,6 +370,18 @@ async function testSuccessfulLoadAndControls() {
   assert.deepStrictEqual(result.renderer.interactionStates, [true, false])
   assert(result.runtime.state().performance.fullUpdate.count > 0)
 
+  const continuousStart = abi.updateCount
+  result.runtime.setInteractionActive(true)
+  result.runtime.applyInteraction({ headingDegrees: 8, tiltDegrees: 8 })
+  await settle(150)
+  assert(abi.updateCount > continuousStart, 'Continuous look interaction must advance before release')
+  assert(abi.updateCount <= continuousStart + 2, 'Interaction updates must be coalesced')
+  const stationaryCount = abi.updateCount
+  await settle(160)
+  assert.strictEqual(abi.updateCount, stationaryCount, 'A stationary held gesture must not spin')
+  result.runtime.setInteractionActive(false)
+  await settle(2)
+
   const debouncedUpdates = abi.updateCount
   const debouncedSnapshots = abi.cameraSnapshotCount
   for (let index = 0; index < 12; ++index) {

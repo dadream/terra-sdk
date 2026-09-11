@@ -53,6 +53,13 @@ Globe integration reads external data from `GLOBE_DATA_DIR` and keeps only
 reviewed captures under `testdata/viewer_baseline/globe/`. Follow
 `docs/GLOBE_VERIFICATION.md`; never commit a Tianditu token.
 
+## Repository Commit Preference
+
+User instruction recorded on 2026-09-11: do not execute preflight in this
+repository. Use ordinary WSL Git commands for commits and pushes. Do not run
+preflight planning, signing, formatting, telemetry, or submission workflows.
+This preference applies to this repository and its worktrees.
+
 ## Commits
 
 Use focused imperative messages such as `build: establish CMake-only baseline`.

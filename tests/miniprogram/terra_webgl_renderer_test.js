@@ -614,11 +614,14 @@ async function main() {
       maximumTextureRetries: 0,
       prefetchTextureAncestors: false
     })
-  presentationRenderer.setFrame(frame(), [qualityDraw], qualityPositions,
-    qualityUv, indices)
+  const presentationDraw = Object.assign({}, qualityDraw, { indexCount: 4 })
+  const presentationIndices = new Uint16Array([0, 1, 2, 3])
+  presentationRenderer.setFrame(frame(), [presentationDraw], qualityPositions,
+    qualityUv, presentationIndices)
   const loadingPresentation = presentationRenderer.render()
   assert(loadingPresentation.submitted > 0)
-  assert(presentationRenderer.stats().quality.coverageSubmitted > 0)
+  assert.strictEqual(presentationRenderer.stats().quality.coverageSubmitted, 0)
+  assert(presentationRenderer.stats().quality.missingCount > 0)
   assert.strictEqual(presentationRenderer.stats().quality.ready, false)
   await loadAllImages(presentationCanvas)
   presentationRenderer.render()
@@ -627,7 +630,48 @@ async function main() {
   assert.strictEqual(settledPresentation.quality.coverageSubmitted, 0)
   assert.strictEqual(settledPresentation.quality.ready, true)
   assert.strictEqual(settledPresentation.quality.settled, true)
+  presentationRenderer.setFrame(Object.assign(frame(), { decisionsComplete: false, requestCount: 1 }),
+    [presentationDraw], qualityPositions, qualityUv, presentationIndices)
+  presentationRenderer.render()
+  assert.strictEqual(presentationRenderer.stats().quality.ready, false)
+  assert.strictEqual(presentationRenderer.stats().quality.state, 'refining')
+  presentationRenderer.setFrame(frame(), [presentationDraw], qualityPositions, qualityUv, presentationIndices)
+  presentationRenderer.render()
+  const uploaded = settledPresentation.performance.textureUploads
+  const partitions = settledPresentation.performance.partitionBuilds
+  const requests = presentationCanvas.images.length
+  const rotatedFrame = frame()
+  const c = Math.SQRT1_2
+  rotatedFrame.projectionView = new Float64Array([
+    c,-c,0,0,c,c,0,0,0,0,1,0,0,0,0,1])
+  presentationRenderer.setInteractionActive(true)
+  presentationRenderer.setCameraFrame(rotatedFrame)
+  presentationRenderer.render()
+  assert.strictEqual(presentationRenderer.stats().quality.state, 'interacting')
+  assert.strictEqual(presentationRenderer.stats().quality.ready, false)
+  assert.strictEqual(presentationRenderer.stats().performance.textureUploads, uploaded)
+  assert.strictEqual(presentationRenderer.stats().performance.partitionBuilds, partitions)
+  presentationRenderer.setInteractionActive(false)
+  assert.notStrictEqual(presentationRenderer.stats().quality.state, 'ready')
+  presentationRenderer.setFrame(rotatedFrame, [presentationDraw], qualityPositions, qualityUv, presentationIndices)
+  presentationRenderer.render()
+  assert.strictEqual(presentationRenderer.stats().quality.ready, true)
+  assert.strictEqual(presentationCanvas.images.length, requests)
+  assert.strictEqual(presentationRenderer.stats().performance.textureUploads, uploaded)
+  assert.strictEqual(presentationRenderer.stats().performance.partitionBuilds, partitions)
+  // A new, uncached coarser target must not erase the already presented detail.
+  const oldLevel = presentationRenderer.stats().quality.resolvedLevelMinimum
+  presentationRenderer.options.imageryPixelError = 3
+  presentationRenderer.setFrame(rotatedFrame, [presentationDraw], qualityPositions, qualityUv, presentationIndices)
+  presentationRenderer.render()
+  assert.strictEqual(presentationRenderer.stats().quality.resolvedLevelMinimum, oldLevel)
+  assert.strictEqual(presentationRenderer.stats().performance.textureUploads, uploaded)
+  assert.strictEqual(presentationRenderer.stats().performance.partitionBuilds, partitions)
+  await loadAllImages(presentationCanvas, requests)
+  presentationRenderer.render()
+  assert.strictEqual(presentationRenderer.stats().quality.ready, true)
   presentationRenderer.destroy()
+  assert.strictEqual(presentationRenderer.partitionBytes, 0)
   await settle()
 
   const prefetchRenderer = new rendererModule.TerraWebGlRenderer(

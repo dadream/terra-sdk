@@ -153,6 +153,12 @@ set +e
     -v "${ROOT_DIR}:/workspace" \
     -w /workspace \
     "${WASM_IMAGE}" \
+    node tests/miniprogram/terra_surface_plan_test.js
+
+  docker run --rm \
+    -v "${ROOT_DIR}:/workspace" \
+    -w /workspace \
+    "${WASM_IMAGE}" \
     node tests/miniprogram/terra_globe_runtime_test.js
 
   docker run --rm \
@@ -235,12 +241,16 @@ cp "${ROOT_DIR}/apps/miniprogram/utils/terra_interaction_controller.js" \
   "${PACKAGE_DIR}/utils/terra_interaction_controller.js"
 cp "${ROOT_DIR}/apps/miniprogram/utils/terra_miniprogram_interaction.js" \
   "${PACKAGE_DIR}/utils/terra_miniprogram_interaction.js"
+cp "${ROOT_DIR}/apps/miniprogram/utils/terra_camera_motion.js" \
+  "${PACKAGE_DIR}/utils/terra_camera_motion.js"
 cp "${ROOT_DIR}/apps/miniprogram/utils/terra_viewer.js" \
   "${PACKAGE_DIR}/utils/terra_viewer.js"
 cp "${ROOT_DIR}/apps/miniprogram/utils/terra_viewer.d.ts" \
   "${PACKAGE_DIR}/utils/terra_viewer.d.ts"
 cp "${ROOT_DIR}/apps/miniprogram/utils/terra_imagery_profiles.js" \
   "${PACKAGE_DIR}/utils/terra_imagery_profiles.js"
+cp "${ROOT_DIR}/apps/miniprogram/utils/terra_surface_plan.js" \
+  "${PACKAGE_DIR}/utils/terra_surface_plan.js"
 cp "${ROOT_DIR}/apps/miniprogram/utils/terra_webgl_renderer.js" \
   "${PACKAGE_DIR}/utils/terra_webgl_renderer.js"
 cp "${ROOT_DIR}/apps/miniprogram/utils/terra_globe_runtime.js" \
@@ -257,6 +267,10 @@ cp "${ROOT_DIR}/NOTICE" "${PACKAGE_DIR}/licenses/NOTICE"
 cp "${ROOT_DIR}/spacelib/COPYING" \
   "${PACKAGE_DIR}/licenses/spacelib/COPYING"
 cp "${ROOT_DIR}/ratman/LICENSE" "${PACKAGE_DIR}/licenses/ratman/LICENSE"
+
+docker run --rm -v "${ROOT_DIR}:/workspace:ro" -w /workspace \
+  "${WASM_IMAGE}" node -e \
+  "require('./workspace_old/package/miniprogram/utils/terra_viewer')"
 
 wasm_sha256=$(sha256sum "${PACKAGE_DIR}/wasm/terra_sdk.wasm" | awk '{print $1}')
 core_size=${wasm_size}

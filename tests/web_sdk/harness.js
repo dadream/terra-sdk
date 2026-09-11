@@ -106,24 +106,37 @@
     throw new Error(`Timed out waiting for ${name}`)
   }
 
-  function makeTextureDataUrl() {
-    const texture = document.createElement('canvas')
-    texture.width = 16
-    texture.height = 16
-    const context = texture.getContext('2d')
-    context.fillStyle = '#1d6590'
-    context.fillRect(0, 0, 16, 16)
-    context.fillStyle = '#5fa65b'
-    context.fillRect(0, 0, 8, 8)
-    context.fillStyle = '#d8c66f'
-    context.fillRect(8, 8, 8, 8)
-    context.fillStyle = '#f2f4f5'
-    context.fillRect(6, 6, 4, 4)
-    return texture.toDataURL('image/png')
+  const textureUrls = new Map()
+  function makeTextureDataUrl(url) {
+    const match = /\/(\d+)\/(\d+)\/(\d+)\.png/.exec(new URL(url).pathname)
+    const level = match ? Number(match[1]) : 0
+    const column = match ? Number(match[2]) : 0
+    const row = match ? Number(match[3]) : 0
+    const key = level + '/' + column + '/' + row
+    if (textureUrls.has(key)) return textureUrls.get(key)
+    const size = 256 / Math.pow(2, level)
+    // One geographic image at every LOD. SVG lets the browser decode the tile
+    // asynchronously; generating PNG pixels here would block SDK scheduling.
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" ' +
+      'viewBox="' + column * size + ' ' + row * size + ' ' + size + ' ' + size + '">' +
+      '<rect width="512" height="256" fill="#1d6590"/>' +
+      '<g fill="#5fa65b"><path d="M25 58 Q65 23 113 48 L145 87 L108 110 ' +
+      'L92 161 L63 125 L44 97 Z"/><path d="M120 138 L155 145 Q183 170 ' +
+      '156 224 L137 242 L121 194 Z"/><path d="M217 68 Q271 27 326 44 ' +
+      'L388 35 L451 71 L428 110 L387 137 L347 103 L304 119 L286 166 ' +
+      'L257 188 L231 153 L235 104 Z"/><path d="M374 174 Q412 154 449 184 ' +
+      'L430 218 L390 222 Z"/></g><g fill="#d8c66f">' +
+      '<path d="M239 109 L285 100 L283 137 L251 149 Z"/>' +
+      '<path d="M359 61 L410 69 L399 99 L367 95 Z"/></g>' +
+      '<g fill="#f2f4f5"><rect width="512" height="12"/>' +
+      '<rect y="244" width="512" height="12"/></g></svg>'
+    const value = 'data:image/svg+xml;base64,' + btoa(svg)
+    textureUrls.set(key, value)
+    return value
   }
 
+
   function installBrowserCanvasAdapter() {
-    const textureDataUrl = makeTextureDataUrl()
     const sourceProperty = Object.getOwnPropertyDescriptor(
       HTMLImageElement.prototype, 'src')
     canvas.requestAnimationFrame = (callback) => window.requestAnimationFrame(callback)
@@ -137,7 +150,7 @@
         },
         set(value) {
           requestedUrl = String(value || '')
-          sourceProperty.set.call(image, requestedUrl ? textureDataUrl : '')
+          sourceProperty.set.call(image, requestedUrl ? makeTextureDataUrl(requestedUrl) : '')
         }
       })
       return image

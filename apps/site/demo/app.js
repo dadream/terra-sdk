@@ -435,14 +435,15 @@
               qualityState === 'blocked-capacity' ||
               qualityState === 'degraded'
             ? text('demo.status.limited')
-            : (qualityState === 'refining' ||
+            : (qualityState === 'interacting' || qualityState === 'refining' ||
                 (coverageReady && pending > 0)
               ? text('demo.status.refining')
               : text('demo.status.loading'))))
     if (quality.ready && frame.drawCount > 0) {
       document.documentElement.dataset.terraStatus = 'ready'
-    } else if (!current.error) {
-      document.documentElement.dataset.terraStatus = qualityState
+    } else {
+      document.documentElement.dataset.terraStatus = current.error ? 'failed'
+        : (qualityState === 'ready' ? 'refining' : qualityState)
     }
     const targetText = isGlobe
       ? `${number(target.longitudeDegrees, 5)}, ${number(target.latitudeDegrees, 5)}`

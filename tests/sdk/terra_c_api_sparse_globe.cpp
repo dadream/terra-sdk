@@ -150,6 +150,56 @@ int main(int argc, char** argv) {
     require_ok(terra_update(context, 0.0025F), "resolved sparse update");
 
     terra_destroy(context);
+
+    // A camera-only preview may expose a patch that the preceding update did
+    // not consider visible. Its resident leaf fragments must still be exported.
+    context = terra_create();
+    require(context != nullptr, "unable to create preview coverage context");
+    require_ok(terra_load_manifest(context, &dataset), "load preview manifest");
+    require_ok(terra_set_viewport(context, &viewport), "set preview viewport");
+    require_ok(terra_update(context, 0.0025F), "initialize preview coverage");
+    require_ok(terra_submit_record(context, TERRA_REQUEST_ROOT, &root_key,
+                                   root_bytes.data(), root_bytes.size()),
+               "submit preview root");
+    require_ok(terra_fail_record(context, TERRA_REQUEST_DETAIL, &detail_key),
+               "keep preview root coarse");
+    terra_camera_v1 preview_camera{};
+    preview_camera.struct_size = sizeof(preview_camera);
+    preview_camera.distance = dataset.radius + 10000.0;
+    require_ok(terra_set_camera(context, &preview_camera), "set preview camera");
+    bool observed_invisible = false;
+    for (double longitude : {-135.0, -45.0, 45.0, 135.0}) {
+      require_ok(terra_set_globe_target(context, longitude, -45.0),
+                 "rotate preview target");
+      require_ok(terra_update(context, 0.0025F), "update preview target");
+      std::size_t patch_count = 0U;
+      require(terra_get_frame_patches(context, nullptr, 0U, &patch_count) ==
+                  TERRA_STATUS_BUFFER_TOO_SMALL, "size preview patches");
+      std::vector<terra_patch_decision_v1> patches(patch_count);
+      require_ok(terra_get_frame_patches(context, patches.data(), patches.size(),
+                                         &patch_count), "read preview patches");
+      for (const terra_patch_decision_v1& patch : patches) {
+        if (same_key(patch.key, root_key.level, root_key.i, root_key.j, root_key.k) &&
+            patch.visible == 0U) {
+          observed_invisible = true;
+          std::size_t preview_count = 0U;
+          require(terra_get_draw_ranges(context, nullptr, 0U, &preview_count) ==
+                      TERRA_STATUS_BUFFER_TOO_SMALL, "size preview draws");
+          std::vector<terra_draw_range_v1> preview_draws(preview_count);
+          require_ok(terra_get_draw_ranges(context, preview_draws.data(),
+                                            preview_draws.size(), &preview_count),
+                     "read preview draws");
+          const auto fragments = std::count_if(preview_draws.begin(), preview_draws.end(),
+              [&root_key](const terra_draw_range_v1& draw) {
+                return draw.flags == TERRA_DRAW_FLAG_NONE &&
+                    same_key(draw.key, root_key.level, root_key.i, root_key.j, root_key.k);
+              });
+          require(fragments == 2, "invisible resident leaf lost preview coverage");
+        }
+      }
+    }
+    require(observed_invisible, "preview regression did not exercise an invisible leaf");
+    terra_destroy(context);
     std::cout << "Terra sparse globe fallback contract passed\n";
     return 0;
   } catch (const std::exception& error) {
