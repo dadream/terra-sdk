@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="zh-CN" data-terra-status="starting">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; connect-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'">
+  <title data-i18n="demo.title.__TERRA_DEMO_MODE__">Terra 地形演示</title>
+  <link rel="stylesheet" href="/demo/styles.css?rev=__TERRA_ASSET_REVISION__">
+</head>
+<body data-mode="__TERRA_DEMO_MODE__">
+  <main class="viewer-shell" data-i18n-aria-label="demo.viewer.__TERRA_DEMO_MODE__" aria-label="Terra 地形查看器">
+    <canvas id="terra-canvas"></canvas>
+    <header class="viewer-header">
+      <a class="viewer-brand" href="/" target="_top">Terra SDK</a>
+      <span id="mode-label">__TERRA_DEMO_MODE__</span>
+      <span id="runtime-status" role="status">初始化中</span>
+      <code id="frame-status">帧 -</code>
+    </header>
+    <div class="viewer-tools" data-i18n-aria-label="demo.controls" aria-label="地形控制">
+      <div class="segmented" role="group" data-i18n-aria-label="demo.pointer" aria-label="指针模式">
+        <button id="mode-move" data-i18n="demo.move" type="button" aria-pressed="true">平移</button>
+        <button id="mode-look" data-i18n="demo.look" type="button" aria-pressed="false">视角</button>
+      </div>
+      <div class="tool-group" role="group" data-i18n-aria-label="demo.pan" aria-label="平移控制">
+        <button id="pan-left" type="button" data-i18n-title="demo.pan.left" data-i18n-aria-label="demo.pan.left" title="向左平移" aria-label="向左平移">←</button>
+        <button id="pan-up" type="button" data-i18n-title="demo.pan.up" data-i18n-aria-label="demo.pan.up" title="向上平移" aria-label="向上平移">↑</button>
+        <button id="pan-down" type="button" data-i18n-title="demo.pan.down" data-i18n-aria-label="demo.pan.down" title="向下平移" aria-label="向下平移">↓</button>
+        <button id="pan-right" type="button" data-i18n-title="demo.pan.right" data-i18n-aria-label="demo.pan.right" title="向右平移" aria-label="向右平移">→</button>
+      </div>
+      <div class="tool-group" role="group" data-i18n-aria-label="demo.zoom" aria-label="缩放控制">
+        <button id="zoom-out" type="button" data-i18n-title="demo.zoom.out" data-i18n-aria-label="demo.zoom.out" title="缩小" aria-label="缩小">−</button>
+        <button id="zoom-in" type="button" data-i18n-title="demo.zoom.in" data-i18n-aria-label="demo.zoom.in" title="放大" aria-label="放大">+</button>
+      </div>
+      <div class="tool-group" role="group" data-i18n-aria-label="demo.view" aria-label="视角控制">
+        <button id="top-down" data-i18n="demo.top" data-i18n-title="demo.top" type="button" title="俯视">俯视</button>
+        <button id="tilt-45" type="button" title="45°">45°</button>
+        <button id="rotate-left" type="button" data-i18n-title="demo.rotate.left" data-i18n-aria-label="demo.rotate.left" title="逆时针旋转" aria-label="逆时针旋转">↺</button>
+        <button id="rotate-right" type="button" data-i18n-title="demo.rotate.right" data-i18n-aria-label="demo.rotate.right" title="顺时针旋转" aria-label="顺时针旋转">↻</button>
+        <button id="north-up" type="button" data-i18n-title="demo.north" title="北向上">N</button>
+      </div>
+      <button id="reset-view" data-i18n-title="demo.globe" type="button" title="全球">全球</button>
+      <button id="debug-toggle" data-i18n="demo.debug" data-i18n-title="demo.toggleDebug" type="button" aria-pressed="false" title="切换诊断信息">调试</button>
+      <button id="environment-toggle" data-i18n="demo.environment" data-i18n-title="demo.toggleEnvironment" type="button" aria-expanded="false" aria-controls="environment-panel" title="大气与雾">环境</button>
+      <label class="imagery-control" for="imagery-profile">
+        <span data-i18n="demo.imagery">影像</span>
+        <select id="imagery-profile">
+          <option value="blue-marble">Blue Marble</option>
+          <option data-i18n="demo.tianditu" value="tianditu-img-c">天地图</option>
+        </select>
+      </label>
+    </div>
+    <section id="environment-panel" class="environment-panel" hidden>
+      <header>
+        <strong data-i18n="demo.environment">环境</strong>
+        <button id="environment-close" class="icon-button" type="button" data-i18n-title="demo.environment.close" data-i18n-aria-label="demo.environment.close" title="关闭环境设置" aria-label="关闭环境设置">×</button>
+      </header>
+      <div class="environment-switches">
+        <label><input id="atmosphere-enabled" type="checkbox" checked> <span data-i18n="demo.atmosphere">大气</span></label>
+        <label><input id="sun-enabled" type="checkbox" checked> <span data-i18n="demo.sun">太阳</span></label>
+        <label><input id="fog-enabled" type="checkbox"> <span data-i18n="demo.fog">雾</span></label>
+      </div>
+      <button id="observe-sun" class="environment-action" type="button" data-i18n="demo.observeSun" data-i18n-title="demo.observeSunTitle" title="切换到近地平线视角观察太阳">观察太阳</button>
+      <label class="environment-range" for="sun-azimuth">
+        <span data-i18n="demo.sunAzimuth">太阳方位</span>
+        <input id="sun-azimuth" type="range" min="0" max="360" step="1" value="135">
+        <output id="sun-azimuth-value" for="sun-azimuth">135°</output>
+      </label>
+      <label class="environment-range" for="sun-zenith">
+        <span data-i18n="demo.sunZenith">太阳天顶角</span>
+        <input id="sun-zenith" type="range" min="0" max="89" step="1" value="35">
+        <output id="sun-zenith-value" for="sun-zenith">35°</output>
+      </label>
+      <label class="environment-range" for="atmosphere-turbidity">
+        <span data-i18n="demo.turbidity">浑浊度</span>
+        <input id="atmosphere-turbidity" type="range" min="1" max="10" step="0.1" value="2">
+        <output id="atmosphere-turbidity-value" for="atmosphere-turbidity">2.0</output>
+      </label>
+      <label class="environment-range" for="atmosphere-exposure">
+        <span data-i18n="demo.exposure">曝光</span>
+        <input id="atmosphere-exposure" type="range" min="0.1" max="4" step="0.1" value="1">
+        <output id="atmosphere-exposure-value" for="atmosphere-exposure">1.0</output>
+      </label>
+      <label class="environment-range" for="fog-density">
+        <span data-i18n="demo.fogDensity">雾强度</span>
+        <input id="fog-density" type="range" min="0" max="5" step="0.1" value="1" disabled>
+        <output id="fog-density-value" for="fog-density">1.0×</output>
+      </label>
+    </section>
+    <div id="scenario-controls" class="scenario-controls" hidden>
+      <button id="walk-enter" type="button" data-i18n="demo.walk.enter">地面视角</button>
+      <button id="walk-forward" type="button" data-i18n="demo.walk.forward">前行5米</button>
+      <button id="walk-stop" type="button" data-i18n="demo.walk.stop">停止行走</button>
+      <button id="walk-exit" type="button" data-i18n="demo.walk.exit">退出地面</button>
+      <select id="scenario-name" aria-label="测试轨迹" data-i18n-aria-label="demo.scenario.label">
+        <option value="flight" data-i18n="demo.scenario.flight">跨地区飞行</option>
+        <option value="oblique" data-i18n="demo.scenario.oblique">大倾角环视</option>
+        <option value="roam" data-i18n="demo.scenario.roam">缩放漫游</option>
+      </select>
+      <button id="scenario-run" type="button" data-i18n="demo.scenario.run">运行 8 秒</button>
+      <button id="scenario-stop" type="button" data-i18n="demo.scenario.stop" disabled>停止</button>
+      <button id="scenario-report" type="button" data-i18n="demo.scenario.report" disabled>下载报告</button>
+      <span id="scenario-status" role="status" aria-live="polite"></span>
+    </div>
+    <pre id="debug-panel" class="debug-panel" hidden></pre>
+    <div id="error-banner" class="error-banner" role="alert" hidden></div>
+    <div id="attribution" class="attribution"></div>
+  </main>
+  <script src="/site.js?rev=__TERRA_ASSET_REVISION__"></script>
+  <script src="/assets/terra_browser_bundle.js?rev=__TERRA_ASSET_REVISION__"></script>
+  <script src="/demo/navigation_scenarios.js?rev=__TERRA_ASSET_REVISION__"></script>
+  <script src="/demo/app.js?rev=__TERRA_ASSET_REVISION__"></script>
+</body>
+</html>

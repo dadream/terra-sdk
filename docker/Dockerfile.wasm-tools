@@ -1,0 +1,7 @@
+ARG TERRA_SDK_WASM_BASE_IMAGE=terra-sdk-wasm:emscripten-3.1.5
+FROM ${TERRA_SDK_WASM_BASE_IMAGE}
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends node-terser \
+    && apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
+USER terra-wasm
+WORKDIR /workspace

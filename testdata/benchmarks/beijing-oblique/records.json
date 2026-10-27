@@ -1,0 +1,83 @@
+{
+  "schema": "terra.headless-records.v1",
+  "fixtureSha256": "c124b0501b8006fbcd094b025f9d3e25a3ea4cc6e2a959fe31d2c5d7d5020815",
+  "manifest": {
+    "schema": "terra.dataset-manifest",
+    "schema_version": 1,
+    "dataset_id": "globe",
+    "format_version": 1,
+    "patch_dim": 64,
+    "height_scale": 0.015625,
+    "srs": "EPSG:4326",
+    "about": "CBDAM Elevation Layer",
+    "transform": {
+      "kind": "cylindrical",
+      "bounds": [
+        [
+          -180,
+          -90
+        ],
+        [
+          180,
+          90
+        ]
+      ],
+      "radius": 6378000,
+      "root_count": 8
+    },
+    "levels": {
+      "minimum": 0,
+      "maximum": 30
+    },
+    "codec": {
+      "name": "cbdam-quantized-height",
+      "version": 1,
+      "record_framing": "uint32le-length-prefixed-fragments",
+      "checksum": "fnv1a64"
+    },
+    "endpoints": {
+      "root": "/terra/v1/datasets/globe/roots/{i}/{j}/{k}",
+      "detail": "/terra/v1/datasets/globe/patches/{i}/{j}/{k}"
+    },
+    "textures": [
+      {
+        "id": "blue-marble",
+        "kind": "global-geodetic",
+        "manifest_url": "http://49.233.185.96/terra/v1/imagery/blue-marble/manifest",
+        "url_template": "http://49.233.185.96/terra/v1/imagery/blue-marble/{z}/{x}/{y}.jpg",
+        "matrix_level_offset": 0,
+        "maximum_level": 7
+      }
+    ]
+  },
+  "manifestSha256": "ccbc4c763d7212f0f89ee4ec0141f097dea5431c95ab82d5aaf331d7da832d9d",
+  "records": [
+    {
+      "key": [
+        2,
+        -134217728,
+        146800640,
+        -16777216
+      ],
+      "status": 200,
+      "offset": 0,
+      "bytes": 2323,
+      "sha256": "1e701e87de28c47486661b035a81a9e3ec05adea27b9895752251f4e34696089",
+      "file": "records/2_-134217728_146800640_-16777216.bin"
+    },
+    {
+      "key": [
+        2,
+        -134217728,
+        146800640,
+        -12582912
+      ],
+      "status": 200,
+      "offset": 0,
+      "bytes": 2471,
+      "sha256": "9dcd736a8ec8ab695b1fc46f33a5982aa1c89930bfeb25589f8d1569da105cd3",
+      "file": "records/2_-134217728_146800640_-12582912.bin"
+    }
+  ],
+  "datasetSha256": "d5427371bf852b84e1711acdd91c884123851c245113bd04a3a09c6f053cc95b"
+}

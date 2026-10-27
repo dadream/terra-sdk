@@ -5,6 +5,7 @@
 #include <cstring>
 #include <iostream>
 #include <string>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <vector>
 
@@ -113,6 +114,45 @@ int check_repository_roundtrip() {
   return 0;
 }
 
+int check_truncated_repository_rejected() {
+  const std::string path = temp_path("truncated_repository.db");
+  const vic::vfs::repository::key_t key = make_key(-10, 20, -30);
+  const std::vector<vic::vfs::repository::uint8_t> payload(
+      64U * 1024U, 0x5aU);
+
+  {
+    vic::vfs::repository writer;
+    writer.open_write(path, 32);
+    if (!writer.is_open()) {
+      return fail("unable to create repository truncation fixture");
+    }
+    writer.set_data(key, &payload[0], payload.size());
+  }
+
+  struct stat file_status;
+  if (stat(path.c_str(), &file_status) != 0 ||
+      file_status.st_size <= 4096) {
+    std::remove(path.c_str());
+    return fail("repository truncation fixture is unexpectedly small");
+  }
+  if (truncate(path.c_str(), file_status.st_size - 4096) != 0) {
+    std::remove(path.c_str());
+    return fail("unable to truncate repository fixture");
+  }
+
+  {
+    vic::vfs::repository reader;
+    reader.open_read(path);
+    if (reader.is_open()) {
+      std::remove(path.c_str());
+      return fail("truncated repository was accepted");
+    }
+  }
+
+  std::remove(path.c_str());
+  return 0;
+}
+
 int check_local_vfs_file_io() {
   const std::string path = temp_path("plain.bin");
   const char payload[] = "local-vfs-file";
@@ -202,6 +242,9 @@ int check_local_vfs_repository_io() {
 
 int main() {
   if (int status = check_repository_roundtrip()) {
+    return status;
+  }
+  if (int status = check_truncated_repository_rejected()) {
     return status;
   }
   if (int status = check_local_vfs_file_io()) {

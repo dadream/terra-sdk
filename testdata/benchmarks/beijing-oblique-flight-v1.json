@@ -1,0 +1,37 @@
+{
+  "schema": "terra.navigation-case.v1",
+  "id": "beijing-oblique-flight-v1",
+  "viewport": {
+    "width": 1280,
+    "height": 757,
+    "devicePixelRatio": 1
+  },
+  "verticalFovRadians": 0.5233333333333333,
+  "terrainPixelError": 1.25,
+  "imageryPixelError": 1.25,
+  "view": {
+    "schema": "terra.view-state.v2",
+    "mode": "globe",
+    "target": {
+      "longitudeDegrees": 116.5623,
+      "latitudeDegrees": 40.74863,
+      "heightMeters": 0
+    },
+    "rangeMeters": 9567,
+    "headingDegrees": 14.5,
+    "tiltDegrees": 76.3
+  },
+  "motion": {
+    "kind": "direct-flight",
+    "durationMs": 8000,
+    "headingDegrees": 158.5
+  },
+  "acceptanceMs": 30000,
+  "stableMs": 250,
+  "expectedCapacity": {
+    "maximumTerrainMeshBytes": 67108864,
+    "maximumResourceBytes": 805306368
+  },
+  "terrain": "beijing-navigation/records.json",
+  "terrainIdentity": "90c92ab145def3540b00962b3fd67cb62bc0c74a8a87f7abfa58b5094febe949"
+}

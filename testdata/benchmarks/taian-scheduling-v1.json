@@ -1,0 +1,20 @@
+{
+  "schema": "terra.scheduling-case.v1",
+  "id": "taian-v1",
+  "datasetId": "globe",
+  "target": {"longitudeDegrees": 117.1235, "latitudeDegrees": 36.21228},
+  "radiusMeters": 6378000,
+  "patchDimension": 64,
+  "heightScale": 0.015625,
+  "viewport": {"width": 960, "height": 640, "devicePixelRatio": 1},
+  "verticalFovRadians": 0.5235987755982988,
+  "terrainPixelError": 1.25,
+  "imageryPixelError": 1.25,
+  "tileSize": 256,
+  "nominalMaximumInternalLevel": 16,
+  "obliqueNominalLevels": [12, 16],
+  "obliqueTiltsDegrees": [0, 45, 76.3, 45, 0],
+  "obliqueMinimumReliefMeters": 100,
+  "maximumTopologyChanges": 32,
+  "maximumManagedBytes": 176160768
+}

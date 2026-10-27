@@ -1,0 +1,55 @@
+'use strict'
+const assert=require('assert'),{endpoint,legs,zoomView,SettledWindow}=require('./acceptance')
+const {sameView}=require('../vertical_scale')
+const config=require('../../../testdata/benchmarks/beijing-oblique-flight-v1.json')
+const final=endpoint(config),ready={terminal:'ready'},busy={terminal:null}
+const state={view:final,terrainSelection:{presentedSequence:1,presentedModelRevision:1,
+  desiredViewRevision:2,preparedViewRevision:2,presentedViewRevision:2}}
+const create=()=>new SettledWindow(config,final,sameView)
+assert.strictEqual(config.acceptanceMs,30000);assert.strictEqual(config.stableMs,250)
+assert.strictEqual(config.motion.durationMs,8000);assert.strictEqual(config.motion.kind,'direct-flight')
+assert.strictEqual(final.headingDegrees,158.5);assert.strictEqual(config.view.headingDegrees,14.5)
+assert.strictEqual(config.imageryPixelError,1.25);assert.strictEqual(config.terrainPixelError,1.25)
+assert.deepStrictEqual(final.target,config.view.target)
+const window=create()
+assert.strictEqual(window.observe(0,state,ready),'waiting')
+assert.strictEqual(window.observe(249,state,ready),'waiting')
+assert.strictEqual(window.observe(250,state,ready),'ready')
+assert.throws(()=>window.observe(249,state,ready),/Non-monotonic/)
+const changes=create()
+changes.observe(0,state,ready)
+const newer={...state,terrainSelection:{...state.terrainSelection,presentedSequence:2}}
+assert.strictEqual(changes.observe(250,newer,ready),'waiting','A new terrain cut inherited the old stable window')
+assert.strictEqual(changes.observe(500,newer,ready),'ready')
+const late=create()
+late.observe(29900,state,ready)
+assert.strictEqual(late.observe(30150,state,ready),'timeout','A late stable window passed the original deadline')
+const failed=create()
+assert.strictEqual(failed.observe(30000,state,busy),'timeout')
+assert.throws(()=>create().observe(0,{...state,view:config.view},ready),/declared endpoint/)
+const ground=create(),pending={...state,cameraGround:{demand:{active:true,pending:true,revision:1},appliedDemandRevision:0}}
+assert.strictEqual(ground.observe(0,pending,ready),'waiting')
+assert.strictEqual(ground.observe(30000,pending,ready),'timeout','Ground dependencies were excluded from settlement')
+console.log('Fixed navigation endpoints, original deadlines, stable publication and ground dependency acceptance passed')
+const zoom=require('../../../testdata/benchmarks/taian-rapid-zoom-v1.json'),route=legs(zoom)
+assert.strictEqual(route.length,2)
+assert.deepStrictEqual(endpoint(zoom),zoom.view)
+assert.deepStrictEqual(route[1].from,route[0].view)
+assert.strictEqual(route[0].view.rangeMeters,570.5214914279856)
+assert.strictEqual(route[0].motion.durationMs,4000)
+assert.strictEqual(zoomView(route[0].from,route[0].view,1).rangeMeters,route[0].view.rangeMeters)
+const middle=zoomView(route[0].from,route[0].view,0.5)
+assert(Math.abs(middle.rangeMeters**2/(route[0].from.rangeMeters*route[0].view.rangeMeters)-1)<1e-12)
+assert.strictEqual(middle.headingDegrees,0);assert.strictEqual(middle.tiltDegrees,0)
+assert.deepStrictEqual(middle.target,zoom.view.target)
+const sourceState={...state,view:route[0].view,renderer:{quality:{resolvedLevelMinimum:17,resolvedLevelMaximum:17,
+  resolvedMaxPixelError:1.396189143212562,refinableMeasurementCount:0}}}
+const sourceQuality={terminal:'data-limited',current:true,covered:true,terrainMet:true,busy:[],reasons:['source-level']}
+const limited=new SettledWindow(zoom,route[0].view,sameView,zoom.sourceLimits[0])
+assert.strictEqual(limited.observe(0,sourceState,sourceQuality),'waiting')
+assert.strictEqual(limited.observe(250,sourceState,sourceQuality),'source-limited')
+const unapproved=new SettledWindow(zoom,route[0].view,sameView)
+assert.strictEqual(unapproved.observe(30000,sourceState,sourceQuality),'timeout')
+const wrongSource=new SettledWindow(zoom,route[0].view,sameView,zoom.sourceLimits[0])
+sourceState.renderer.quality.resolvedMaxPixelError=2
+assert.strictEqual(wrongSource.observe(30000,sourceState,sourceQuality),'timeout')

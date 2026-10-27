@@ -1,0 +1,5 @@
+<cbdam>
+  <info patch_dim="64" height_scale_factor="0.015625"
+        srs="EPSG:4326" about="CBDAM Elevation Layer"/>
+  <coordinate_transform type="cylindrical" radius="6.378e+06"/>
+</cbdam>

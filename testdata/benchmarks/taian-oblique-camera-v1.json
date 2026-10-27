@@ -1,0 +1,65 @@
+{
+  "schema": "terra.benchmark-camera-reference.v1",
+  "source": {
+    "file": "viewer_verify_output/imagery_target_20261022/final/oblique/report.json",
+    "sha256": "8ce1c67ecf27b2b737dd10e906110698d91b0783d9e82f86664f7e46281c73e8",
+    "scope": "Actual Native camera snapshot; positive public orbit tilt maps to negative internal tilt"
+  },
+  "pose": {
+    "id": "level-16-tilt-2",
+    "scaleId": "level-16",
+    "nominalLevel": 16,
+    "target": {
+      "longitudeDegrees": 117.1235,
+      "latitudeDegrees": 36.21228,
+      "heightMeters": 248.36358933330303
+    },
+    "rangeMeters": 570.5214914279856,
+    "headingDegrees": 0,
+    "tiltDegrees": 76.3
+  },
+  "row": {
+    "id": "level-16-tilt-2",
+    "position": [
+      4580627.060282811,
+      3767765.2903697984,
+      -2346396.521951742
+    ],
+    "projection": [
+      2.4880337992089743,
+      0,
+      0,
+      0,
+      0,
+      3.7320506988134614,
+      0,
+      0,
+      0,
+      0,
+      -1.0000011712841799,
+      -1.1410436510987685,
+      0,
+      0,
+      -1,
+      0
+    ],
+    "view": [
+      -0.45590999180163605,
+      0,
+      -0.8900258869130898,
+      0,
+      0.5731407782914917,
+      0.7650594360681564,
+      -0.29358764882484034,
+      -6196781.584771643,
+      0.6809227031277894,
+      -0.6439596720937381,
+      -0.34879824122559755,
+      -1511183.0390699934,
+      0,
+      0,
+      0,
+      1
+    ]
+  }
+}

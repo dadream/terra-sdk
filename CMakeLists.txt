@@ -37,11 +37,16 @@ add_library(Terra::sl ALIAS sl)
 
 include(Dependencies)
 include(TargetHelpers)
+add_subdirectory(sdk)
 include(RatmanBaseTargets)
 include(RatmanCoreTargets)
+add_subdirectory(services/terrain)
 include(RatmanAppTargets)
 include(RatmanServiceTargets)
 include(RatmanSdkSmokeTests)
+if(BUILD_TESTING)
+    add_subdirectory(tests/benchmarks/headless_scheduling)
+endif()
 
 terra_sdk_record_artifact(sl
     "${CMAKE_STATIC_LIBRARY_PREFIX}sl${CMAKE_STATIC_LIBRARY_SUFFIX}"
@@ -57,6 +62,13 @@ message(STATUS "spacelib is configured as in-tree target Terra::sl")
 
 set(_terra_sdk_cmake_smoke_dependencies)
 foreach(_terra_sdk_smoke_target
+        terra_core
+        terra_frame
+        terra_c_api
+        terra_sdk_core_tests
+        terra_sdk_frame_tests
+        terra_sdk_c_api_tests
+        terra_benchmark_terrain
         sl
         vic_base_math
         vic_base_xml
@@ -79,6 +91,8 @@ foreach(_terra_sdk_smoke_target
         vic_app_cbdam_viewer
         vic_app_ratman_nav3d
         vic_service_mod_victms
+        terra_terrain_service
+        terra_terrain_service_contract
         terra_sdk_sdk_smoke_tests)
     if(TARGET ${_terra_sdk_smoke_target})
         list(APPEND _terra_sdk_cmake_smoke_dependencies ${_terra_sdk_smoke_target})

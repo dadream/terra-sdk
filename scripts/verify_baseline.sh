@@ -7,9 +7,14 @@ EXECUTED_STEPS=()
 
 RUN_LAYOUT_CHECK=${RUN_LAYOUT_CHECK:-1}
 RUN_BUILD=${RUN_BUILD:-1}
+RUN_MINIPROGRAM_NATIVE_GOLDEN=${RUN_MINIPROGRAM_NATIVE_GOLDEN:-1}
+RUN_MINIPROGRAM_SDK=${RUN_MINIPROGRAM_SDK:-1}
+RUN_MINIPROGRAM_WASM=${RUN_MINIPROGRAM_WASM:-1}
+RUN_VERTICAL_SCALE_CONTRACT=${RUN_VERTICAL_SCALE_CONTRACT:-1}
 RUN_ARTIFACT_CHECK=${RUN_ARTIFACT_CHECK:-1}
 RUN_INSTALL_CHECK=${RUN_INSTALL_CHECK:-1}
 RUN_SERVICE_SMOKE=${RUN_SERVICE_SMOKE:-1}
+RUN_TERRAIN_SERVICE_SMOKE=${RUN_TERRAIN_SERVICE_SMOKE:-1}
 RUN_BUILDER_CLI_SMOKE=${RUN_BUILDER_CLI_SMOKE:-1}
 RUN_BUILDER_1K_REBUILD=${RUN_BUILDER_1K_REBUILD:-1}
 RUN_BUILDER_VIEWER_SMOKE=${RUN_BUILDER_VIEWER_SMOKE:-1}
@@ -59,8 +64,36 @@ if should_run "${RUN_LAYOUT_CHECK}"; then
   run_step bash scripts/check_cmake_only_layout.sh
 fi
 
+if should_run "${RUN_VERTICAL_SCALE_CONTRACT}"; then
+  run_step node tests/benchmarks/vertical_scale_test.js
+  run_step node tests/benchmarks/vertical_capacity_test.js
+  run_step node tests/benchmarks/headless_scheduling_test.js
+  run_step node tests/benchmarks/joint_capacity_test.js
+  run_step node tests/benchmarks/imagery_pipeline_test.js
+  run_step node tests/benchmarks/static_view/pipeline_trace_test.js
+  run_step node tests/benchmarks/static_view/snapshot_test.js
+  run_step node tests/benchmarks/navigation/acceptance_test.js
+  run_step python3 -B tests/benchmarks/navigation/check_test.py
+  run_step python3 -B tests/benchmarks/static_view/analyze_capacity_test.py
+fi
+
 if should_run "${RUN_BUILD}"; then
   run_step bash scripts/build_cmake.sh
+fi
+if should_run "${RUN_MINIPROGRAM_NATIVE_GOLDEN}"; then
+  run_step bash scripts/verify_miniprogram_native_golden.sh
+fi
+if should_run "${RUN_MINIPROGRAM_SDK}"; then
+  run_step bash scripts/verify_miniprogram_sdk.sh
+  run_step node tests/benchmarks/terrain_reference_test.js
+  run_step node tests/benchmarks/headless_scheduling_native_test.js
+fi
+if should_run "${RUN_MINIPROGRAM_WASM}"; then
+  run_step bash scripts/verify_miniprogram_wasm.sh
+  run_step node tests/benchmarks/wasm_execution_test.js
+  if should_run "${RUN_MINIPROGRAM_SDK}"; then
+    run_step node tests/benchmarks/imagery_reference_test.js
+  fi
 fi
 if should_run "${RUN_ARTIFACT_CHECK}"; then
   run_step bash scripts/check_cmake_artifacts.sh
@@ -70,6 +103,9 @@ if should_run "${RUN_INSTALL_CHECK}"; then
 fi
 if should_run "${RUN_SERVICE_SMOKE}"; then
   run_step bash scripts/verify_service_victms_cmake_smoke.sh
+fi
+if should_run "${RUN_TERRAIN_SERVICE_SMOKE}"; then
+  run_step bash scripts/verify_terrain_service.sh
 fi
 if should_run "${RUN_BUILDER_CLI_SMOKE}"; then
   run_step bash scripts/verify_builder_cli_smoke.sh

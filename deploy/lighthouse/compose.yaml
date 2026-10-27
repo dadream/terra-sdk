@@ -1,0 +1,67 @@
+name: terra
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "3"
+
+x-runtime: &default-runtime
+  restart: unless-stopped
+  security_opt:
+    - no-new-privileges:true
+  logging: *default-logging
+
+services:
+  edge:
+    <<: *default-runtime
+    image: caddy:2.10.2-alpine
+    depends_on:
+      - terrain-1k
+      - terrain-globe
+      - imagery
+    environment:
+      TERRA_LIGHTHOUSE_IP: ${TERRA_LIGHTHOUSE_IP:-49.233.185.96}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${TERRA_SITE_DIR:?set TERRA_SITE_DIR}:/srv/site:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+  terrain-1k:
+    <<: *default-runtime
+    image: terra/terrain-1k:${TERRA_IMAGE_TAG:?set TERRA_IMAGE_TAG}
+    environment:
+      TERRA_IMAGERY_ORIGIN: ${TERRA_PUBLIC_ORIGIN:?set TERRA_PUBLIC_ORIGIN}
+    expose:
+      - "8080"
+    volumes:
+      - /srv/terra/data:/mnt/terra-data:ro
+
+  terrain-globe:
+    <<: *default-runtime
+    image: terra/terrain-globe:${TERRA_IMAGE_TAG:?set TERRA_IMAGE_TAG}
+    environment:
+      TERRA_IMAGERY_ORIGIN: ${TERRA_PUBLIC_ORIGIN:?set TERRA_PUBLIC_ORIGIN}
+    expose:
+      - "8080"
+    volumes:
+      - /srv/terra/data:/mnt/terra-data:ro
+
+  imagery:
+    <<: *default-runtime
+    image: terra/imagery:${TERRA_IMAGE_TAG:?set TERRA_IMAGE_TAG}
+    environment:
+      TIANDITU_TOKEN: ${TIANDITU_TOKEN:-}
+    expose:
+      - "8080"
+    volumes:
+      - /srv/terra/data:/mnt/terra-data:ro
+      - /srv/terra/cache/tianditu:/mnt/terra-cache
+
+volumes:
+  caddy-data:
+  caddy-config:

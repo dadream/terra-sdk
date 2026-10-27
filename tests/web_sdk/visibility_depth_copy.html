@@ -1,0 +1,77 @@
+<!doctype html><meta charset="utf-8"><link rel="icon" href="data:,"><title>Visibility depth sample contract</title><pre id="evidence"></pre><script>
+// Diagnostic only. A resolved depth image may disagree with the display's
+// multisample coverage even though the copy and both queries are valid GL.
+async function probeDepthCopy(antialias) {
+ const canvas=document.createElement('canvas');canvas.width=canvas.height=64;document.body.appendChild(canvas)
+ const gl=canvas.getContext('webgl2',{antialias,stencil:true,preserveDrawingBuffer:true})
+ const shaders=[],queries=[]
+ let sync,program,fb,rb,report
+ const check=(condition,message)=>{if(!condition)throw Error(message)}
+ const fence=async()=>{
+  sync=gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE,0);gl.flush();const start=performance.now()
+  for(;;){const s=gl.clientWaitSync(sync,0,0);if(s===gl.ALREADY_SIGNALED||s===gl.CONDITION_SATISFIED)break
+   check(s===gl.TIMEOUT_EXPIRED&&performance.now()-start<5000,'GPU wait failed');await new Promise(r=>setTimeout(r,0))}
+  gl.deleteSync(sync);sync=null
+ }
+ try {
+  check(gl,'WebGL2 is unavailable')
+  program=gl.createProgram();fb=gl.createFramebuffer();rb=gl.createRenderbuffer()
+  check(program&&fb&&rb,'WebGL allocation failed')
+  for(const [type,source] of [[gl.VERTEX_SHADER,`#version 300 es
+   uniform vec2 span;uniform bool striped;uniform float depth;
+   void main(){vec2 uv=vec2(gl_VertexID&1,(gl_VertexID>>1)&1);
+    float x=striped ? (float(gl_InstanceID)+mix(span.x,span.y,uv.x))/64.0 : uv.x;
+    gl_Position=vec4(x*2.0-1.0,uv.y*2.0-1.0,depth,1.0);}`],
+   [gl.FRAGMENT_SHADER,`#version 300 es
+    precision highp float;out vec4 color;void main(){color=vec4(1.0);}`]]){
+   const s=gl.createShader(type);shaders.push(s);gl.shaderSource(s,source);gl.compileShader(s)
+   check(gl.getShaderParameter(s,gl.COMPILE_STATUS),gl.getShaderInfoLog(s));gl.attachShader(program,s)
+  }
+  gl.linkProgram(program);check(gl.getProgramParameter(program,gl.LINK_STATUS),gl.getProgramInfoLog(program))
+  const span=gl.getUniformLocation(program,'span'),striped=gl.getUniformLocation(program,'striped'),depth=gl.getUniformLocation(program,'depth')
+  const samples=gl.getParameter(gl.SAMPLES),depthBits=gl.getParameter(gl.DEPTH_BITS),stencilBits=gl.getParameter(gl.STENCIL_BITS)
+  check((antialias?samples>0:samples===0)&&depthBits===24&&stencilBits===8,'Fixture needs the requested samples with depth24/stencil8')
+  gl.bindRenderbuffer(gl.RENDERBUFFER,rb);gl.renderbufferStorage(gl.RENDERBUFFER,gl.DEPTH24_STENCIL8,64,64)
+  gl.bindFramebuffer(gl.FRAMEBUFFER,fb);gl.framebufferRenderbuffer(gl.FRAMEBUFFER,gl.DEPTH_STENCIL_ATTACHMENT,gl.RENDERBUFFER,rb)
+  gl.drawBuffers([gl.NONE]);gl.readBuffer(gl.NONE)
+  check(gl.checkFramebufferStatus(gl.FRAMEBUFFER)===gl.FRAMEBUFFER_COMPLETE,'Depth target is incomplete')
+  gl.viewport(0,0,64,64);gl.useProgram(program);gl.enable(gl.DEPTH_TEST);gl.depthFunc(gl.LEQUAL);gl.disable(gl.CULL_FACE);gl.disable(gl.STENCIL_TEST)
+  const results=[]
+  const query=()=>{const q=gl.createQuery();queries.push(q);gl.beginQuery(gl.ANY_SAMPLES_PASSED_CONSERVATIVE,q)
+   gl.uniform1i(striped,0);gl.uniform1f(depth,.2);gl.depthMask(false);gl.drawArrays(gl.TRIANGLE_STRIP,0,4)
+   gl.endQuery(gl.ANY_SAMPLES_PASSED_CONSERVATIVE);return q}
+  for(let gap=0;gap<4;++gap){
+   gl.bindFramebuffer(gl.FRAMEBUFFER,null);gl.depthMask(true);gl.clearDepth(1);gl.clear(gl.DEPTH_BUFFER_BIT)
+   gl.uniform1i(striped,1);gl.uniform1f(depth,-.2)
+   for(const [a,b] of [[0,gap/4],[(gap+1)/4,1]])if(b>a){gl.uniform2f(span,a,b);gl.drawArraysInstanced(gl.TRIANGLE_STRIP,0,4,64)}
+   gl.colorMask(false,false,false,false)
+   const direct=query()
+   gl.bindFramebuffer(gl.READ_FRAMEBUFFER,null);gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER,fb)
+   gl.blitFramebuffer(0,0,64,64,0,0,64,64,gl.DEPTH_BUFFER_BIT,gl.NEAREST)
+   const copied=query();await fence()
+   check(gl.getError()===gl.NO_ERROR,'Depth copy/query generated a GL error')
+   check(gl.getQueryParameter(direct,gl.QUERY_RESULT_AVAILABLE)&&gl.getQueryParameter(copied,gl.QUERY_RESULT_AVAILABLE),'Missing query receipt')
+   results.push({gap,sourceVisible:gl.getQueryParameter(direct,gl.QUERY_RESULT),copyVisible:gl.getQueryParameter(copied,gl.QUERY_RESULT)})
+  }
+  report={passed:true,samples,depthBits,stencilBits,results,unsafeResolve:results.some(r=>r.sourceVisible&&!r.copyVisible)}
+  if(antialias)check(report.unsafeResolve,'This device did not expose the per-sample counterexample')
+  else check(results.every(r=>Boolean(r.sourceVisible)===Boolean(r.copyVisible)),'Single-sample control disagreed with its exact copy')
+ } catch(error){report={passed:false,error:error.stack}}
+ finally {
+  if(gl){
+   if(sync)gl.deleteSync(sync);queries.forEach(q=>gl.deleteQuery(q));shaders.forEach(s=>gl.deleteShader(s))
+   if(program)gl.deleteProgram(program);if(fb)gl.deleteFramebuffer(fb);if(rb)gl.deleteRenderbuffer(rb)
+   const loss=gl.getExtension('WEBGL_lose_context');if(loss)loss.loseContext()
+  }
+  canvas.remove();canvas.width=canvas.height=0
+ }
+ return report
+}
+void(async()=>{
+ const single=await probeDepthCopy(false),multisample=await probeDepthCopy(true)
+ const report={schema:'terra.visibility-depth-copy.v1',passed:single.passed&&multisample.passed,
+  scope:'GPU counterexample to using resolved MSAA depth as conservative visibility proof; not production acceptance.',single,multisample}
+ document.getElementById('evidence').textContent=JSON.stringify(report)
+ document.documentElement.dataset.terraStatus=report.passed?'passed':'failed'
+})()
+</script>

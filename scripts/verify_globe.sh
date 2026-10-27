@@ -36,6 +36,8 @@ TEST_CMD=(
 )
 "${TEST_CMD[@]}"
 
+GLOBE_DATA_DIR="${GLOBE_DATA_DIR:-/mnt/s/terra-data/globe}" \
+  bash "${ROOT_DIR}/scripts/verify_terrain_service_globe.sh"
 GLOBE_TEXTURE_MODE=blue-marble bash "${ROOT_DIR}/scripts/verify_viewer_globe.sh"
 GLOBE_TEXTURE_MODE=blue-marble bash "${ROOT_DIR}/scripts/verify_nav3d_globe.sh"
 

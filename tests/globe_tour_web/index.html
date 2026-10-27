@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="zh-CN" data-terra-status="starting">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; connect-src 'self'; worker-src 'none'">
+  <title>Terra 苏州骑行路线验证</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="workspace" aria-label="Terra globe tour validation">
+    <section class="viewport" aria-label="三维地球视窗">
+      <canvas id="globe-canvas"></canvas>
+      <header class="telemetry">
+        <strong>Terra Globe</strong>
+        <span id="runtime-status">正在初始化</span>
+        <code id="frame-status">frame -</code>
+      </header>
+      <div class="viewport-tools" aria-label="Globe navigation controls">
+        <div class="segmented-control" role="group" aria-label="Pointer mode">
+          <button id="mode-move" type="button" aria-pressed="true">Move</button>
+          <button id="mode-look" type="button" aria-pressed="false">Look</button>
+        </div>
+        <div class="icon-controls" role="group" aria-label="Pan controls">
+          <button id="pan-left" type="button" title="Pan left" aria-label="Pan left">&#8592;</button>
+          <button id="pan-up" type="button" title="Pan up" aria-label="Pan up">&#8593;</button>
+          <button id="pan-down" type="button" title="Pan down" aria-label="Pan down">&#8595;</button>
+          <button id="pan-right" type="button" title="Pan right" aria-label="Pan right">&#8594;</button>
+        </div>
+        <div class="icon-controls" role="group" aria-label="Look controls">
+          <button id="tilt-down" type="button" title="Flatten view">Top</button>
+          <button id="tilt-up" type="button" title="Set 45 degree tilt">45</button>
+          <button id="rotate-left" type="button" title="Rotate counterclockwise" aria-label="Rotate counterclockwise">&#8634;</button>
+          <button id="rotate-right" type="button" title="Rotate clockwise" aria-label="Rotate clockwise">&#8635;</button>
+          <button id="north-up" type="button" title="North up">N</button>
+        </div>
+        <button id="globe-view" type="button" title="Return to globe view">Globe</button>
+        <button id="debug-toggle" type="button" aria-pressed="false" title="Show render diagnostics">Debug</button>
+      </div>
+      <pre id="debug-panel" class="debug-panel" hidden></pre>
+      <div id="poi-labels" class="poi-labels" aria-hidden="true"></div>
+      <div id="attribution" class="attribution"></div>
+      <div id="error-banner" class="error-banner" role="alert" hidden></div>
+    </section>
+
+    <aside class="poi-panel" aria-label="苏州景点列表">
+      <div class="panel-heading">
+        <p>骑行路线验证</p>
+        <h1>苏州园林与古迹</h1>
+        <span id="route-summary">加载路线数据</span>
+      </div>
+      <ol id="poi-list" class="poi-list"></ol>
+      <div class="legend">
+        <span><i class="poi-swatch"></i>景点</span>
+        <span><i class="route-swatch"></i>骑行路线</span>
+      </div>
+    </aside>
+
+    <nav class="command-bar" aria-label="相机与路线控制">
+      <button id="overview" type="button" title="显示全部景点和路线">全览</button>
+      <button id="previous" type="button" title="飞行到上一个景点" disabled><span aria-hidden="true">←</span> 上一步</button>
+      <button id="next" type="button" title="飞行到下一个景点">下一步 <span aria-hidden="true">→</span></button>
+      <span class="separator" aria-hidden="true"></span>
+      <button id="orbit-ccw" type="button" title="绕当前景点逆时针旋转" disabled><span aria-hidden="true">↺</span> 逆时针</button>
+      <button id="orbit-cw" type="button" title="绕当前景点顺时针旋转" disabled><span aria-hidden="true">↻</span> 顺时针</button>
+      <button id="stop" type="button" title="停止相机运动" disabled><span aria-hidden="true">■</span> 停止</button>
+      <span class="separator" aria-hidden="true"></span>
+      <button id="route-play" type="button" title="沿路线到下一个景点" disabled>沿路线</button>
+      <button id="route-pause" type="button" title="暂停路线播放" disabled><span aria-hidden="true">Ⅱ</span> 暂停</button>
+    </nav>
+  </main>
+  <pre id="automation-result" hidden></pre>
+  <script src="generated/terra_browser_bundle.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

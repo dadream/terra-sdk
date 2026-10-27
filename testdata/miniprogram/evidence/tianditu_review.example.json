@@ -1,0 +1,20 @@
+{
+  "schema": "terra.miniprogram.tianditu-review.v1",
+  "reviewedAt": "2026-01-01T00:00:00Z",
+  "frontendCredentialAuthorized": true,
+  "terrainRequestDomainReviewed": true,
+  "providerTermsReviewed": true,
+  "attributionVisible": true,
+  "screenshotsReviewedWithoutCredentials": true,
+  "persistentTileCacheEnabled": false,
+  "requestDomains": [
+    "t0.tianditu.gov.cn",
+    "t1.tianditu.gov.cn",
+    "t2.tianditu.gov.cn",
+    "t3.tianditu.gov.cn",
+    "t4.tianditu.gov.cn",
+    "t5.tianditu.gov.cn",
+    "t6.tianditu.gov.cn",
+    "t7.tianditu.gov.cn"
+  ]
+}

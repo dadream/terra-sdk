@@ -1,0 +1,8 @@
+const path = require('path')
+const { stageModules } = require('./sdk_modules')
+const root = path.resolve(__dirname, '..')
+if (!process.argv[2]) throw new Error('SDK output directory is required')
+const output = path.resolve(process.argv[2])
+if (!output.startsWith(root + path.sep)) throw new Error('SDK output must be below the repository root')
+const files = stageModules(root, output, process.argv[3])
+console.log(`Staged ${files.length} SDK files at ${output}`)

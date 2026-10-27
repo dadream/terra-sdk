@@ -1,0 +1,13 @@
+{
+  "schema": "terra.scheduling-fixture.v1",
+  "id": "taian-terrain-v1",
+  "directory": "viewer_verify_output/benchmark_fixtures/taian-terrain-v1",
+  "catalogue": "records.json",
+  "datasetSha256": "cecbcc296e1e089a5805d820e422e4f320cf820b89f6aaba873152e481db5fce",
+  "fixtureSha256": "c124b0501b8006fbcd094b025f9d3e25a3ea4cc6e2a959fe31d2c5d7d5020815",
+  "manifestSha256": "ccbc4c763d7212f0f89ee4ec0141f097dea5431c95ab82d5aaf331d7da832d9d",
+  "supplementalRecords": 899,
+  "capturedDate": "2026-10-22",
+  "scope": "Encoded terrain for SDK nadir and oblique routes; full desktop route coverage remains unverified",
+  "sourcePolicy": "Bounded capture from 49; metadata and a live root verified; no atomic server dataset version; default replay is offline"
+}

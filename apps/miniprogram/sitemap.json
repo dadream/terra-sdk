@@ -1,0 +1,9 @@
+{
+  "desc": "Terra SDK capability probe",
+  "rules": [
+    {
+      "action": "disallow",
+      "page": "*"
+    }
+  ]
+}

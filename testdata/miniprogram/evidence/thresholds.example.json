@@ -1,0 +1,15 @@
+{
+  "schema": "terra.miniprogram.reference-thresholds.v1",
+  "devices": {
+    "android": {
+      "max_p95_frame_time_ms": 0,
+      "max_peak_memory_mb": 0,
+      "min_stable_duration_seconds": 0
+    },
+    "ios": {
+      "max_p95_frame_time_ms": 0,
+      "max_peak_memory_mb": 0,
+      "min_stable_duration_seconds": 0
+    }
+  }
+}

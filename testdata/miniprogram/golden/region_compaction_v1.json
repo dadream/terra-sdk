@@ -1,0 +1,128 @@
+{
+  "format": "terra.region-compaction-golden.v1",
+  "cases": [
+    {
+      "name": "uniform",
+      "input": 512,
+      "output": 2
+    },
+    {
+      "name": "uniform-duplicates",
+      "input": 597,
+      "output": 2
+    },
+    {
+      "name": "hole",
+      "input": 462,
+      "output": 360
+    },
+    {
+      "name": "hole-duplicates",
+      "input": 538,
+      "output": 368
+    },
+    {
+      "name": "varying",
+      "input": 512,
+      "output": 328
+    },
+    {
+      "name": "varying-duplicates",
+      "input": 597,
+      "output": 328
+    },
+    {
+      "name": "separated",
+      "input": 512,
+      "output": 512
+    },
+    {
+      "name": "separated-duplicates",
+      "input": 597,
+      "output": 512
+    },
+    {
+      "name": "small-1",
+      "input": 1,
+      "output": 1
+    },
+    {
+      "name": "small-2",
+      "input": 2,
+      "output": 2
+    },
+    {
+      "name": "small-3",
+      "input": 3,
+      "output": 3
+    },
+    {
+      "name": "small-4",
+      "input": 4,
+      "output": 2
+    },
+    {
+      "name": "empty",
+      "input": 0,
+      "output": 0
+    },
+    {
+      "name": "scalar-only",
+      "input": 2,
+      "output": 2
+    },
+    {
+      "name": "mixed",
+      "input": 39,
+      "output": 4
+    },
+    {
+      "name": "tiny-hull-expansion",
+      "input": 12,
+      "output": 34
+    },
+    {
+      "name": "translated-1e-8-0",
+      "input": 42,
+      "output": 2
+    },
+    {
+      "name": "translated-1-1000000000",
+      "input": 42,
+      "output": 42
+    },
+    {
+      "name": "translated-1000000--1000000000000",
+      "input": 42,
+      "output": 42
+    },
+    {
+      "name": "signed-zero",
+      "input": 38,
+      "output": 32
+    },
+    {
+      "name": "zero-depth",
+      "input": 37,
+      "output": 32
+    },
+    {
+      "name": "crossing-depth",
+      "input": 37,
+      "output": 32
+    },
+    {
+      "name": "spectral-overflow",
+      "input": 37,
+      "output": 32
+    }
+  ],
+  "sha256": "bb441ec26d591ca58c83ff4914c9d827f1ade62949e0c006673c1eb150892d26",
+  "generatorNode": "v24.21.0",
+  "generatorSha256": "889768d7673d5b07c8c22270f9ba5bcea053f9c5133d1886ff8f6dd42a7226ff",
+  "oracleSources": {
+    "reference/compact_regions_reference.js": "0dff0fabe03b8604557b304db2de00b8242ba585157a247b912976f2f6aec264",
+    "reference/compaction_fixture.js": "ba8d219761b091215fb7a8fc28a90f1cc45e4d3d947c679fe2ad9fc9435cd7c7",
+    "../../sdk/js/math/projection.js": "cc502563a578bf4170c21975fd448c7f35dd00222de0456edb3e8ced062a6e41"
+  }
+}

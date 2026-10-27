@@ -1,0 +1,20 @@
+<view class="planar-load">
+  <view class="planar-load__header">
+    <text class="planar-load__title">PS 1k planar load</text>
+    <text class="planar-load__status planar-load__status--{{statusKind}}">
+      {{status}}
+    </text>
+  </view>
+  <view class="planar-load__result">
+    <text class="planar-load__summary">{{summary}}</text>
+    <text class="planar-load__scope">
+      HTTP repository read | ArrayBuffer | checksum | framing | repeat
+    </text>
+  </view>
+  <view class="planar-load__actions">
+    <button class="planar-load__button" bindtap="runProbe"
+      disabled="{{running}}">Run</button>
+    <button class="planar-load__button" bindtap="copyReport"
+      disabled="{{!reportText}}">Copy</button>
+  </view>
+</view>

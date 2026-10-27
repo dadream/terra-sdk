@@ -1,0 +1,274 @@
+{
+  "format": "terra.triangle-projection-golden.v1",
+  "cases": [
+    {
+      "name": "inside",
+      "vertices": 3
+    },
+    {
+      "name": "cull-positive",
+      "vertices": 0
+    },
+    {
+      "name": "reverse-winding",
+      "vertices": 3
+    },
+    {
+      "name": "cross-plane-0--1",
+      "vertices": 4
+    },
+    {
+      "name": "outside-plane-0--1",
+      "vertices": 0
+    },
+    {
+      "name": "cross-plane-0-1",
+      "vertices": 4
+    },
+    {
+      "name": "outside-plane-0-1",
+      "vertices": 0
+    },
+    {
+      "name": "cross-plane-1--1",
+      "vertices": 3
+    },
+    {
+      "name": "outside-plane-1--1",
+      "vertices": 0
+    },
+    {
+      "name": "cross-plane-1-1",
+      "vertices": 4
+    },
+    {
+      "name": "outside-plane-1-1",
+      "vertices": 0
+    },
+    {
+      "name": "cross-plane-2--1",
+      "vertices": 4
+    },
+    {
+      "name": "outside-plane-2--1",
+      "vertices": 0
+    },
+    {
+      "name": "cross-plane-2-1",
+      "vertices": 3
+    },
+    {
+      "name": "outside-plane-2-1",
+      "vertices": 0
+    },
+    {
+      "name": "not-clipped",
+      "vertices": 3
+    },
+    {
+      "name": "perspective-near",
+      "vertices": 3
+    },
+    {
+      "name": "perspective-unclipped",
+      "vertices": 3
+    },
+    {
+      "name": "zero-depth",
+      "vertices": 3
+    },
+    {
+      "name": "almost-zero-depth",
+      "vertices": 3
+    },
+    {
+      "name": "tiny-uv-degenerate",
+      "vertices": 0
+    },
+    {
+      "name": "uv-signed-zero",
+      "vertices": 3
+    },
+    {
+      "name": "translated-origin",
+      "vertices": 3
+    },
+    {
+      "name": "unequal-pixel-scales",
+      "vertices": 3
+    },
+    {
+      "name": "collinear-screen",
+      "vertices": 3
+    },
+    {
+      "name": "seeded-0",
+      "vertices": 3
+    },
+    {
+      "name": "seeded-1",
+      "vertices": 6
+    },
+    {
+      "name": "seeded-2",
+      "vertices": 6
+    },
+    {
+      "name": "seeded-3",
+      "vertices": 0
+    },
+    {
+      "name": "seeded-4",
+      "vertices": 4
+    },
+    {
+      "name": "seeded-5",
+      "vertices": 0
+    },
+    {
+      "name": "seeded-6",
+      "vertices": 3
+    },
+    {
+      "name": "seeded-7",
+      "vertices": 0
+    },
+    {
+      "name": "seeded-8",
+      "vertices": 4
+    },
+    {
+      "name": "seeded-9",
+      "vertices": 0
+    },
+    {
+      "name": "seeded-10",
+      "vertices": 4
+    },
+    {
+      "name": "seeded-11",
+      "vertices": 0
+    },
+    {
+      "name": "seeded-12",
+      "vertices": 3
+    },
+    {
+      "name": "seeded-13",
+      "vertices": 0
+    },
+    {
+      "name": "seeded-14",
+      "vertices": 6
+    },
+    {
+      "name": "seeded-15",
+      "vertices": 0
+    },
+    {
+      "name": "seeded-16",
+      "vertices": 3
+    },
+    {
+      "name": "seeded-17",
+      "vertices": 0
+    },
+    {
+      "name": "seeded-18",
+      "vertices": 3
+    },
+    {
+      "name": "seeded-19",
+      "vertices": 0
+    },
+    {
+      "name": "seeded-20",
+      "vertices": 3
+    },
+    {
+      "name": "seeded-21",
+      "vertices": 0
+    },
+    {
+      "name": "seeded-22",
+      "vertices": 6
+    },
+    {
+      "name": "seeded-23",
+      "vertices": 3
+    },
+    {
+      "name": "seeded-24",
+      "vertices": 3
+    },
+    {
+      "name": "seeded-25",
+      "vertices": 3
+    },
+    {
+      "name": "seeded-26",
+      "vertices": 4
+    },
+    {
+      "name": "seeded-27",
+      "vertices": 3
+    },
+    {
+      "name": "seeded-28",
+      "vertices": 6
+    },
+    {
+      "name": "seeded-29",
+      "vertices": 4
+    },
+    {
+      "name": "seeded-30",
+      "vertices": 3
+    },
+    {
+      "name": "seeded-31",
+      "vertices": 6
+    },
+    {
+      "name": "seeded-32",
+      "vertices": 4
+    },
+    {
+      "name": "seeded-33",
+      "vertices": 3
+    },
+    {
+      "name": "seeded-34",
+      "vertices": 3
+    },
+    {
+      "name": "seeded-35",
+      "vertices": 4
+    },
+    {
+      "name": "seeded-36",
+      "vertices": 3
+    },
+    {
+      "name": "seeded-37",
+      "vertices": 6
+    },
+    {
+      "name": "seeded-38",
+      "vertices": 4
+    },
+    {
+      "name": "seeded-39",
+      "vertices": 0
+    }
+  ],
+  "sha256": "9d0f69c6eda74d8f14d996b167ae6bc966cb6e52af6cf496aaedfa79378a3c0b",
+  "generatorSha256": "0d2de363ea994cdc01523e9d16b2c84260164182720b827b5900b69db0c60181",
+  "generatorNode": "v24.21.0",
+  "oracleSources": {
+    "../../sdk/js/terrain/triangle_projection.js": "e182b4adc929c450b74dfdac8072eadf992c3b5f6961912b47ada059d155a2f8",
+    "../../sdk/js/terrain/triangle_density.js": "0a8e8a99441c78c975902c5349cef1cd018e472467a423413468b510799ab83d",
+    "../../sdk/js/terrain/surface_facing.js": "61af11b37e20f730333be9abc0acf08a3ed0f5f49a3f88a32451f28ba310439f",
+    "../../sdk/js/math/projection.js": "cc502563a578bf4170c21975fd448c7f35dd00222de0456edb3e8ced062a6e41"
+  }
+}

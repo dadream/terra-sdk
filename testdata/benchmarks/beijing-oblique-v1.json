@@ -1,0 +1,21 @@
+{
+  "schema": "terra.static-view-case.v1",
+  "id": "beijing-oblique-v1",
+  "viewport": {"width": 1280, "height": 757, "devicePixelRatio": 1},
+  "verticalFovRadians": 0.5233333333333333,
+  "terrainPixelError": 1.25,
+  "imageryPixelError": 1.25,
+  "view": {
+    "schema": "terra.view-state.v2",
+    "mode": "globe",
+    "target": {"longitudeDegrees": 116.5623, "latitudeDegrees": 40.74863, "heightMeters": 0},
+    "rangeMeters": 9567,
+    "headingDegrees": 14.5,
+    "tiltDegrees": 76.3
+  },
+  "acceptanceMs": 30000,
+  "stableMs": 250,
+  "expectedCapacity": {"maximumTerrainMeshBytes": 67108864, "maximumResourceBytes": 805306368},
+  "terrain": "beijing-oblique/records.json",
+  "terrainIdentity": "d5427371bf852b84e1711acdd91c884123851c245113bd04a3a09c6f053cc95b"
+}

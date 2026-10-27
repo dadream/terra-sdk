@@ -21,6 +21,7 @@
 #include <vic/vfs/db_repository.hpp>
 #include <sl/bitops.hpp>
 #include <cstring>
+#include <cstdlib>
 #include <sys/types.h>
 #include <sys/stat.h> 
 #include <limits.h>
@@ -44,6 +45,28 @@ static off_t file_size(const char*  file_name) {
 // ----------------------------------------------------------------------
 
 static const std::size_t Default_cache_size = 16*1024*1024;
+
+static bool database_file_is_complete(DB* db, const char* file_name,
+                                      sl::uint64_t& expected_size,
+                                      sl::uint64_t& actual_size) {
+  expected_size = 0;
+  const off_t size = file_size(file_name);
+  actual_size = size > 0 ? static_cast<sl::uint64_t>(size) : 0;
+
+  void* raw_statistics = NULL;
+  const int result = db->stat(db, NULL, &raw_statistics, DB_FAST_STAT);
+  if (result != 0 || raw_statistics == NULL) {
+    return false;
+  }
+  const DB_BTREE_STAT* statistics =
+      static_cast<const DB_BTREE_STAT*>(raw_statistics);
+  expected_size =
+      static_cast<sl::uint64_t>(statistics->bt_pagecnt) *
+      static_cast<sl::uint64_t>(statistics->bt_pagesize);
+  std::free(raw_statistics);
+
+  return expected_size != 0 && actual_size >= expected_size;
+}
 
 static inline vic::vfs::db_repository::key_t as_key(const DBT *db_key) {
   vic::vfs::db_repository::key_t key;
@@ -179,6 +202,18 @@ namespace vic {
       if (ret) {
 	std::cerr << "unable to open db " << filename << " for reading " << db_strerror(ret) << std::endl;
 	db_ = NULL;
+      } else {
+	sl::uint64_t expected_size = 0;
+	sl::uint64_t actual_size = 0;
+	if (!database_file_is_complete(db_, filename.c_str(), expected_size,
+	                               actual_size)) {
+	  std::cerr << "unable to open db " << filename
+	            << " for reading: repository is truncated or unreadable"
+	            << " (expected at least " << expected_size
+	            << " bytes, found " << actual_size << ")" << std::endl;
+	  db_->close(db_, 0);
+	  db_ = NULL;
+	}
       }
     }
 

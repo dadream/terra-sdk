@@ -1,0 +1,566 @@
+const { ResourceCache } = require('../resources/resource_cache')
+const {terrainCapacityPolicy, defaultTerrainMeshBytes} = require('../resources/terrain_capacity_policy')
+const FNV64_OFFSET_HIGH = 0xcbf29ce4
+const FNV64_OFFSET_LOW = 0x84222325
+const FNV64_PRIME_LOW = 0x1b3
+const FNV64_PRIME_HIGH = 0x100
+
+function invariant(condition, message) {
+  if (!condition) {
+    throw new Error(message)
+  }
+}
+
+function clamp(value, minimum, maximum) {
+  return Math.max(minimum, Math.min(maximum, value))
+}
+
+function finiteNumber(value, name) {
+  invariant(typeof value === 'number' && Number.isFinite(value),
+    `${name} must be finite`)
+  return value
+}
+
+function getHeader(headers, name) {
+  if (!headers) {
+    return ''
+  }
+  const expected = name.toLowerCase()
+  const keys = Object.keys(headers)
+  for (let index = 0; index < keys.length; ++index) {
+    const key = keys[index]
+    if (key.toLowerCase() === expected) {
+      return String(headers[key])
+    }
+  }
+  return ''
+}
+
+function redactSensitiveText(value) {
+  return String(value === undefined || value === null ? '' : value)
+    .replace(/([?&](?:tk|token|access_token)=)[^&#\s]+/gi, '$1[redacted]')
+    .replace(/\b(tk|token|access_token)\s*([:=])\s*[A-Za-z0-9._-]+/gi,
+      '$1$2[redacted]')
+}
+
+function sanitizeDiagnosticDetail(detail) {
+  if (!detail || typeof detail !== 'object' || Array.isArray(detail)) {
+    return redactSensitiveText(detail)
+  }
+  const result = {}
+  Object.keys(detail).forEach((key) => {
+    const value = detail[key]
+    result[key] = typeof value === 'string' ? redactSensitiveText(value) : value
+  })
+  return result
+}
+
+function multiply32(left, right) {
+  const leftLow = left & 0xffff
+  const leftHigh = left >>> 16
+  const rightLow = right & 0xffff
+  const rightHigh = right >>> 16
+  const productLow = leftLow * rightLow
+  const productMiddle = (productLow >>> 16) +
+    leftLow * rightHigh + leftHigh * rightLow
+  return {
+    low: ((productLow & 0xffff) | ((productMiddle & 0xffff) << 16)) >>> 0,
+    high: (leftHigh * rightHigh + (productMiddle >>> 16)) >>> 0
+  }
+}
+
+function fnv1a64(bytes) {
+  invariant(bytes && typeof bytes.length === 'number',
+    'FNV input must be a byte array')
+  let high = FNV64_OFFSET_HIGH
+  let low = FNV64_OFFSET_LOW
+  for (let index = 0; index < bytes.length; ++index) {
+    low = (low ^ bytes[index]) >>> 0
+    const product = multiply32(low, FNV64_PRIME_LOW)
+    high = (product.high + Math.imul(high, FNV64_PRIME_LOW) +
+      Math.imul(low, FNV64_PRIME_HIGH)) >>> 0
+    low = product.low
+  }
+  return high.toString(16).padStart(8, '0') +
+    low.toString(16).padStart(8, '0')
+}
+
+function validateRecordPayload(data, headers) {
+  const bytes = data instanceof Uint8Array
+    ? data
+    : new Uint8Array(data)
+  const length = getHeader(headers, 'content-length')
+  const checksum = getHeader(headers, 'x-terra-checksum').toLowerCase()
+  invariant(/^\d+$/.test(length), 'Terrain response has invalid Content-Length')
+  invariant(Number(length) === bytes.byteLength,
+    'Terrain response Content-Length does not match payload')
+  invariant(/^fnv1a64:[0-9a-f]{16}$/.test(checksum),
+    'Terrain response has invalid X-Terra-Checksum')
+  invariant(checksum === `fnv1a64:${fnv1a64(bytes)}`,
+    'Terrain response checksum mismatch')
+  return bytes
+}
+
+function patchKeyString(kind, key) {
+  return `${kind}:${key.level}/${key.i}/${key.j}/${key.k}`
+}
+
+function textureKeyString(key) {
+  return `${key.level}/${key.matrix}/${key.row}/${key.column}`
+}
+
+function replaceTemplate(template, values) {
+  invariant(typeof template === 'string' && template.length > 0,
+    'Endpoint template is required')
+  return template.replace(/\{(i|j|k|z|x|y)\}/g, (match, name) => {
+    invariant(Object.prototype.hasOwnProperty.call(values, name),
+      `Endpoint template value is missing: ${name}`)
+    return String(values[name])
+  })
+}
+
+function isAllowedServiceOrigin(origin) {
+  if (typeof origin !== 'string') {
+    return false
+  }
+  if (/^https:\/\//.test(origin)) {
+    return true
+  }
+  const loopbackHost = '(localhost|127\\.0\\.0\\.1|\\[::1\\])'
+  const loopback = new RegExp(`^http://${loopbackHost}(?::(\\d{1,5}))?/?$`).exec(origin)
+  if (!loopback) {
+    return false
+  }
+  return !loopback[2] || Number(loopback[2]) <= 65535
+}
+
+function isAllowedResourceUrl(url) {
+  if (typeof url !== 'string') {
+    return false
+  }
+  if (/^https:\/\//.test(url)) {
+    return true
+  }
+  const loopbackHost = '(localhost|127\\.0\\.0\\.1|\\[::1\\])'
+  const loopback = new RegExp(
+    `^http://${loopbackHost}(?::(\\d{1,5}))?(?:/|$)`).exec(url)
+  if (!loopback) {
+    return false
+  }
+  return !loopback[2] || Number(loopback[2]) <= 65535
+}
+
+function joinServiceUrl(origin, endpoint) {
+  invariant(typeof endpoint === 'string' && endpoint.length > 0,
+    'Endpoint is required')
+  if (/^https:\/\//.test(endpoint)) {
+    return endpoint
+  }
+  invariant(isAllowedServiceOrigin(origin),
+    'Terrain service origin must use HTTPS or a loopback HTTP address')
+  return `${origin.replace(/\/$/, '')}/${endpoint.replace(/^\//, '')}`
+}
+
+function validateTextureMatrix(texture, terrain, defaults) {
+  const minimumLevel = texture.minimum_level === undefined
+    ? 0 : texture.minimum_level
+  const tileSize = texture.tile_size === undefined
+    ? 256 : texture.tile_size
+  const columns = texture.level_zero_columns === undefined
+    ? defaults.columns : texture.level_zero_columns
+  const rows = texture.level_zero_rows === undefined
+    ? defaults.rows : texture.level_zero_rows
+  const origin = texture.origin || 'top-left'
+  const bounds = texture.bounds || [[terrain.minimumU, terrain.minimumV],
+    [terrain.maximumU, terrain.maximumV]]
+  invariant(minimumLevel === 0, 'Texture minimum level must be zero')
+  invariant(Number.isInteger(tileSize) && tileSize > 0 && tileSize <= 16384,
+    'Texture tile size is invalid')
+  invariant(Number.isInteger(columns) && columns > 0 && columns <= 1024 &&
+    Number.isInteger(rows) && rows > 0 && rows <= 1024,
+  'Texture level-zero matrix is invalid')
+  invariant(origin === 'top-left' || origin === 'bottom-left', 'Texture origin is invalid')
+  invariant(Array.isArray(bounds) && bounds.length === 2 &&
+    Array.isArray(bounds[0]) && bounds[0].length === 2 &&
+    Array.isArray(bounds[1]) && bounds[1].length === 2,
+  'Texture bounds are invalid')
+  bounds.forEach((point, pointIndex) => point.forEach((value, axis) =>
+    finiteNumber(value, `Texture bound ${pointIndex}/${axis}`)))
+  invariant(bounds[0][0] < bounds[1][0] && bounds[0][1] < bounds[1][1],
+    'Texture bounds are empty')
+  return Object.assign({}, texture, {
+    minimum_level: minimumLevel,
+    tile_size: tileSize,
+    level_zero_columns: columns,
+    level_zero_rows: rows,
+    origin,
+    bounds: [bounds[0].slice(), bounds[1].slice()]
+  })
+}
+
+function selectTextureDescriptor(manifest, textureId) {
+  const textures = Array.isArray(manifest.textures) ? manifest.textures : []
+  const candidates = textureId
+    ? textures.filter((texture) => texture.id === textureId)
+    : textures
+  const texture = candidates.find((candidate) =>
+    candidate && candidate.kind === 'global-geodetic')
+  invariant(texture, 'Manifest has no global-geodetic texture descriptor')
+  invariant(isAllowedResourceUrl(texture.url_template),
+  'Texture URL template must use HTTPS or loopback HTTP')
+  invariant(Number.isInteger(texture.matrix_level_offset) &&
+    texture.matrix_level_offset >= 0 && Number.isInteger(texture.maximum_level) &&
+    texture.maximum_level >= 0 && texture.maximum_level <= 28,
+  'Texture level descriptor is invalid')
+  return texture
+}
+
+function validateManifestBase(manifest) {
+  invariant(manifest && typeof manifest === 'object', 'Manifest is required')
+  invariant(manifest.schema === 'terra.dataset-manifest' &&
+    manifest.schema_version === 1, 'Manifest schema is unsupported')
+  invariant(typeof manifest.dataset_id === 'string' &&
+    /^[A-Za-z0-9_-]{1,64}$/.test(manifest.dataset_id),
+  'Manifest dataset ID is invalid')
+  invariant(manifest.format_version === 1, 'Manifest format version is unsupported')
+  invariant(Number.isInteger(manifest.patch_dim) && manifest.patch_dim > 0 &&
+    manifest.patch_dim <= 256, 'Manifest patch dimension is invalid')
+  finiteNumber(manifest.height_scale, 'Manifest height scale')
+  invariant(manifest.height_scale > 0, 'Manifest height scale must be positive')
+  const transform = manifest.transform
+  invariant(transform && typeof transform === 'object',
+    'Manifest terrain transform is missing')
+  invariant(Array.isArray(transform.bounds) && transform.bounds.length === 2 &&
+    Array.isArray(transform.bounds[0]) && transform.bounds[0].length === 2 &&
+    Array.isArray(transform.bounds[1]) && transform.bounds[1].length === 2,
+  'Manifest terrain bounds are invalid')
+  const minimum = transform.bounds[0]
+  const maximum = transform.bounds[1]
+  finiteNumber(minimum[0], 'Manifest minimum longitude')
+  finiteNumber(minimum[1], 'Manifest minimum latitude')
+  finiteNumber(maximum[0], 'Manifest maximum longitude')
+  finiteNumber(maximum[1], 'Manifest maximum latitude')
+  invariant(minimum[0] < maximum[0] && minimum[1] < maximum[1],
+    'Manifest terrain bounds are empty')
+  invariant(manifest.endpoints && typeof manifest.endpoints.root === 'string' &&
+    typeof manifest.endpoints.detail === 'string',
+  'Manifest terrain endpoints are missing')
+  const maximumDataLevel = manifest.levels ? manifest.levels.maximum : 39
+  invariant(Number.isInteger(maximumDataLevel) && maximumDataLevel >= 0 && maximumDataLevel < 40,
+    'Manifest maximum terrain data level is invalid')
+  return {
+    datasetId: manifest.dataset_id,
+    formatVersion: manifest.format_version,
+    patchDimension: manifest.patch_dim,
+    heightScale: manifest.height_scale,
+    maximumDataLevel,
+    minimumU: minimum[0],
+    minimumV: minimum[1],
+    maximumU: maximum[0],
+    maximumV: maximum[1],
+    rootEndpoint: manifest.endpoints.root,
+    detailEndpoint: manifest.endpoints.detail
+  }
+}
+
+function selectPlanarTextureDescriptor(manifest, textureId) {
+  const textures = Array.isArray(manifest.textures) ? manifest.textures : []
+  const candidates = textureId
+    ? textures.filter((texture) => texture.id === textureId)
+    : textures
+  const texture = candidates.find((candidate) =>
+    candidate && (candidate.kind === 'planar-tms' ||
+      candidate.kind === 'planar-single'))
+  invariant(texture, 'Manifest has no planar texture descriptor')
+  invariant(typeof texture.url_template === 'string' &&
+    (/^\//.test(texture.url_template) ||
+      isAllowedResourceUrl(texture.url_template)),
+  'Planar texture URL must be relative, HTTPS, or loopback HTTP')
+  invariant(Number.isInteger(texture.matrix_level_offset) &&
+    texture.matrix_level_offset >= 0 &&
+    Number.isInteger(texture.maximum_level) &&
+    texture.maximum_level >= 0 && texture.maximum_level <= 28,
+  'Planar texture level descriptor is invalid')
+  if (texture.kind === 'planar-single') {
+    invariant(texture.matrix_level_offset === 0 && texture.maximum_level === 0,
+      'Planar single texture level descriptor is invalid')
+  } else {
+    invariant(/\{z\}/.test(texture.url_template) &&
+      /\{x\}/.test(texture.url_template) && /\{y\}/.test(texture.url_template),
+    'Planar TMS texture template must contain z, x, and y')
+  }
+  return texture
+}
+
+function validateManifest(manifest, textureId) {
+  const result = validateManifestBase(manifest)
+  const transform = manifest.transform
+  invariant(transform && transform.kind === 'cylindrical',
+    'Mini Program renderer requires a cylindrical terrain manifest')
+  finiteNumber(transform.radius, 'Manifest terrain radius')
+  invariant(transform.radius > 0, 'Manifest terrain radius must be positive')
+  result.transform = 'cylindrical'
+  result.radius = transform.radius
+  result.texture = validateTextureMatrix(
+    selectTextureDescriptor(manifest, textureId), result, { columns: 2, rows: 1 })
+  return result
+}
+
+function validatePlanarManifest(manifest, textureId) {
+  const result = validateManifestBase(manifest)
+  const transform = manifest.transform
+  invariant(transform && transform.kind === 'planar',
+    'Planar renderer requires a planar terrain manifest')
+  finiteNumber(transform.radius, 'Manifest terrain radius')
+  invariant(transform.radius === 0,
+    'Planar terrain radius must be zero')
+  result.transform = 'planar'
+  result.radius = 0
+  result.texture = validateTextureMatrix(
+    selectPlanarTextureDescriptor(manifest, textureId), result,
+    { columns: 1, rows: 1 })
+  return result
+}
+
+class RequestScheduler {
+  constructor(maximumConcurrent) {
+    this.maximumConcurrent = Math.max(1, maximumConcurrent || 1)
+    this.active = new Map()
+    this.queued = new Map()
+    this.paused = false
+    this.pumping = false
+  }
+
+  enqueue(key, start, priority, eligible) {
+    const queued = {
+      start,
+      eligible,
+      priority: Number.isFinite(Number(priority)) ? Number(priority) : 0
+    }
+    const active = this.active.get(key)
+    if (active) {
+      if (active.stale) active.restart = queued
+      return
+    }
+    const existing = this.queued.get(key)
+    if (existing) {
+      this.queued.set(key, queued)
+      return
+    }
+    this.queued.set(key, queued)
+    this.pump()
+  }
+
+  cancelExcept(desired) {
+    const wanted = desired || new Set()
+    this.queued.forEach((value, key) => {
+      if (!wanted.has(key)) {
+        this.queued.delete(key)
+      }
+    })
+    this.active.forEach((request, key) => {
+      if (!wanted.has(key)) {
+        request.restart = null
+        if (request.stale) {
+          return
+        }
+        request.stale = true
+        if (typeof request.abort === 'function') {
+          request.abort()
+        }
+      }
+    })
+  }
+
+  clear() {
+    this.cancelExcept(new Set())
+    this.queued.clear()
+  }
+
+  pause() { this.paused = true; this.clear() }
+  resume() { this.paused = false; this.pump() }
+
+  stats() {
+    return { active: this.active.size, queued: this.queued.size }
+  }
+
+  pump() {
+    if (this.paused || this.pumping) return
+    this.pumping = true
+    try {
+      while (!this.paused && this.active.size < this.maximumConcurrent && this.queued.size) {
+        let key = null
+        let next = null
+        this.queued.forEach((candidate, candidateKey) => {
+          // Dependencies can change after enqueueing. Wait for a real wake
+          // without occupying a producer slot or polling failed admission.
+          if (candidate.eligible && !candidate.eligible()) return
+          if (!next || candidate.priority > next.priority) {
+            key = candidateKey
+            next = candidate
+          }
+        })
+        if (!next) break
+        this.queued.delete(key)
+        // Starting a producer can enqueue work or cancel this request. Publish
+        // its slot first so both actions observe the same current ownership.
+        const request = {stale: false, abort: null, restart: null}
+        this.active.set(key, request)
+        let started
+        try { started = next.start() }
+        catch (error) {
+          this.active.delete(key)
+          if (request.restart) this.queued.set(key, request.restart)
+          continue
+        }
+        request.abort = started && started.abort
+        Promise.resolve(started && started.promise)
+          .catch(() => undefined)
+          .then(() => {
+            this.active.delete(key)
+            if (request.restart) this.queued.set(key, request.restart)
+            this.pump()
+          })
+        if (request.stale && typeof request.abort === 'function') request.abort()
+      }
+    } finally { this.pumping = false }
+  }
+
+}
+
+function deriveFrameBudget(viewport, capabilities, quality) {
+  const width = Math.max(1, Math.round(viewport.width || 1))
+  const height = Math.max(1, Math.round(viewport.height || 1))
+  const requestedDpr = Number(viewport.devicePixelRatio) || 1
+  const maxTextureSize = Number(capabilities && capabilities.maxTextureSize) || 2048
+  const area = width * height
+  const dprCap = area > 700000 ? 1.25 : 2
+  const devicePixelRatio = clamp(requestedDpr, 1, dprCap)
+  const physicalWidth = Math.min(maxTextureSize,
+    Math.max(1, Math.round(width * devicePixelRatio)))
+  const physicalHeight = Math.min(maxTextureSize,
+    Math.max(1, Math.round(height * devicePixelRatio)))
+  const effectiveDpr = Math.min(physicalWidth / width, physicalHeight / height)
+  const qualityOptions = quality || {}
+  const terrainPixelError = qualityOptions.terrainPixelError === undefined
+    ? 1.25
+    : finiteNumber(qualityOptions.terrainPixelError, 'Terrain pixel error')
+  const verticalFovRadians = qualityOptions.verticalFovRadians === undefined
+    ? 45 * Math.PI / 180
+    : finiteNumber(qualityOptions.verticalFovRadians, 'Vertical field of view')
+  invariant(terrainPixelError > 0 && terrainPixelError <= 16,
+    'Terrain pixel error must be in (0, 16]')
+  invariant(verticalFovRadians > 0 && verticalFovRadians < Math.PI,
+    'Vertical field of view must be in (0, PI)')
+  return {
+    cssWidth: width,
+    cssHeight: height,
+    physicalWidth,
+    physicalHeight,
+    devicePixelRatio: effectiveDpr,
+    terrainPixelError,
+    lodThreshold: clamp(terrainPixelError * effectiveDpr / physicalHeight *
+      2 * Math.tan(verticalFovRadians / 2), 0.00001, 0.05),
+    maximumConcurrentRequests: area > 700000 ? 3 : 5,
+    uploadBudgetMs: area > 700000 ? 4 : 7,
+    // The Beijing oblique view needs about 36 MiB of selected terrain, beyond
+    // the former 32 MiB quota. Local ceilings are not upfront allocations;
+    // retain independent shared admission and explicit smaller host limits.
+    // Resize changes resolution/scheduling, not the instance's capacity policy.
+    // The measured orbit handoff exceeds 512 MiB while retaining old display
+    // owners. Admit that overlap without changing precision or early refunds.
+    maximumResourceBytes: 768 * 1024 * 1024,
+    // Retained geometry cache quota. Selection uses half as its preferred
+    // working quota; exact outgoing display overlap is separately admitted
+    // against the shared limit, not refunded before a presentation receipt.
+    geometryCacheBytes: 2 * defaultTerrainMeshBytes,
+    partitionCacheBytes: area > 700000 ? 32 * 1024 * 1024 : 16 * 1024 * 1024,
+    // Beijing's 384 target images need about 128 MiB. Sparse coverage and
+    // old/new display overlap exhausted the former 160 MiB share with 40
+    // targets still missing, despite spare shared credit. Fund that overlap.
+    // The live handoff also retains ~223 MiB of GPU images plus bounded
+    // encoded (8 MiB), producer (8.5 MiB) and group destinations. A 224 MiB
+    // share starves early input; 256 MiB includes that measured continuation.
+    // Use the calibrated preferred quota for every viewport; it is not an
+    // allocation. Source-size accounting, explicit imagery ceilings and the
+    // shared ledger still admit every actual producer and handoff.
+    textureCacheBytes: 256 * 1024 * 1024
+  }
+}
+
+function terrainResourceBudget(dimension, budget, options) {
+  invariant(Number.isInteger(dimension) && dimension > 0, 'Patch dimension is invalid')
+  const vertexCount = (dimension + 1) * (dimension + 2) / 2
+  const meshBytes = vertexCount * 5 * 4
+  const workingBytes = Math.floor(budget.geometryCacheBytes / 2)
+  // Native selection charges positions and unique UV layouts, including roots.
+  // Topology has a separate safety limit; it is not a count of GPU meshes.
+  invariant(workingBytes >= 32 * meshBytes, 'Terrain capacity cannot hold root coverage')
+  const value = Object.assign({}, options)
+  value.maximumNodeCount = value.maximumNodeCount > 0 ? value.maximumNodeCount : 65536
+  value.meshBudgetBytes = workingBytes
+  if (value.maximumMeshBytes === undefined)
+    value.maximumMeshBytes = terrainCapacityPolicy(workingBytes).publicationBytes
+  return value
+}
+
+function relativeProjectionView(rowMajorProjectionView, cameraPosition) {
+  invariant(rowMajorProjectionView && rowMajorProjectionView.length === 16,
+    'Projection-view matrix must contain 16 values')
+  invariant(cameraPosition && cameraPosition.length === 3,
+    'Camera position must contain three values')
+  const result = new Float64Array(16)
+  const x = finiteNumber(cameraPosition[0], 'Camera x')
+  const y = finiteNumber(cameraPosition[1], 'Camera y')
+  const z = finiteNumber(cameraPosition[2], 'Camera z')
+  for (let row = 0; row < 4; ++row) {
+    const offset = row * 4
+    result[offset] = rowMajorProjectionView[offset]
+    result[offset + 1] = rowMajorProjectionView[offset + 1]
+    result[offset + 2] = rowMajorProjectionView[offset + 2]
+    result[offset + 3] = rowMajorProjectionView[offset] * x +
+      rowMajorProjectionView[offset + 1] * y +
+      rowMajorProjectionView[offset + 2] * z +
+      rowMajorProjectionView[offset + 3]
+  }
+  return result
+}
+
+function rowMajorToWebGlMatrix(rowMajor) {
+  invariant(rowMajor && rowMajor.length === 16,
+    'Matrix must contain 16 values')
+  const result = new Float32Array(16)
+  for (let row = 0; row < 4; ++row) {
+    for (let column = 0; column < 4; ++column) {
+      result[column * 4 + row] = rowMajor[row * 4 + column]
+    }
+  }
+  return result
+}
+
+module.exports = {
+  ResourceCache,
+  RequestScheduler,
+  clamp,
+  deriveFrameBudget,
+  terrainResourceBudget,
+  finiteNumber,
+  fnv1a64,
+  getHeader,
+  invariant,
+  isAllowedResourceUrl,
+  isAllowedServiceOrigin,
+  joinServiceUrl,
+  patchKeyString,
+  relativeProjectionView,
+  redactSensitiveText,
+  replaceTemplate,
+  rowMajorToWebGlMatrix,
+  selectPlanarTextureDescriptor,
+  selectTextureDescriptor,
+  sanitizeDiagnosticDetail,
+  textureKeyString,
+  validateManifest,
+  validatePlanarManifest,
+  validateRecordPayload
+}

@@ -1,5 +1,6 @@
 /build/
 /out/
+/Testing/
 /workspace_old/
 /viewer_verify_output/
 /viewer_*.log
@@ -8,9 +9,17 @@
 /compile_commands.json
 /.clangd/
 /testdata/viewer_baseline/*/baseline_report.html
+/apps/miniprogram/project.private.config.json
+/apps/miniprogram/wasm/terra_sdk.wasm
+/apps/miniprogram/wasm/terra_sdk_wasm_manifest.json
+/testdata/miniprogram/evidence/local/
+/deploy/cloudbase/cos-uploader/node_modules/
+/deploy/lighthouse/.env
 __pycache__/
 *.pyc
 *.swp
 *.user
 *.orig
 *~
+
+/apps/miniprogram/vendor/

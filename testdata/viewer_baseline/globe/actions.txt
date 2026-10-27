@@ -3,7 +3,8 @@ wait_frames 600
 capture initial_birdview
 
 zoom_in 3
-wait_frames 120
+# Globe refinement can lag frame production on a cold repository cache.
+wait_frames 600
 capture birdview_zoom_in
 
 tilt 45

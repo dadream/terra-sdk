@@ -1,0 +1,26 @@
+{
+  "schema": "terra.navigation-case.v1",
+  "id": "taian-rapid-zoom-v1",
+  "viewport": {"width": 960, "height": 640, "devicePixelRatio": 1},
+  "verticalFovRadians": 0.5235987755982988,
+  "terrainPixelError": 1.25,
+  "imageryPixelError": 1.25,
+  "view": {
+    "schema": "terra.view-state.v2", "mode": "globe",
+    "target": {"longitudeDegrees": 117.1235, "latitudeDegrees": 36.21228, "heightMeters": 248.36358933330303},
+    "rangeMeters": 25512000, "headingDegrees": 0, "tiltDegrees": 0
+  },
+  "motions": [
+    {"kind": "log-zoom", "durationMs": 4000, "samples": 124, "view": {"rangeMeters": 570.5214914279856}},
+    {"kind": "log-zoom", "durationMs": 4000, "samples": 124, "view": {"rangeMeters": 25512000}}
+  ],
+  "acceptanceMs": 30000,
+  "stableMs": 250,
+  "sourceLimits": {
+    "0": {"maximumPixelError": 1.396189143212562, "sourceLevel": 17,
+      "reference": "published_projection_20261024_nadir/level-16-down"}
+  },
+  "expectedCapacity": {"maximumTerrainMeshBytes": 67108864, "maximumResourceBytes": 805306368},
+  "terrain": "../../viewer_verify_output/web_scope_20261026_zoom_inputs/records.json",
+  "terrainIdentity": "c39b044ff5c3865e96da29d3e7bb4f993f551a26d3d7570b0f79581921a3a59d"
+}

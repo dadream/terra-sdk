@@ -1,0 +1,65 @@
+{
+	admin off
+}
+
+(terra_routes) {
+	encode zstd gzip
+
+	@preflight method OPTIONS
+	handle @preflight {
+		header Access-Control-Allow-Origin "*"
+		header Access-Control-Allow-Methods "GET, HEAD, OPTIONS"
+		header Access-Control-Allow-Headers "Content-Type, If-None-Match"
+		respond "" 204
+	}
+
+	header {
+		Access-Control-Allow-Origin "*"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		-Server
+	}
+
+	@static path /assets/* /styles.css /site.js /demo/styles.css /demo/app.js
+	header @static Cache-Control "public, max-age=3600, must-revalidate"
+
+	handle /healthz {
+		header Cache-Control "no-store"
+		respond `{ "status": "ok", "service": "terra-edge"}` 200
+	}
+
+	handle /favicon.ico {
+		respond "" 204
+	}
+
+	handle /terra/v1/datasets/ps-1k/* {
+		reverse_proxy terrain-1k:8080
+	}
+
+	handle /terra/v1/datasets/globe/* {
+		reverse_proxy terrain-globe:8080
+	}
+
+	handle /terra/v1/imagery/* {
+		reverse_proxy imagery:8080
+	}
+
+	handle {
+		root * /srv/site
+		file_server
+	}
+
+	log {
+		output stdout
+		format json
+	}
+}
+
+terra.tapirs.top {
+	import terra_routes
+}
+
+http://{$TERRA_LIGHTHOUSE_IP} {
+	import terra_routes
+}

@@ -1,0 +1,13 @@
+{
+  "schema": "terra.scheduling-fixture.v1",
+  "id": "taian-terrain-v4",
+  "directory": "viewer_verify_output/benchmark_fixtures/taian-terrain-v4",
+  "catalogue": "records.json",
+  "datasetSha256": "4b39ae89d84c44b7b6e43be82b03fdc89c750db62adc65cd80ee8b93db6ca829",
+  "fixtureSha256": "c124b0501b8006fbcd094b025f9d3e25a3ea4cc6e2a959fe31d2c5d7d5020815",
+  "manifestSha256": "ccbc4c763d7212f0f89ee4ec0141f097dea5431c95ab82d5aaf331d7da832d9d",
+  "supplementalRecords": 2384,
+  "capturedDate": "2026-10-22",
+  "scope": "v3 plus20 records from diagnostic opposite-facing oblique routes before the Wasm public-tilt conversion was corrected; preserved superset for offline capacity replay",
+  "sourcePolicy": "Bounded capture from49; metadata and root checked, no atomic server dataset version; subsequent replay is offline"
+}
